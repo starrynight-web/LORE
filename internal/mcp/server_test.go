@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DJRCX/lore/internal/config"
-	"github.com/DJRCX/lore/internal/demo"
-	"github.com/DJRCX/lore/internal/result"
-	"github.com/DJRCX/lore/internal/store/filestore"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/starrynight-web/LORE/internal/config"
+	"github.com/starrynight-web/LORE/internal/demo"
+	"github.com/starrynight-web/LORE/internal/result"
+	"github.com/starrynight-web/LORE/internal/store/filestore"
 )
 
 func connect(t *testing.T) (*mcp.ClientSession, string) {

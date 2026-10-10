@@ -7,10 +7,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/DJRCX/lore/internal/config"
-	"github.com/DJRCX/lore/internal/importer/skills"
-	"github.com/DJRCX/lore/internal/review"
 	"github.com/spf13/cobra"
+	"github.com/starrynight-web/LORE/internal/config"
+	"github.com/starrynight-web/LORE/internal/importer/skills"
+	"github.com/starrynight-web/LORE/internal/review"
 )
 
 func importCmd() *cobra.Command {

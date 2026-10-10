@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DJRCX/lore/internal/result"
+	"github.com/starrynight-web/LORE/internal/result"
 )
 
 func conflictEnv() *result.Envelope {

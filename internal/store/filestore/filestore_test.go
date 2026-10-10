@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DJRCX/lore/internal/config"
-	"github.com/DJRCX/lore/internal/demo"
-	"github.com/DJRCX/lore/internal/importer/skills"
-	"github.com/DJRCX/lore/internal/present"
-	"github.com/DJRCX/lore/internal/result"
-	"github.com/DJRCX/lore/internal/review"
-	"github.com/DJRCX/lore/internal/store"
+	"github.com/starrynight-web/LORE/internal/config"
+	"github.com/starrynight-web/LORE/internal/demo"
+	"github.com/starrynight-web/LORE/internal/importer/skills"
+	"github.com/starrynight-web/LORE/internal/present"
+	"github.com/starrynight-web/LORE/internal/result"
+	"github.com/starrynight-web/LORE/internal/review"
+	"github.com/starrynight-web/LORE/internal/store"
 )
 
 var fixedNow = func() time.Time { return time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC) }

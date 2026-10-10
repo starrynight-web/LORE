@@ -6,7 +6,7 @@ package store
 import (
 	"context"
 
-	"github.com/DJRCX/lore/internal/result"
+	"github.com/starrynight-web/LORE/internal/result"
 )
 
 type ContextRequest struct {

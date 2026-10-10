@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DJRCX/lore/internal/importer/skills"
-	"github.com/DJRCX/lore/internal/lineage"
-	"github.com/DJRCX/lore/internal/result"
-	"github.com/DJRCX/lore/internal/store"
-	"github.com/DJRCX/lore/internal/text"
+	"github.com/starrynight-web/LORE/internal/importer/skills"
+	"github.com/starrynight-web/LORE/internal/lineage"
+	"github.com/starrynight-web/LORE/internal/result"
+	"github.com/starrynight-web/LORE/internal/store"
+	"github.com/starrynight-web/LORE/internal/text"
 )
 
 // job is DR-06, minus fields that only exist once a worker is connected.

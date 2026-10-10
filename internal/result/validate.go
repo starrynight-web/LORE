@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/DJRCX/lore/schemas"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/starrynight-web/LORE/schemas"
 )
 
 var (

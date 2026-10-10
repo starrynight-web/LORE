@@ -10,9 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/DJRCX/lore/internal/config"
-	"github.com/DJRCX/lore/internal/store/filestore"
 	"github.com/spf13/cobra"
+	"github.com/starrynight-web/LORE/internal/config"
+	"github.com/starrynight-web/LORE/internal/store/filestore"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".

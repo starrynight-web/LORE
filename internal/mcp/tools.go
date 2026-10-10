@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DJRCX/lore/internal/present"
-	"github.com/DJRCX/lore/internal/result"
-	"github.com/DJRCX/lore/internal/store"
-	"github.com/DJRCX/lore/schemas"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/starrynight-web/LORE/internal/present"
+	"github.com/starrynight-web/LORE/internal/result"
+	"github.com/starrynight-web/LORE/internal/store"
+	"github.com/starrynight-web/LORE/schemas"
 )
 
 type ContextIn struct {

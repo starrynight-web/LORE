@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DJRCX/lore/internal/chunk"
-	"github.com/DJRCX/lore/internal/okf"
-	"github.com/DJRCX/lore/internal/text"
+	"github.com/starrynight-web/LORE/internal/chunk"
+	"github.com/starrynight-web/LORE/internal/okf"
+	"github.com/starrynight-web/LORE/internal/text"
 )
 
 const chunkChars = 1600

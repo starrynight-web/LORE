@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DJRCX/lore/internal/result"
+	"github.com/starrynight-web/LORE/internal/result"
 )
 
 // VerdictWords are the human labels shared by GUI and CLI.

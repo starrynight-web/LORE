@@ -6,11 +6,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/DJRCX/lore/internal/present"
-	"github.com/DJRCX/lore/internal/result"
-	"github.com/DJRCX/lore/internal/store"
-	"github.com/DJRCX/lore/internal/store/filestore"
 	"github.com/spf13/cobra"
+	"github.com/starrynight-web/LORE/internal/present"
+	"github.com/starrynight-web/LORE/internal/result"
+	"github.com/starrynight-web/LORE/internal/store"
+	"github.com/starrynight-web/LORE/internal/store/filestore"
 )
 
 type outputFlags struct {

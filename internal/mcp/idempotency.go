@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DJRCX/lore/internal/store"
+	"github.com/starrynight-web/LORE/internal/store"
 )
 
 const idemTTL = 24 * time.Hour

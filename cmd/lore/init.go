@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/DJRCX/lore/internal/config"
-	"github.com/DJRCX/lore/internal/demo"
-	"github.com/DJRCX/lore/schemas"
 	"github.com/spf13/cobra"
+	"github.com/starrynight-web/LORE/internal/config"
+	"github.com/starrynight-web/LORE/internal/demo"
+	"github.com/starrynight-web/LORE/schemas"
 )
 
 const indexMD = `---

@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	"github.com/DJRCX/lore/internal/mcp"
 	"github.com/spf13/cobra"
+	"github.com/starrynight-web/LORE/internal/mcp"
 )
 
 func serveCmd() *cobra.Command {

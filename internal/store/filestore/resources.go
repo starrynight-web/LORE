@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DJRCX/lore/internal/okf"
-	"github.com/DJRCX/lore/internal/store"
-	"github.com/DJRCX/lore/schemas"
+	"github.com/starrynight-web/LORE/internal/okf"
+	"github.com/starrynight-web/LORE/internal/store"
+	"github.com/starrynight-web/LORE/schemas"
 )
 
 const (

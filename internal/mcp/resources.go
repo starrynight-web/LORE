@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/DJRCX/lore/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/starrynight-web/LORE/internal/store"
 )
 
 var templates = []*mcp.ResourceTemplate{

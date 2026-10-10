@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DJRCX/lore/internal/okf"
-	"github.com/DJRCX/lore/internal/review"
+	"github.com/starrynight-web/LORE/internal/okf"
+	"github.com/starrynight-web/LORE/internal/review"
 )
 
 var now = func() time.Time { return time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC) }

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/DJRCX/lore/internal/result"
+	"github.com/starrynight-web/LORE/internal/result"
 )
 
 func TestWriteGetAppend(t *testing.T) {

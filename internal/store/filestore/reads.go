@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DJRCX/lore/internal/chunk"
-	"github.com/DJRCX/lore/internal/okf"
-	"github.com/DJRCX/lore/internal/present"
-	"github.com/DJRCX/lore/internal/result"
-	"github.com/DJRCX/lore/internal/store"
-	"github.com/DJRCX/lore/internal/text"
-	"github.com/DJRCX/lore/internal/tokens"
+	"github.com/starrynight-web/LORE/internal/chunk"
+	"github.com/starrynight-web/LORE/internal/okf"
+	"github.com/starrynight-web/LORE/internal/present"
+	"github.com/starrynight-web/LORE/internal/result"
+	"github.com/starrynight-web/LORE/internal/store"
+	"github.com/starrynight-web/LORE/internal/text"
+	"github.com/starrynight-web/LORE/internal/tokens"
 )
 
 // newEnv starts an envelope for tools that do not write a decision record.

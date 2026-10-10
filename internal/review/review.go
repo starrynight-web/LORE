@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/DJRCX/lore/internal/okf"
+	"github.com/starrynight-web/LORE/internal/okf"
 )
 
 // Promote marks a draft rule, skill or procedure as stable so it can reach live context.

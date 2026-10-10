@@ -1,4 +1,4 @@
-module github.com/DJRCX/lore
+module github.com/starrynight-web/LORE
 
 go 1.27.1
 

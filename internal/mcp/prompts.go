@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/DJRCX/lore/internal/present"
-	"github.com/DJRCX/lore/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/starrynight-web/LORE/internal/present"
+	"github.com/starrynight-web/LORE/internal/store"
 )
 
 func userText(text string) *mcp.PromptMessage {

@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DJRCX/lore/internal/okf"
-	"github.com/DJRCX/lore/internal/result"
+	"github.com/starrynight-web/LORE/internal/okf"
+	"github.com/starrynight-web/LORE/internal/result"
 	"gopkg.in/yaml.v3"
 )
 

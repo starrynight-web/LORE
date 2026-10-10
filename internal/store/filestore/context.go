@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DJRCX/lore/internal/lineage"
-	"github.com/DJRCX/lore/internal/present"
-	"github.com/DJRCX/lore/internal/result"
-	"github.com/DJRCX/lore/internal/store"
-	"github.com/DJRCX/lore/internal/text"
-	"github.com/DJRCX/lore/internal/tokens"
+	"github.com/starrynight-web/LORE/internal/lineage"
+	"github.com/starrynight-web/LORE/internal/present"
+	"github.com/starrynight-web/LORE/internal/result"
+	"github.com/starrynight-web/LORE/internal/store"
+	"github.com/starrynight-web/LORE/internal/text"
+	"github.com/starrynight-web/LORE/internal/tokens"
 )
 
 func (s *FileStore) asOf(date string) (time.Time, string, error) {

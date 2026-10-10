@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DJRCX/lore/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/starrynight-web/LORE/internal/store"
 )
 
 const Name = "lore"
