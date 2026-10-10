@@ -1,0 +1,31 @@
+# Private working material (original brief, research notes, screenshots,
+# and the separate ICAIB repository). Kept locally, never published.
+archive/
+
+# Build output
+/bin/
+/dist/
+/lore
+*.test
+*.out
+
+# Runtime state written by `lore serve` inside example projects
+examples/**/.lore/decisions/
+examples/**/.lore/audit.log
+examples/**/.lore/_staging/
+
+# Local editor and agent settings at the repo root
+# (examples/demo-app keeps its own .cursor/ and .vscode/ on purpose)
+/.cursor/
+/.vscode/
+/.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
