@@ -42,7 +42,7 @@ flowchart LR
 | Product type | MCP server and CLI (single Go binary, `lore`) |
 | Source of truth | OKF v0.2 bundle: Markdown files with YAML frontmatter in `.lore/` |
 | Main question it answers | "Which governed rules apply to this file for this change, and do any of them disagree?" |
-| Output contract | `lore.result/1` JSON envelope ([schema](../schemas/lore.result.v1.json)) plus a `<lore>` text block for agents |
+| Output contract | `lore.result/1` JSON envelope ([schema](https://github.com/starrynight-web/LORE/blob/dev/schemas/lore.result.v1.json), on the `dev` branch) plus a `<lore>` text block for agents |
 | Token budget | At most 800 tokens and 8 items per result |
 | Who decides conflicts | Always a person; never the LLM, never Lore |
 | Roadmap | Personal Grid → Team Grid → Enterprise Grid |

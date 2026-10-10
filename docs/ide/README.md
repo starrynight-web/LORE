@@ -4,7 +4,7 @@ Lore runs as a local MCP server over stdio: the IDE starts `lore serve --root <p
 
 ## Before you start
 
-1. Install the binary: `go install github.com/DJRCX/lore/cmd/lore@latest`, or from a checkout, `go install ./cmd/lore`. It lands in `~/go/bin/lore`.
+1. Install the binary: `go install github.com/starrynight-web/LORE/cmd/lore@dev` (use `@latest` once the code is merged into `main`), or from a checkout of `dev`, `go install ./cmd/lore`. It lands in `~/go/bin/lore`.
 2. In your project, run `lore init` (or `lore init --demo` for the sample auth rules). It creates `.lore/` and prints a ready-to-paste config for each IDE with absolute paths filled in.
 3. Check the server by hand first: `npx @modelcontextprotocol/inspector ~/go/bin/lore serve --root /path/to/project`.
 
@@ -30,7 +30,7 @@ Results go in [compat-matrix.md](compat-matrix.md); the test script is [smoke-te
 
 ## Making agents call Lore on their own
 
-Server instructions are sent at connect time, but not every client shows them to the model. Add a short rule file as well; [`examples/demo-app`](../../examples/demo-app) has one for each client:
+Server instructions are sent at connect time, but not every client shows them to the model. Add a short rule file as well; [`examples/demo-app`](https://github.com/starrynight-web/LORE/tree/dev/examples/demo-app) (on the `dev` branch for now) has one for each client:
 
 - `AGENTS.md`, read by Codex, Antigravity, Devin, Zed, Cursor and others
 - `.cursor/rules/lore.mdc` (Cursor)

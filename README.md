@@ -8,6 +8,8 @@ This repository currently contains the MCP server and its IDE integration. Knowl
 
 Status: early prototype, built for the International AI Builders Congress 2026 (InfraSphere AI / Knowledge Grid track). Interfaces may still change.
 
+> **Where the code is:** `main` holds only the documentation and licence. The source code, the demo workspace and CI are still in progress on the [`dev`](https://github.com/starrynight-web/LORE/tree/dev) branch. Links to code below (`schemas/`, `examples/`) point to `dev`, and the commands in Quick start and Development need a checkout of `dev` until it is merged into `main`.
+
 ## Quick start
 
 ```bash
@@ -19,7 +21,7 @@ lore context --file src/auth/token.go --intent "add a refresh token endpoint"
 
 The last command shows exactly what an agent would be told: two MUST rules, a skill, and a recorded conflict it must not resolve itself. It exits with code 3, meaning "ask the user".
 
-To connect an IDE, see [docs/ide/](docs/ide/README.md). [`examples/demo-app`](examples/demo-app) is a ready-made workspace with configs for Cursor, VS Code and Antigravity.
+To connect an IDE, see [docs/ide/](docs/ide/README.md). [`examples/demo-app`](https://github.com/starrynight-web/LORE/tree/dev/examples/demo-app) (on `dev`) is a ready-made workspace with configs for Cursor, VS Code and Antigravity.
 
 ## Bring your existing skills
 
@@ -49,7 +51,7 @@ Every command accepts `--root <project>`; otherwise Lore uses `$LORE_ROOT`, then
 
 ## MCP surface
 
-- Read tools return `lore.result/1` ([schema](schemas/lore.result.v1.json)) as `structuredContent`, plus a `<lore>` text block and resource links: `get_context`, `check_compliance`, `detect_conflicts`, `get_skill`, `search`, `get_history`, `trace`, `stats`, `ingest_status`.
+- Read tools return `lore.result/1` ([schema](https://github.com/starrynight-web/LORE/blob/dev/schemas/lore.result.v1.json), on `dev`) as `structuredContent`, plus a `<lore>` text block and resource links: `get_context`, `check_compliance`, `detect_conflicts`, `get_skill`, `search`, `get_history`, `trace`, `stats`, `ingest_status`.
 - Write tools only stage drafts or record outcomes, and take an `idempotency_key`: `ingest`, `update_persona`, `log_decision`.
 - Resources: `lore://rules|skills|procedures|sources|conflicts|decisions|schemas/...`
 - Prompts: `answer_with_lore`, `validate_change`, `explain_conflict`, `prepare_review_packet`.
