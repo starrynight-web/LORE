@@ -29,7 +29,12 @@ def search_view(request):
         return Response({'results': []})
 
     if request.user.is_authenticated:
-        workspace = Workspace.objects.filter(id=workspace_id, memberships__user=request.user).first() or get_object_or_404(Workspace, id=workspace_id)
+        from django.db.models import Q
+        workspace = Workspace.objects.filter(id=workspace_id).filter(
+            Q(memberships__user=request.user) | Q(organization__memberships__user=request.user)
+        ).distinct().first()
+        if not workspace:
+            return Response({'error': 'Workspace not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
     else:
         workspace = get_object_or_404(Workspace, id=workspace_id)
 
@@ -68,7 +73,12 @@ def governed_query_view(request):
         return Response({'error': 'Query text is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if request.user.is_authenticated:
-        workspace = Workspace.objects.filter(id=workspace_id, memberships__user=request.user).first() or get_object_or_404(Workspace, id=workspace_id)
+        from django.db.models import Q
+        workspace = Workspace.objects.filter(id=workspace_id).filter(
+            Q(memberships__user=request.user) | Q(organization__memberships__user=request.user)
+        ).distinct().first()
+        if not workspace:
+            return Response({'error': 'Workspace not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
         effective_user = request.user
     else:
         workspace = get_object_or_404(Workspace, id=workspace_id)
@@ -95,6 +105,7 @@ def governed_query_view(request):
     )
 
     document_id = request.data.get('document_id') or request.data.get('document')
+    as_of = request.data.get('as_of') or request.query_params.get('as_of')
 
     # 1. Retrieve Candidate Chunks (Scoped to Tenant, Collection, or specific PDF Document)
     retrieval_service = HybridRetrievalService()
@@ -109,12 +120,19 @@ def governed_query_view(request):
 
     # 2. Evaluate via Complete 9-Layer Enterprise Governance Engine (L7 -> L0)
     user_role = 'workspace_admin' if getattr(effective_user, 'is_staff', False) else 'member'
+    schema_version = (
+        request.data.get('schema_version') or 
+        request.headers.get('X-Schema-Version') or 
+        'lore.result/1'
+    )
     envelope = EnterpriseGovernanceEngine.evaluate(
         query=query,
         retrieved_chunks=candidate_chunks,
         workspace=workspace,
         user=effective_user,
         user_role=user_role,
+        as_of=as_of,
+        schema_version=schema_version,
         groq_api_key=groq_api_key,
         llm_model=llm_model
     )

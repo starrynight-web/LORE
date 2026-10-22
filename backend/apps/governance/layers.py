@@ -19,6 +19,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from django.utils import timezone
 from apps.governance.models import SourcePermission, ScopedException, EvidenceRequirement, ConflictRecord, AccessLevel
+from apps.governance.contract import (
+    Verdict, Directive, EvidenceStatus, CANONICAL_VERDICT_DIRECTIVE_MAP,
+    validate_canonical_envelope, fail_closed_envelope, ContractValidationError
+)
 from apps.sources.models import SourceDocument
 from apps.decisions.models import DecisionRecord
 from apps.audit.models import AuditEvent
@@ -48,10 +52,18 @@ class PermissionLayer:
         if not doc_ids:
             return chunks, []
 
+        valid_uuids = []
+        for did in doc_ids:
+            try:
+                uuid.UUID(str(did))
+                valid_uuids.append(did)
+            except (ValueError, TypeError):
+                continue
+
         permissions_map = {
             str(p.document_id): p 
-            for p in SourcePermission.objects.filter(document_id__in=doc_ids)
-        }
+            for p in SourcePermission.objects.filter(document_id__in=valid_uuids)
+        } if valid_uuids else {}
 
         for chk in chunks:
             doc_id = str(chk.get('document_id', ''))
@@ -213,13 +225,34 @@ class AuthorityLayer:
             rank_groups.setdefault(r, []).append(c)
 
         for rank, group in rank_groups.items():
-            if len(group) >= 2 and rank >= 4:
-                positive = any('approved' in c.get('text', '').lower() for c in group)
-                negative = any('prohibit' in c.get('text', '').lower() or 'denied' in c.get('text', '').lower() for c in group)
-                if positive and negative:
-                    # Contradiction at equal rank
-                    has_unresolved_tie = True
-                    notes.append(f"Unresolved Contradiction (L6): Two authoritative sources at Rank {rank} disagree without dominance.")
+            if len(group) >= 2 and rank >= 3:
+                positive_chunks = [c for c in group if any(w in c.get('text', '').lower() for w in ['approved', 'permitted', 'allowed'])]
+                negative_chunks = [c for c in group if any(w in c.get('text', '').lower() for w in ['prohibit', 'forbidden', 'denied', 'must not', 'condition'])]
+                if positive_chunks and negative_chunks:
+                    pos_c = positive_chunks[0]
+                    neg_c = negative_chunks[0]
+                    pos_ver = pos_c.get('document_version', 1)
+                    neg_ver = neg_c.get('document_version', 1)
+                    if pos_ver > neg_ver:
+                        conflicts_resolved.append({
+                            'informal_claim': neg_c.get('text', '')[:120].strip(),
+                            'authoritative_source': f"{pos_c.get('document_title')} (v{pos_ver})",
+                            'resolution': 'version_supersession',
+                            'note': f"Version {pos_ver} supersedes earlier version {neg_ver} at Rank {rank}."
+                        })
+                        notes.append(f"Supersession Resolution (L6): {pos_c.get('document_title')} v{pos_ver} supersedes v{neg_ver}.")
+                    elif neg_ver > pos_ver:
+                        conflicts_resolved.append({
+                            'informal_claim': pos_c.get('text', '')[:120].strip(),
+                            'authoritative_source': f"{neg_c.get('document_title')} (v{neg_ver})",
+                            'resolution': 'version_supersession',
+                            'note': f"Version {neg_ver} supersedes earlier version {pos_ver} at Rank {rank}."
+                        })
+                        notes.append(f"Supersession Resolution (L6): {neg_c.get('document_title')} v{neg_ver} supersedes v{pos_ver}.")
+                    else:
+                        # Contradiction at equal rank and equal version -> unresolved tie!
+                        has_unresolved_tie = True
+                        notes.append(f"Unresolved Contradiction (L6): Two authoritative sources at Rank {rank} disagree without dominance or supersession.")
 
         return conflicts_resolved, has_unresolved_tie, notes
 
@@ -236,18 +269,42 @@ class TemporalValidityLayer:
     def evaluate(
         cls,
         chunks: List[Dict[str, Any]],
-        as_of: Optional[datetime] = None
+        as_of: Optional[Any] = None
     ) -> Tuple[List[Dict[str, Any]], List[str], bool]:
         valid_chunks = []
         temporal_notes = []
         has_stale_data = False
-        ref_time = as_of or timezone.now()
+
+        # Parse and normalize as_of reference timestamp
+        if isinstance(as_of, str):
+            from django.utils.dateparse import parse_datetime, parse_date
+            parsed = parse_datetime(as_of)
+            if not parsed:
+                d = parse_date(as_of)
+                if d:
+                    parsed = datetime(d.year, d.month, d.day, 0, 0, 0)
+            ref_time = parsed or timezone.now()
+        elif isinstance(as_of, datetime):
+            ref_time = as_of
+        else:
+            ref_time = timezone.now()
+
+        if timezone.is_naive(ref_time):
+            ref_time = timezone.make_aware(ref_time, timezone.utc)
 
         doc_ids = list({c.get('document_id') for c in chunks if c.get('document_id')})
+        valid_uuids = []
+        for did in doc_ids:
+            try:
+                uuid.UUID(str(did))
+                valid_uuids.append(did)
+            except (ValueError, TypeError):
+                continue
+
         docs_map = {
             str(d.id): d 
-            for d in SourceDocument.objects.filter(id__in=doc_ids)
-        }
+            for d in SourceDocument.objects.filter(id__in=valid_uuids)
+        } if valid_uuids else {}
 
         for chk in chunks:
             doc = docs_map.get(str(chk.get('document_id', '')))
@@ -255,27 +312,48 @@ class TemporalValidityLayer:
                 valid_chunks.append(chk)
                 continue
 
-            # 1. Not yet effective check
-            if doc.effective_date and doc.effective_date > ref_time:
+            # 0. Stable-Only Serving Check (P1 §6): Only 'ready' documents may serve as authoritative evidence
+            if doc.status != 'ready':
                 temporal_notes.append(
-                    f"Document '{doc.title}' is not yet effective (effective {doc.effective_date.strftime('%Y-%m-%d')}). Excluded from active context."
+                    f"Lifecycle Exclusion (P1 §6): Document '{doc.title}' has status '{doc.status}' (not 'ready'). "
+                    "Draft, quarantined, or processing records cannot serve as authoritative evidence."
                 )
                 continue
+
+            # 1. Not yet effective check
+            eff = doc.effective_date
+            if eff:
+                if timezone.is_naive(eff):
+                    eff = timezone.make_aware(eff, timezone.utc)
+                if eff > ref_time:
+                    temporal_notes.append(
+                        f"Document '{doc.title}' is not yet effective (effective {eff.strftime('%Y-%m-%d')}). Excluded from active context."
+                    )
+                    continue
 
             # 2. Expiration check
-            if doc.expiration_date and doc.expiration_date < ref_time:
-                temporal_notes.append(
-                    f"Document '{doc.title}' expired on {doc.expiration_date.strftime('%Y-%m-%d')}. Excluded."
-                )
-                continue
+            exp = doc.expiration_date
+            if exp:
+                if timezone.is_naive(exp):
+                    exp = timezone.make_aware(exp, timezone.utc)
+                if exp < ref_time:
+                    temporal_notes.append(
+                        f"Document '{doc.title}' expired on {exp.strftime('%Y-%m-%d')}. Excluded."
+                    )
+                    continue
 
             # 3. Staleness aging check
-            stale_threshold = timedelta(days=doc.stale_after_days or 365)
-            if doc.updated_at and (ref_time - doc.updated_at) > stale_threshold:
-                has_stale_data = True
-                temporal_notes.append(
-                    f"Notice: Source '{doc.title}' is past its stale threshold ({doc.stale_after_days} days). Caveat applied."
-                )
+            stale_days = doc.stale_after_days or 365
+            stale_threshold = timedelta(days=stale_days)
+            upd = doc.updated_at
+            if upd:
+                if timezone.is_naive(upd):
+                    upd = timezone.make_aware(upd, timezone.utc)
+                if (ref_time - upd) > stale_threshold:
+                    has_stale_data = True
+                    temporal_notes.append(
+                        f"Notice: Source '{doc.title}' is past its stale threshold ({stale_days} days). Caveat applied."
+                    )
 
             valid_chunks.append(chk)
 
@@ -382,7 +460,7 @@ class EvidenceSufficiencyLayer:
                     evidence_missing.append({
                         'requirement': 'executed_data_residency_addendum',
                         'mandatory': True,
-                        'status': 'missing',
+                        'status': EvidenceStatus.MISSING.value,
                         'description': 'Schedule D (Regional Data Sovereignty Addendum) is unexecuted; mandatory geographic data storage guarantee is missing.'
                     })
 
@@ -392,7 +470,7 @@ class EvidenceSufficiencyLayer:
                 evidence_missing.append({
                     'requirement': 'formal_security_assessment_report',
                     'mandatory': True,
-                    'status': 'pending',
+                    'status': EvidenceStatus.PENDING.value,
                     'description': 'Vendor security assessment report is pending formal audit completion.'
                 })
 
@@ -404,14 +482,14 @@ class EvidenceSufficiencyLayer:
                 evidence_missing.append({
                     'requirement': 'statutory_registered_deed',
                     'mandatory': True,
-                    'status': 'missing',
+                    'status': EvidenceStatus.MISSING.value,
                     'description': 'Registered Saf Kabla Deed or CS/RS record document was not found in active verified context.'
                 })
             if not has_schedule:
                 evidence_missing.append({
                     'requirement': 'property_schedule_and_khatian',
                     'mandatory': True,
-                    'status': 'missing',
+                    'status': EvidenceStatus.MISSING.value,
                     'description': 'Specific land schedule, CS khatian, or plot demarcation is absent from the provided record.'
                 })
 
@@ -422,12 +500,34 @@ class EvidenceSufficiencyLayer:
                 evidence_missing.append({
                     'requirement': 'data_retention_and_consent_policy',
                     'mandatory': True,
-                    'status': 'missing',
+                    'status': EvidenceStatus.MISSING.value,
                     'description': 'Defined data retention schedule and lawful processing consent records are missing.'
                 })
 
-        # Any mandatory deficit causes insufficiency
-        is_sufficient = len([m for m in evidence_missing if m.get('mandatory', False)]) == 0
+        # 4. Authority Threshold Check: Top evidence must have sufficient authority for high-risk governance
+        if dt in ('vendor_approval', 'data_processing', 'statutory_compliance', 'deployment_approval'):
+            max_auth = max([c.get('authority_level', 1) for c in retrieved_chunks], default=0)
+            if max_auth > 0 and max_auth <= 2 and not has_exception:
+                evidence_missing.append({
+                    'requirement': 'authoritative_controlling_source',
+                    'mandatory': True,
+                    'status': EvidenceStatus.INSUFFICIENT_AUTHORITY.value,
+                    'description': f'Top evidence has informal authority rank {max_auth}; decisions of type {dt} require verified policy or contract rank >= 4.'
+                })
+
+        # Any unsatisfied mandatory requirement causes insufficiency
+        unsatisfied_mandatory = [
+            m for m in evidence_missing 
+            if m.get('mandatory', True) and m.get('status') in [
+                EvidenceStatus.MISSING.value,
+                EvidenceStatus.PENDING.value,
+                EvidenceStatus.EXPIRED.value,
+                EvidenceStatus.INSUFFICIENT_AUTHORITY.value,
+                EvidenceStatus.UNAVAILABLE.value,
+                EvidenceStatus.CONFLICTING.value
+            ]
+        ]
+        is_sufficient = len(unsatisfied_mandatory) == 0
         return evidence_found, evidence_missing, is_sufficient
 
 
@@ -569,13 +669,49 @@ class EnterpriseGovernanceEngine:
         workspace,
         user=None,
         user_role: str = 'member',
-        as_of: Optional[datetime] = None,
+        as_of: Optional[Any] = None,
+        schema_version: str = 'lore.result/2',
+        groq_api_key: Optional[str] = None,
+        llm_model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        try:
+            return cls._evaluate_internal(
+                query=query,
+                retrieved_chunks=retrieved_chunks,
+                workspace=workspace,
+                user=user,
+                user_role=user_role,
+                as_of=as_of,
+                schema_version=schema_version,
+                groq_api_key=groq_api_key,
+                llm_model=llm_model
+            )
+        except Exception as unhandled_err:
+            logger.exception(f"Unhandled error in EnterpriseGovernanceEngine.evaluate: {unhandled_err}")
+            return fail_closed_envelope(
+                query=query,
+                error_message=str(unhandled_err),
+                error_category="GOVERNANCE_EXECUTION_FAILURE",
+                decision_type="general_inquiry"
+            )
+
+    @classmethod
+    def _evaluate_internal(
+        cls,
+        query: str,
+        retrieved_chunks: List[Dict[str, Any]],
+        workspace,
+        user=None,
+        user_role: str = 'member',
+        as_of: Optional[Any] = None,
+        schema_version: str = 'lore.result/2',
         groq_api_key: Optional[str] = None,
         llm_model: Optional[str] = None
     ) -> Dict[str, Any]:
         trace_id = f"trace-{uuid.uuid4().hex[:12]}"
         decision_id = f"dec-{uuid.uuid4().hex[:8]}"
         timing_stages: Dict[str, float] = {}
+        dt = 'general_inquiry'
 
         # -------------------------------------------------------------
         # STAGE 0: L7 — Permission Layer
@@ -697,7 +833,7 @@ class EnterpriseGovernanceEngine:
         total_tokens = sum(c.get('token_count', len(c.get('text', '').split())) for c in active_chunks)
 
         envelope = {
-            'schema': 'lore.result/1',
+            'schema': schema_version,
             'state': state,
             'directive': directive,
             'answer': answer,
@@ -729,6 +865,19 @@ class EnterpriseGovernanceEngine:
             'anti_hallucination_active': True
         }
 
+        # Contract Validation Gate (P1 §3, §8): Validate against schema and invariant rules
+        try:
+            validate_canonical_envelope(envelope)
+        except ContractValidationError as cve:
+            logger.error(f"Canonical envelope contract validation failed: {cve}")
+            return fail_closed_envelope(
+                query=query,
+                error_message=str(cve),
+                error_category="CONTRACT_VALIDATION_FAILURE",
+                trace_id=trace_id,
+                decision_type=dt
+            )
+
         # -------------------------------------------------------------
         # STAGE 7: L0 — Observability Layer (Persist Decision)
         # -------------------------------------------------------------
@@ -746,3 +895,4 @@ class EnterpriseGovernanceEngine:
             logger.warning(f"Could not record decision trace in L0: {ex}")
 
         return envelope
+

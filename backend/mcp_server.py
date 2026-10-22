@@ -198,6 +198,7 @@ def handle_governed_query(args: Dict[str, Any]) -> str:
     groq_api_key = args.get("groq_api_key")
     llm_model = args.get("llm_model", "gpt-oss-120B")
     doc_id = args.get("document_id")
+    as_of = args.get("as_of")
 
     # 1. Retrieve Candidate Chunks (Scoped to PDF if document_id provided)
     retriever = HybridRetrievalService()
@@ -216,11 +217,13 @@ def handle_governed_query(args: Dict[str, Any]) -> str:
         workspace=ws,
         user=None,
         user_role='workspace_admin',
+        as_of=as_of,
         groq_api_key=groq_api_key,
         llm_model=llm_model
     )
 
     result_json = {
+        "schema": envelope.get("schema", "lore.result/2"),
         "status": envelope.get("state"),
         "directive": envelope.get("directive"),
         "answer": envelope.get("answer"),

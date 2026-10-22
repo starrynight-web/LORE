@@ -113,13 +113,40 @@ class ScopedException(models.Model):
 
     def is_currently_valid(self, as_of=None):
         import django.utils.timezone as tz
-        now = as_of or tz.now()
+        from datetime import datetime
+        if isinstance(as_of, str):
+            from django.utils.dateparse import parse_datetime, parse_date
+            parsed = parse_datetime(as_of)
+            if not parsed:
+                d = parse_date(as_of)
+                if d:
+                    parsed = datetime(d.year, d.month, d.day, 0, 0, 0)
+            now = parsed or tz.now()
+        elif isinstance(as_of, datetime):
+            now = as_of
+        else:
+            now = tz.now()
+
+        if tz.is_naive(now):
+            now = tz.make_aware(now, tz.utc)
+
         if self.status != 'active':
             return False
-        if self.window_start and now < self.window_start:
-            return False
-        if self.window_end and now > self.window_end:
-            return False
+
+        w_start = self.window_start
+        if w_start:
+            if tz.is_naive(w_start):
+                w_start = tz.make_aware(w_start, tz.utc)
+            if now < w_start:
+                return False
+
+        w_end = self.window_end
+        if w_end:
+            if tz.is_naive(w_end):
+                w_end = tz.make_aware(w_end, tz.utc)
+            if now > w_end:
+                return False
+
         return True
 
     def __str__(self):

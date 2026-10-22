@@ -8,23 +8,48 @@ from .embeddings import get_embedding_adapter
 
 logger = logging.getLogger(__name__)
 
+
+class _RerankDescriptor:
+    def __get__(self, instance, owner):
+        if instance is not None:
+            def instance_rerank(query, candidates, top_k=10, min_relevance_threshold=None):
+                thresh = min_relevance_threshold if min_relevance_threshold is not None else instance.min_relevance_threshold
+                return owner._do_rerank(query, candidates, top_k=top_k, min_relevance_threshold=thresh)
+            return instance_rerank
+        else:
+            def class_rerank(query, candidates, top_k=10, min_relevance_threshold=0.05):
+                return owner._do_rerank(query, candidates, top_k=top_k, min_relevance_threshold=min_relevance_threshold)
+            return class_rerank
+
+
 class ContextReranker:
     """
-    Reranks hybrid search candidates based on:
+    Reranks hybrid search candidates purely on semantic and lexical relevance:
     1. Exact phrase and n-gram overlap with the query.
     2. Token coverage across chunk body and contextual headers.
-    3. Authority ladder dominance (Rank 1 to 7).
-    4. Positional density and heading relevance.
-    Ensures that when querying extracted PDFs, the most relevant passages are selected.
+    3. Dense vector + BM25 Reciprocal Rank Fusion (RRF) normalized seed score.
+    4. Positional density and contextual heading relevance.
+
+    CRITICAL ARCHITECTURAL INVARIANT:
+    Authority must NOT turn irrelevant or out-of-scope evidence into a valid decision.
+    Ranking scores ONLY reflect relevance to the query. Governance filters (L7 permissions,
+    L5 temporal validity, L4 scoped exceptions, publication state) and L6 authority conflict
+    arbitration must remain strictly separate from retrieval ranking.
     """
 
+    def __init__(self, min_relevance_threshold: float = 0.05):
+        self.min_relevance_threshold = min_relevance_threshold
+
+    rerank = _RerankDescriptor()
+
     @classmethod
-    def rerank(
+    def _do_rerank(
         cls,
         query: str,
-        candidates: List[tuple],  # List of (rrf_score, DocumentChunk)
-        top_k: int = 10
-    ) -> List[tuple]:
+        candidates: List[Any],
+        top_k: int = 10,
+        min_relevance_threshold: float = 0.05
+    ) -> List[Any]:
         if not candidates:
             return []
 
@@ -32,50 +57,89 @@ class ContextReranker:
         q_tokens = set([w for w in re.findall(r'\w+', q_clean) if len(w) > 1])
 
         scored_candidates = []
-        max_rrf = max(s[0] for s in candidates) if candidates else 1.0
+        raw_scores = []
+        for item in candidates:
+            if isinstance(item, tuple) and len(item) > 0:
+                raw_scores.append(item[0])
+            elif isinstance(item, dict):
+                raw_scores.append(item.get('rrf_score', 0.5))
+        max_rrf = max(raw_scores) if raw_scores else 1.0
 
-        for rrf_score, chk in candidates:
-            text_lower = (chk.text or '').lower()
-            header_lower = (chk.contextual_header or '').lower()
-            heading_lower = (chk.heading_path or '').lower()
-            title_lower = (chk.document.title or '').lower() if chk.document else ''
+        for item in candidates:
+            if isinstance(item, tuple):
+                is_tuple = True
+                rrf_score = item[0]
+                chk = item[1]
+                text = (getattr(chk, 'text', '') or '').lower()
+                header = (getattr(chk, 'contextual_header', '') or '').lower()
+                heading = (getattr(chk, 'heading_path', '') or '').lower()
+                doc = getattr(chk, 'document', None)
+                title = (getattr(doc, 'title', '') or '').lower() if doc else ''
+                auth_rank = getattr(doc, 'authority_level', 3) if doc else 3
+            elif isinstance(item, dict):
+                is_tuple = False
+                chk = item
+                rrf_score = item.get('rrf_score', 0.5)
+                text = (item.get('text', '') or '').lower()
+                header = (item.get('contextual_header', '') or item.get('heading', '') or '').lower()
+                heading = (item.get('heading_path', '') or item.get('heading', '') or '').lower()
+                title = (item.get('document_title', '') or '').lower()
+                auth_rank = item.get('authority_level', 3)
+            else:
+                continue
 
             # 1. Normalized RRF component [0, 1]
             norm_rrf = rrf_score / (max_rrf if max_rrf > 0 else 1.0)
 
             # 2. Exact phrase match bonus
             phrase_bonus = 0.0
-            if len(q_clean) > 3 and (q_clean in text_lower or q_clean in header_lower or q_clean in title_lower):
+            if len(q_clean) > 3 and (q_clean in text or q_clean in header or q_clean in title):
                 phrase_bonus = 0.35
 
             # 3. Token coverage score [0, 1]
             if q_tokens:
-                matched_tokens = sum(1 for t in q_tokens if t in text_lower or t in header_lower or t in heading_lower or t in title_lower)
+                matched_tokens = sum(1 for t in q_tokens if t in text or t in header or t in heading or t in title)
                 token_coverage = matched_tokens / len(q_tokens)
             else:
                 token_coverage = 0.0
 
             # 4. Contextual header relevance bonus
             header_bonus = 0.0
-            if header_lower and any(t in header_lower for t in q_tokens):
+            if header and any(t in header for t in q_tokens):
                 header_bonus = 0.15
 
-            # 5. Authority ladder weighting
-            auth_rank = chk.document.authority_level if chk.document else 3
-            auth_factor = 1.0 + (auth_rank * 0.05)
+            # 5. Pure relevance score (DO NOT MULTIPLY BY AUTHORITY!)
+            if token_coverage == 0.0 and phrase_bonus == 0.0 and header_bonus == 0.0:
+                relevance_score = 0.08 * norm_rrf
+            else:
+                relevance_score = (0.45 * norm_rrf) + (0.35 * token_coverage) + phrase_bonus + header_bonus
 
-            # Combined reranking score
-            rerank_score = ((0.40 * norm_rrf) + (0.35 * token_coverage) + phrase_bonus + header_bonus) * auth_factor
+            # Threshold gating: completely irrelevant chunks are not promoted
+            if relevance_score < min_relevance_threshold:
+                continue
 
-            scored_candidates.append((rerank_score, chk, {
+            meta = {
+                'relevance_score': round(relevance_score, 4),
                 'rrf_score': round(rrf_score, 4),
                 'token_coverage': round(token_coverage, 2),
                 'phrase_match': bool(phrase_bonus > 0),
                 'authority_level': auth_rank
-            }))
+            }
 
-        # Sort descending by rerank score
-        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            if is_tuple:
+                scored_candidates.append((relevance_score, chk, meta))
+            else:
+                res_dict = dict(item)
+                res_dict['score'] = round(relevance_score, 4)
+                res_dict.update(meta)
+                scored_candidates.append(res_dict)
+
+        # Sort descending purely by relevance score
+        if scored_candidates and isinstance(scored_candidates[0], tuple):
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        else:
+            scored_candidates.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+
         return scored_candidates[:top_k]
 
 
@@ -131,11 +195,14 @@ class HybridRetrievalService:
                 vector_ranks[cid] = rank + 1
 
         # 2. Lexical Keyword & Substring Search in Database (Bengali + English)
+        # Stable-only serving (lore.md §6): Exclude quarantined, draft, or failed documents
         keywords = [w for w in re.findall(r'\w+', query.lower()) if len(w) > 1]
         lexical_qs = DocumentChunk.objects.filter(
             workspace_id=workspace_id,
             organization_id=organization_id,
             document__status='ready'
+        ).exclude(
+            document__status__in=['quarantined', 'failed', 'needs_review', 'uploaded']
         )
         if collection_id:
             lexical_qs = lexical_qs.filter(document__collection_id=collection_id)
@@ -158,14 +225,10 @@ class HybridRetrievalService:
         # 3. Reciprocal Rank Fusion (RRF, k=60)
         all_chunk_ids = set(vector_ranks.keys()) | set(lexical_ranks.keys())
 
+        # If no relevant chunks matched vector or lexical seeds, return empty list
+        # Do NOT inject random high-authority chunks; authority must never fabricate relevance.
         if not all_chunk_ids:
-            # Fallback: simple text match if strict fusion has no overlap
-            fallback_qs = DocumentChunk.objects.filter(
-                workspace_id=workspace_id,
-                organization_id=organization_id,
-                document__status='ready'
-            ).order_by('-document__authority_level')[:limit * 2]
-            all_chunk_ids = {str(c.id) for c in fallback_qs}
+            return []
 
         # Fetch chunk database models with relations
         chunks_map = {
