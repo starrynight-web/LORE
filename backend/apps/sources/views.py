@@ -60,12 +60,19 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Check collection if provided
+        # 2. Check SaaS Storage & Document Quotas
+        from apps.subscriptions.services import QuotaEnforcementService
+        try:
+            QuotaEnforcementService.check_upload_quota(workspace.organization, sec_meta['file_size'])
+        except Exception as e:
+            return Response({'error': str(e), 'quota_exceeded': True}, status=status.HTTP_402_PAYMENT_REQUIRED)
+
+        # 3. Check collection if provided
         collection = None
         if collection_id:
             collection = workspace.collections.filter(id=collection_id).first()
 
-        # 3. Create SourceDocument
+        # 4. Create SourceDocument
         doc = SourceDocument.objects.create(
             organization=workspace.organization,
             workspace=workspace,
@@ -83,7 +90,10 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             status='queued'
         )
 
-        # 4. Create initial DocumentVersion
+        # Record usage
+        QuotaEnforcementService.record_upload(workspace.organization, workspace, sec_meta['file_size'])
+
+        # 5. Create initial DocumentVersion
         DocumentVersion.objects.create(
             document=doc,
             version_number=1,
@@ -93,7 +103,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             is_current=True
         )
 
-        # 5. Create IngestionJob
+        # 6. Create IngestionJob
         job = IngestionJob.objects.create(
             document=doc,
             organization=workspace.organization,
@@ -102,7 +112,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             current_stage='inspection'
         )
 
-        # 6. Log Audit Event
+        # 7. Log Audit Event
         AuditEvent.objects.create(
             organization=workspace.organization,
             workspace=workspace,
@@ -113,7 +123,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             details={'filename': file_obj.name, 'size': sec_meta['file_size'], 'sha256': sec_meta['file_hash']}
         )
 
-        # 7. Dispatch background ingestion task
+        # 8. Dispatch background ingestion task
         if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', True):
             # Run synchronously for instant dev/test feedback
             process_ingestion_pipeline(str(job.id))
@@ -127,6 +137,35 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             'job_id': str(job.id),
             'status': doc.status
         }, status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance):
+        """Cascading cleanup of vectors, storage files, and relational data."""
+        try:
+            from apps.retrieval.vector_store import QdrantVectorStore
+            vstore = QdrantVectorStore()
+            vstore.delete_document_chunks("lore_chunks", str(instance.id))
+        except Exception:
+            pass
+
+        try:
+            if instance.file_obj and os.path.exists(instance.file_obj.path):
+                os.remove(instance.file_obj.path)
+        except Exception:
+            pass
+
+        instance.delete()
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Backend-mediated secure authorized document download."""
+        doc = self.get_object()
+        if not doc.file_obj or not os.path.exists(doc.file_obj.path):
+            return Response({'error': 'Original document file not found.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        from django.http import FileResponse
+        response = FileResponse(open(doc.file_obj.path, 'rb'), content_type=doc.mime_type)
+        response['Content-Disposition'] = f'attachment; filename="{doc.original_filename}"'
+        return response
 
     @action(detail=True, methods=['get'])
     def pages(self, request, pk=None):

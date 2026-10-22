@@ -3,14 +3,14 @@ from typing import List, Dict, Any, Optional
 from apps.knowledge.models import DocumentChunk
 from apps.sources.models import SourceDocument
 from .vector_store import QdrantVectorStore
-from .embeddings import LocalEmbeddingService
+from .embeddings import get_embedding_adapter
 
 logger = logging.getLogger(__name__)
 
 class HybridRetrievalService:
     """
     10-stage Retrieval Engine from lore.md:
-    - Stage 0: Strict tenant and workspace boundary filtering
+    - Stage 0: Strict tenant and workspace boundary filtering (organization_id & workspace_id)
     - Stage 2: Hybrid seed (Dense Qdrant vector search + Lexical search)
     - Fusion: Reciprocal Rank Fusion (RRF k=60)
     - Stage 4: Authority ladder weighting (approved policy > wiki > informal note)
@@ -19,7 +19,7 @@ class HybridRetrievalService:
 
     def __init__(self, vector_store: Optional[QdrantVectorStore] = None):
         self.vector_store = vector_store or QdrantVectorStore()
-        self.embedder = LocalEmbeddingService()
+        self.embedder = get_embedding_adapter()
 
     def search(
         self,
@@ -32,9 +32,12 @@ class HybridRetrievalService:
         if not query.strip():
             return []
 
-        # 1. Dense Vector Search via Qdrant
+        # 1. Dense Vector Search via Qdrant with Strict Tenant Isolation
         query_vec = self.embedder.embed_text(query)
-        qdrant_filter = {"workspace_id": str(workspace_id)}
+        qdrant_filter = {
+            "workspace_id": str(workspace_id),
+            "organization_id": str(organization_id)
+        }
         if collection_id:
             qdrant_filter["collection_id"] = str(collection_id)
 
@@ -85,7 +88,7 @@ class HybridRetrievalService:
         chunks_map = {
             str(c.id): c for c in DocumentChunk.objects.filter(
                 id__in=all_chunk_ids
-            ).select_related('document', 'document__collection')
+            ).select_related('document', 'document__collection', 'document_version')
         }
 
         rrf_scores = []
@@ -122,12 +125,13 @@ class HybridRetrievalService:
                 break
 
             accumulated_tokens += chk_tokens
+            ver_num = chk.document_version.version_number if chk.document_version else chk.document.current_version_number
             final_results.append({
                 'chunk_id': str(chk.id),
                 'document_id': str(chk.document.id),
                 'document_title': chk.document.title,
                 'document_type': chk.document.document_type,
-                'document_version': chk.document.current_version_number,
+                'document_version': ver_num,
                 'page_number': chk.page_number,
                 'heading_path': chk.heading_path,
                 'text': chk.text,

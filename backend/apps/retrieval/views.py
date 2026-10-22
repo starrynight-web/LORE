@@ -60,6 +60,13 @@ def governed_query_view(request):
 
     workspace = get_object_or_404(Workspace, id=workspace_id, memberships__user=request.user)
 
+    # Check SaaS Monthly Query Quotas
+    from apps.subscriptions.services import QuotaEnforcementService
+    try:
+        QuotaEnforcementService.check_query_quota(workspace.organization)
+    except Exception as e:
+        return Response({'error': str(e), 'quota_exceeded': True}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
     # 1. Retrieve Candidate Chunks
     retrieval_service = HybridRetrievalService()
     candidate_chunks = retrieval_service.search(
@@ -78,7 +85,10 @@ def governed_query_view(request):
         user=request.user
     )
 
-    # 3. Persist Decision Record
+    # 3. Record Metered Query Usage
+    QuotaEnforcementService.record_query(workspace.organization, workspace, envelope.get('token_count', 0))
+
+    # 4. Persist Decision Record
     decision = DecisionRecord.objects.create(
         trace_id=envelope['trace_id'],
         organization=workspace.organization,
@@ -96,7 +106,7 @@ def governed_query_view(request):
         token_count=envelope.get('token_count', 0)
     )
 
-    # 4. Log Audit Event
+    # 5. Log Audit Event
     AuditEvent.objects.create(
         organization=workspace.organization,
         workspace=workspace,

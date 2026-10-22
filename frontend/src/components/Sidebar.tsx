@@ -11,7 +11,8 @@ import {
   Clock, 
   Layers,
   Sparkles,
-  Scan
+  Scan,
+  Building2
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'rag', label: 'Governed Search & RAG', icon: Search, highlight: true },
     { id: 'review', label: 'Review Queue', icon: AlertTriangle, badge: reviewCount > 0 ? reviewCount : undefined, badgeColor: 'bg-amber-600' },
     { id: 'audit', label: 'Audit Ledger', icon: ShieldCheck },
+    { id: 'settings', label: 'Organization & SaaS', icon: Building2 },
   ];
 
   return (

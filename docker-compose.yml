@@ -8,14 +8,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DEBUG=True
-      - SECRET_KEY=lore-enterprise-dev-secret-key-2026
+      - DEBUG=${DEBUG:-True}
+      - SECRET_KEY=${SECRET_KEY:-lore-enterprise-dev-secret-key-2026}
       - DATABASE_URL=postgres://lore:lore_secret@db:5432/lore_enterprise
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - CELERY_ALWAYS_EAGER=False
       - QDRANT_URL=http://qdrant:6333
       - TESSERACT_CMD=/usr/bin/tesseract
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-sentence-transformers}
+      - BILLING_PROVIDER=${BILLING_PROVIDER:-local_dev}
+      - SEED_DEMO=${SEED_DEMO:-true}
     volumes:
       - ./backend:/app
       - backend_media:/app/media
@@ -23,9 +26,9 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
 
   celery_worker:
     build:
@@ -35,14 +38,15 @@ services:
     restart: unless-stopped
     command: celery -A lore_enterprise worker -l info --concurrency=2
     environment:
-      - DEBUG=False
-      - SECRET_KEY=lore-enterprise-dev-secret-key-2026
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY:-lore-enterprise-dev-secret-key-2026}
       - DATABASE_URL=postgres://lore:lore_secret@db:5432/lore_enterprise
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - CELERY_ALWAYS_EAGER=False
       - QDRANT_URL=http://qdrant:6333
       - TESSERACT_CMD=/usr/bin/tesseract
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-sentence-transformers}
     volumes:
       - ./backend:/app
       - backend_media:/app/media
@@ -88,6 +92,11 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   qdrant:
     image: qdrant/qdrant:v1.11.0
@@ -98,8 +107,28 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-05-10T01-41-38Z
+    container_name: lore_enterprise_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
 
 volumes:
   postgres_data:
   qdrant_data:
   backend_media:
+  minio_data:

@@ -340,6 +340,141 @@ class ApiClient {
     const res = await this.request<any>(`/audit/events/?workspace_id=${workspaceId}`);
     return Array.isArray(res) ? res : res.results || [];
   }
+
+  // SaaS Subscriptions & Quotas
+  async getPlans(): Promise<Plan[]> {
+    return this.request<Plan[]>('/subscriptions/plans/');
+  }
+
+  async getSubscription(orgId?: string): Promise<SubscriptionData> {
+    const query = orgId ? `?organization_id=${orgId}` : '';
+    return this.request<SubscriptionData>(`/subscriptions/subscription/${query}`);
+  }
+
+  async changePlan(orgId: string, planSlug: string): Promise<{ checkout_url: string }> {
+    return this.request<{ checkout_url: string }>('/subscriptions/subscription/', {
+      method: 'POST',
+      body: JSON.stringify({ organization_id: orgId, plan_slug: planSlug })
+    });
+  }
+
+  // Organization Management & Invitations
+  async getOrgMembers(orgId: string): Promise<OrganizationMember[]> {
+    const res = await this.request<any>(`/identity/organizations/${orgId}/members/`);
+    return Array.isArray(res) ? res : res.results || [];
+  }
+
+  async removeOrgMember(orgId: string, membershipId: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/identity/organizations/${orgId}/members/${membershipId}/`, {
+      method: 'DELETE'
+    });
+  }
+
+  async getOrgInvitations(orgId: string): Promise<OrganizationInvitation[]> {
+    const res = await this.request<any>(`/identity/organizations/${orgId}/invitations/`);
+    return Array.isArray(res) ? res : res.results || [];
+  }
+
+  async createOrgInvitation(orgId: string, email: string, role: string): Promise<OrganizationInvitation> {
+    return this.request<OrganizationInvitation>(`/identity/organizations/${orgId}/invitations/`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role })
+    });
+  }
+
+  async acceptInvitation(token: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>('/identity/invitations/accept/', {
+      method: 'POST',
+      body: JSON.stringify({ token })
+    });
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.request('/identity/logout/', { method: 'POST' });
+    } catch (e) {
+      // Continue clearing local token even if request fails
+    }
+    this.clearToken();
+  }
+
+  async register(username: string, email: string, password: string, organizationName?: string) {
+    const res = await this.request<{ token: string; user: User; organization: Organization }>('/identity/register/', {
+      method: 'POST',
+      body: JSON.stringify({
+        username,
+        email,
+        password,
+        organization_name: organizationName
+      })
+    });
+    this.setToken(res.token);
+    return res;
+  }
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  price_monthly: number;
+  max_storage_mb: number;
+  max_documents: number;
+  max_monthly_queries: number;
+  max_workspaces: number;
+  max_members: number;
+  allow_custom_models: boolean;
+  allow_ocr_bengali: boolean;
+  allow_audit_export: boolean;
+}
+
+export interface SubscriptionData {
+  subscription: {
+    id: string;
+    organization: string;
+    plan: Plan | null;
+    status: string;
+    stripe_customer_id: string;
+    stripe_subscription_id: string;
+    cancel_at_period_end: boolean;
+  };
+  usage: {
+    period_key: string;
+    storage_bytes: number;
+    storage_mb: number;
+    documents_count: number;
+    queries_count: number;
+    tokens_used: number;
+  };
+  quotas: {
+    max_storage_mb: number;
+    max_documents: number;
+    max_monthly_queries: number;
+  };
+}
+
+export interface OrganizationMember {
+  id: string;
+  organization: string;
+  user: User;
+  role: string;
+  joined_at: string;
+}
+
+export interface OrganizationInvitation {
+  id: string;
+  organization: string;
+  organization_name: string;
+  email: string;
+  role: string;
+  invited_by_username: string;
+  token: string;
+  expires_at: string;
+  is_accepted: boolean;
+  is_expired: boolean;
+  created_at: string;
 }
 
 export const api = new ApiClient();
+

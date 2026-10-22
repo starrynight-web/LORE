@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Organization, OrganizationMembership
+from .models import Organization, OrganizationMembership, OrganizationInvitation
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -27,3 +27,17 @@ class OrganizationMembershipSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrganizationMembership
         fields = ['id', 'organization', 'user', 'role', 'joined_at']
+
+class OrganizationInvitationSerializer(serializers.ModelSerializer):
+    invited_by_username = serializers.ReadOnlyField(source='invited_by.username')
+    organization_name = serializers.ReadOnlyField(source='organization.name')
+    is_expired = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = OrganizationInvitation
+        fields = [
+            'id', 'organization', 'organization_name', 'email', 'role',
+            'invited_by_username', 'token', 'expires_at', 'is_accepted',
+            'is_expired', 'created_at'
+        ]
+

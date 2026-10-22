@@ -1,13 +1,20 @@
 import os
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'lore-enterprise-secret-key-development-mode-2026')
-
 DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['*']
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'lore-enterprise-dev-secret-key-insecure-only-for-dev'
+    else:
+        raise ImproperlyConfigured("SECRET_KEY environment variable is required in production.")
+
+raw_allowed_hosts = os.environ.get('ALLOWED_HOSTS', '*')
+ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(',') if h.strip()] if raw_allowed_hosts != '*' else ['*']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -32,6 +39,7 @@ INSTALLED_APPS = [
     'apps.governance',
     'apps.decisions',
     'apps.audit',
+    'apps.subscriptions',
 ]
 
 MIDDLEWARE = [
@@ -109,13 +117,40 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/minute',
+        'user': '1200/minute',
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
 }
 
-# CORS
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Configuration
+raw_cors = os.environ.get('CORS_ALLOWED_ORIGINS')
+if raw_cors:
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors.split(',') if o.strip()]
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    CORS_ALLOW_ALL_ORIGINS = True  # Safe dev fallback; override with CORS_ALLOWED_ORIGINS in prod
 CORS_ALLOW_CREDENTIALS = True
+
+# Embedding & Retrieval Engine Configuration
+# Providers: 'sentence-transformers' (default local semantic), 'openai', 'test-projection'
+EMBEDDING_PROVIDER = os.environ.get('EMBEDDING_PROVIDER', 'sentence-transformers')
+EMBEDDING_MODEL_NAME = os.environ.get('EMBEDDING_MODEL_NAME', 'all-MiniLM-L6-v2')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+
+# SaaS Subscriptions & Billing Configuration
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+BILLING_ENABLED = os.environ.get('BILLING_ENABLED', 'False').lower() in ('true', '1', 'yes')
 
 # Celery Configuration
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')

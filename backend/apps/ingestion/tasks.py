@@ -9,8 +9,9 @@ from apps.sources.models import SourceDocument, DocumentPage, DocumentVersion
 from apps.knowledge.models import DocumentChunk
 from apps.knowledge.chunking import StructureAwareChunker
 from apps.retrieval.vector_store import QdrantVectorStore
-from apps.retrieval.embeddings import LocalEmbeddingService
+from apps.retrieval.embeddings import get_embedding_adapter
 from apps.audit.models import AuditEvent
+from apps.subscriptions.services import QuotaEnforcementService
 from .pipeline.extractors import UnifiedDocumentExtractor
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,17 @@ def process_ingestion_pipeline(job_id: str):
         job.current_stage = 'extraction'
         job.save()
 
+        # Immutable Version Tracking
+        doc_version, _ = DocumentVersion.objects.get_or_create(
+            document=doc,
+            version_number=doc.current_version_number,
+            defaults={
+                'file_hash': doc.file_hash,
+                'file_obj': doc.file_obj,
+                'is_current': True
+            }
+        )
+
         # ---------------- Stage 1: Extraction & OCR ----------------
         t0 = time.time()
         file_path = doc.file_obj.path
@@ -42,13 +54,14 @@ def process_ingestion_pipeline(job_id: str):
         t_extract = int((time.time() - t0) * 1000)
         timings['extraction_ms'] = t_extract
 
-        # Save pages to database
+        # Save pages to database tied to document_version
         with transaction.atomic():
             DocumentPage.objects.filter(document=doc).delete()
             pages_to_create = []
             for p in pages_data:
                 pages_to_create.append(DocumentPage(
                     document=doc,
+                    document_version=doc_version,
                     page_number=p['page_number'],
                     text=p['text'],
                     confidence=p.get('confidence', 1.0),
@@ -77,7 +90,6 @@ def process_ingestion_pipeline(job_id: str):
         job.status = 'normalizing'
         job.current_stage = 'normalization'
         job.save()
-        # Pages are pre-repaired by the OCR router and extractors
         t_norm = int((time.time() - t0) * 1000)
         timings['normalization_ms'] = t_norm
 
@@ -104,6 +116,7 @@ def process_ingestion_pipeline(job_id: str):
                     organization=doc.organization,
                     workspace=doc.workspace,
                     document=doc,
+                    document_version=doc_version,
                     chunk_index=c['chunk_index'],
                     text=c['text'],
                     contextual_header=c['contextual_header'],
@@ -126,7 +139,8 @@ def process_ingestion_pipeline(job_id: str):
 
         saved_chunks = list(DocumentChunk.objects.filter(document=doc).order_by('chunk_index'))
         embed_texts = [f"{c.contextual_header}\n---\n{c.text}" for c in saved_chunks]
-        vectors = LocalEmbeddingService.embed_batch(embed_texts)
+        embedder = get_embedding_adapter()
+        vectors = embedder.embed_batch(embed_texts)
         t_embed = int((time.time() - t0) * 1000)
         timings['embedding_ms'] = t_embed
 
@@ -142,6 +156,7 @@ def process_ingestion_pipeline(job_id: str):
             {
                 'chunk_id': str(c.id),
                 'document_id': str(doc.id),
+                'document_version': doc_version.version_number,
                 'document_title': doc.title,
                 'organization_id': str(doc.organization.id),
                 'workspace_id': str(doc.workspace.id),

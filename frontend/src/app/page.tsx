@@ -12,6 +12,8 @@ import { AuditView } from '@/components/AuditView';
 import { UploadModal } from '@/components/UploadModal';
 import { DocumentDetailModal } from '@/components/DocumentDetailModal';
 import { RealtimeOCRStudio } from '@/components/RealtimeOCRStudio';
+import { AuthModal } from '@/components/AuthModal';
+import { OrganizationSettingsView } from '@/components/OrganizationSettingsView';
 import { 
   api, 
   Workspace, 
@@ -19,11 +21,14 @@ import {
   Collection, 
   SourceDocument, 
   IngestionJob, 
-  AuditEvent 
+  AuditEvent,
+  User as UserType
 } from '@/lib/api';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('overview');
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -57,37 +62,62 @@ export default function Home() {
     }
   };
 
+  const handleAuthSuccess = async (data: { user: UserType; organizations?: Organization[] }) => {
+    setIsLoading(true);
+    setCurrentUser(data.user);
+    setIsAuthenticated(true);
+    try {
+      const wsList = await api.getWorkspaces();
+      setWorkspaces(wsList);
+
+      if (wsList.length > 0) {
+        const defaultWs = wsList[0];
+        setCurrentWorkspace(defaultWs);
+        setCurrentOrg({
+          id: defaultWs.organization,
+          name: defaultWs.organization_name,
+          slug: defaultWs.organization_name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          description: '',
+          role: defaultWs.role
+        });
+        await loadWorkspaceData(defaultWs.id);
+      } else {
+        setCurrentWorkspace(null);
+        setDocuments([]);
+      }
+    } catch (err) {
+      console.error("Post-auth error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await api.logout();
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setCurrentOrg(null);
+    setCurrentWorkspace(null);
+    setWorkspaces([]);
+    setDocuments([]);
+    setJobs([]);
+  };
+
   useEffect(() => {
-    const initApp = async () => {
+    const checkSession = async () => {
       setIsLoading(true);
       try {
-        // Log in as demo admin to authenticate session
-        await api.login('admin@northstar.demo', 'Northstar2026!');
-        
-        // Fetch workspaces
-        const wsList = await api.getWorkspaces();
-        setWorkspaces(wsList);
-
-        if (wsList.length > 0) {
-          const defaultWs = wsList[0];
-          setCurrentWorkspace(defaultWs);
-          setCurrentOrg({
-            id: defaultWs.organization,
-            name: defaultWs.organization_name,
-            slug: 'northstar-digital',
-            description: '',
-            role: defaultWs.role
-          });
-          await loadWorkspaceData(defaultWs.id);
-        }
+        const meData = await api.me();
+        await handleAuthSuccess(meData);
       } catch (err) {
-        console.error("Initial load error:", err);
+        // No active session or token expired; prompt with AuthModal
+        setIsAuthenticated(false);
       } finally {
         setIsLoading(false);
       }
     };
 
-    initApp();
+    checkSession();
   }, []);
 
   // Poll for background ingestion updates if jobs are in-progress
@@ -129,6 +159,7 @@ export default function Home() {
       {/* Main Workspace Frame */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         <Header
+          currentUser={currentUser}
           currentOrg={currentOrg}
           currentWorkspace={currentWorkspace}
           workspaces={workspaces}
@@ -138,6 +169,7 @@ export default function Home() {
           }}
           onOpenUpload={() => setIsUploadModalOpen(true)}
           onSearchClick={() => setActiveTab('rag')}
+          onLogout={handleLogout}
         />
 
         {/* Viewport */}
@@ -203,10 +235,23 @@ export default function Home() {
                   onRefresh={handleRefreshCurrentWorkspace}
                 />
               )}
+
+              {activeTab === 'settings' && (
+                <OrganizationSettingsView
+                  currentOrg={currentOrg}
+                  userRole={currentOrg?.role}
+                  onRefreshOrg={handleRefreshCurrentWorkspace}
+                />
+              )}
             </>
           )}
         </main>
       </div>
+
+      {/* Auth Modal (shown when unauthenticated or after sign out) */}
+      {!isAuthenticated && (
+        <AuthModal onSuccess={handleAuthSuccess} />
+      )}
 
       {/* Upload Modal */}
       {currentWorkspace && (

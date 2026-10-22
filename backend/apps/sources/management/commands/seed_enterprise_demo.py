@@ -8,14 +8,49 @@ from apps.workspaces.models import Workspace, WorkspaceMembership, Collection
 from apps.sources.models import SourceDocument, DocumentVersion
 from apps.ingestion.models import IngestionJob
 from apps.ingestion.tasks import process_ingestion_pipeline
+from apps.subscriptions.models import Plan, Subscription
 
 class Command(BaseCommand):
-    help = 'Seeds the Northstar Digital demo organization, workspace, and case study documents.'
+    help = 'Seeds multi-tenant demo organizations, plans, users, and documents for LORE Enterprise.'
 
     def handle(self, *args, **options):
-        self.stdout.write("Seeding LORE Enterprise Northstar Digital demo environment...")
+        self.stdout.write("Seeding LORE Enterprise multi-tenant demo environment...")
 
-        # 1. Create Demo Admin User
+        # 0. Seed Plans
+        plan_starter, _ = Plan.objects.get_or_create(
+            slug='starter',
+            defaults={
+                'name': 'Starter Tier',
+                'description': 'For small teams needing governed RAG with core provenance controls.',
+                'price_monthly': 49.00,
+                'max_storage_mb': 500,
+                'max_documents': 50,
+                'max_monthly_queries': 500,
+                'max_workspaces': 2,
+                'max_members': 5,
+                'allow_custom_models': False,
+                'allow_ocr_bengali': True,
+                'allow_audit_export': False,
+            }
+        )
+        plan_enterprise, _ = Plan.objects.get_or_create(
+            slug='enterprise-scale',
+            defaults={
+                'name': 'Enterprise Scale',
+                'description': 'Full compliance, anti-hallucination grid, multi-workspace governance and citations.',
+                'price_monthly': 299.00,
+                'max_storage_mb': 10000,
+                'max_documents': 1000,
+                'max_monthly_queries': 20000,
+                'max_workspaces': 25,
+                'max_members': 50,
+                'allow_custom_models': True,
+                'allow_ocr_bengali': True,
+                'allow_audit_export': True,
+            }
+        )
+
+        # 1. Create Demo Users for Northstar Digital (Tenant 1)
         admin_user, _ = User.objects.get_or_create(
             username='admin@northstar.demo',
             defaults={'email': 'admin@northstar.demo', 'first_name': 'Sarah', 'last_name': 'Chen'}
@@ -24,27 +59,59 @@ class Command(BaseCommand):
         admin_user.is_staff = True
         admin_user.save()
 
-        # 2. Create Organization
+        reviewer_user, _ = User.objects.get_or_create(
+            username='reviewer@northstar.demo',
+            defaults={'email': 'reviewer@northstar.demo', 'first_name': 'Marcus', 'last_name': 'Vance'}
+        )
+        reviewer_user.set_password('Northstar2026!')
+        reviewer_user.save()
+
+        viewer_user, _ = User.objects.get_or_create(
+            username='viewer@northstar.demo',
+            defaults={'email': 'viewer@northstar.demo', 'first_name': 'Elena', 'last_name': 'Rostova'}
+        )
+        viewer_user.set_password('Northstar2026!')
+        viewer_user.save()
+
+        # 2. Create Tenant 1 Organization: Northstar Digital
         org, _ = Organization.objects.get_or_create(
             slug='northstar-digital',
             defaults={'name': 'Northstar Digital (Simulated Enterprise)', 'description': 'ICAIB 2026 Knowledge Grid Benchmark Organization'}
         )
         OrganizationMembership.objects.get_or_create(
-            organization=org,
-            user=admin_user,
-            defaults={'role': 'owner'}
+            organization=org, user=admin_user, defaults={'role': 'owner'}
+        )
+        OrganizationMembership.objects.get_or_create(
+            organization=org, user=reviewer_user, defaults={'role': 'admin'}
+        )
+        OrganizationMembership.objects.get_or_create(
+            organization=org, user=viewer_user, defaults={'role': 'member'}
         )
 
-        # 3. Create Workspace
+        # Northstar Subscription
+        Subscription.objects.get_or_create(
+            organization=org,
+            defaults={
+                'plan': plan_enterprise,
+                'status': 'active',
+                'stripe_subscription_id': 'sub_northstar_dev_01'
+            }
+        )
+
+        # 3. Create Tenant 1 Workspace
         ws, _ = Workspace.objects.get_or_create(
             organization=org,
             slug='governance-security',
             defaults={'name': 'Governance & Security Workspace', 'description': 'Enterprise policy, compliance, and vendor risk records', 'is_default': True}
         )
         WorkspaceMembership.objects.get_or_create(
-            workspace=ws,
-            user=admin_user,
-            defaults={'role': 'workspace_admin'}
+            workspace=ws, user=admin_user, defaults={'role': 'workspace_admin'}
+        )
+        WorkspaceMembership.objects.get_or_create(
+            workspace=ws, user=reviewer_user, defaults={'role': 'editor'}
+        )
+        WorkspaceMembership.objects.get_or_create(
+            workspace=ws, user=viewer_user, defaults={'role': 'viewer'}
         )
 
         # 4. Create Collections
@@ -161,7 +228,79 @@ class Command(BaseCommand):
                 process_ingestion_pipeline(str(job.id))
                 self.stdout.write(f"  + Seeded and processed: {item['title']} -> Status: {doc.status}")
 
-        self.stdout.write(self.style.SUCCESS("Successfully seeded Northstar Digital demo environment!"))
-        self.stdout.write("Credentials:")
-        self.stdout.write("  Username: admin@northstar.demo")
-        self.stdout.write("  Password: Northstar2026!")
+        # 6. Tenant 2: Acme Aerospace & Defense (Demonstrates Strict Tenant Isolation)
+        acme_admin, _ = User.objects.get_or_create(
+            username='admin@acme.demo',
+            defaults={'email': 'admin@acme.demo', 'first_name': 'Frank', 'last_name': 'Reynolds'}
+        )
+        acme_admin.set_password('Acme2026!')
+        acme_admin.save()
+
+        acme_org, _ = Organization.objects.get_or_create(
+            slug='acme-aerospace',
+            defaults={'name': 'Acme Aerospace (Tenant 2)', 'description': 'Defense Contractor & Aircraft Guidance Systems'}
+        )
+        OrganizationMembership.objects.get_or_create(
+            organization=acme_org, user=acme_admin, defaults={'role': 'owner'}
+        )
+        Subscription.objects.get_or_create(
+            organization=acme_org,
+            defaults={
+                'plan': plan_starter,
+                'status': 'active',
+                'stripe_subscription_id': 'sub_acme_dev_01'
+            }
+        )
+
+        acme_ws, _ = Workspace.objects.get_or_create(
+            organization=acme_org,
+            slug='avionics-rnd',
+            defaults={'name': 'Avionics R&D Workspace', 'description': 'Proprietary aerospace guidance telemetry', 'is_default': True}
+        )
+        WorkspaceMembership.objects.get_or_create(
+            workspace=acme_ws, user=acme_admin, defaults={'role': 'workspace_admin'}
+        )
+
+        acme_content = (
+            "# ACME Aerospace — Flight Control Guidance Spec v4\n"
+            "Confidential Defense Documentation. STRICTLY RESTRICTED TO ACME AEROSPACE.\n"
+            "Guidance system Model AC-990 employs redundant inertial sensors with 20ms response loop."
+        ).encode('utf-8')
+
+        acme_doc, acme_doc_created = SourceDocument.objects.get_or_create(
+            organization=acme_org,
+            workspace=acme_ws,
+            title='ACME-AV-2026: Flight Guidance System Spec',
+            defaults={
+                'owner': acme_admin,
+                'original_filename': 'acme-flight-guidance-v4.md',
+                'mime_type': 'text/markdown',
+                'file_size': len(acme_content),
+                'file_hash': 'sha256-acme-guidance-01',
+                'file_obj': ContentFile(acme_content, name='acme-flight-guidance-v4.md'),
+                'document_type': 'txt',
+                'authority_level': 7,
+                'status': 'queued'
+            }
+        )
+        if acme_doc_created:
+            acme_job = IngestionJob.objects.create(
+                document=acme_doc,
+                organization=acme_org,
+                workspace=acme_ws,
+                status='queued',
+                current_stage='inspection'
+            )
+            process_ingestion_pipeline(str(acme_job.id))
+            self.stdout.write(f"  + Seeded Tenant 2 document: {acme_doc.title}")
+
+        self.stdout.write(self.style.SUCCESS("\nSuccessfully seeded LORE Enterprise Multi-Tenant Demo Environment!"))
+        self.stdout.write("="*70)
+        self.stdout.write("TENANT 1: Northstar Digital (Enterprise Scale Plan)")
+        self.stdout.write("  Admin:    admin@northstar.demo    / Northstar2026! (Role: Owner)")
+        self.stdout.write("  Reviewer: reviewer@northstar.demo / Northstar2026! (Role: Admin / Editor)")
+        self.stdout.write("  Viewer:   viewer@northstar.demo   / Northstar2026! (Role: Member / Viewer)")
+        self.stdout.write("-"*70)
+        self.stdout.write("TENANT 2: Acme Aerospace (Starter Plan - Isolated Tenant)")
+        self.stdout.write("  Admin:    admin@acme.demo         / Acme2026!      (Role: Owner)")
+        self.stdout.write("="*70)
