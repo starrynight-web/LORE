@@ -107,6 +107,22 @@ def governed_query_view(request):
     document_id = request.data.get('document_id') or request.data.get('document')
     as_of = request.data.get('as_of') or request.query_params.get('as_of')
 
+    user_role = 'workspace_admin' if getattr(effective_user, 'is_staff', False) else 'member'
+    bypass_cache = request.data.get('bypass_cache', False) or request.headers.get('Cache-Control') == 'no-cache'
+
+    from apps.retrieval.cache import TenantSafeCacheService
+    if not bypass_cache and not document_id:
+        cached_envelope = TenantSafeCacheService.get(
+            organization_id=str(workspace.organization.id),
+            workspace_id=str(workspace.id),
+            user_role=user_role,
+            query=query,
+            as_of=as_of
+        )
+        if cached_envelope:
+            cached_envelope['cached'] = True
+            return Response(cached_envelope)
+
     # 1. Retrieve Candidate Chunks (Scoped to Tenant, Collection, or specific PDF Document)
     retrieval_service = HybridRetrievalService()
     candidate_chunks = retrieval_service.search(
@@ -119,7 +135,6 @@ def governed_query_view(request):
     )
 
     # 2. Evaluate via Complete 9-Layer Enterprise Governance Engine (L7 -> L0)
-    user_role = 'workspace_admin' if getattr(effective_user, 'is_staff', False) else 'member'
     schema_version = (
         request.data.get('schema_version') or 
         request.headers.get('X-Schema-Version') or 
@@ -136,6 +151,16 @@ def governed_query_view(request):
         groq_api_key=groq_api_key,
         llm_model=llm_model
     )
+
+    if not bypass_cache and not document_id:
+        TenantSafeCacheService.set(
+            organization_id=str(workspace.organization.id),
+            workspace_id=str(workspace.id),
+            user_role=user_role,
+            query=query,
+            envelope=envelope,
+            as_of=as_of
+        )
 
     # 3. Record Metered Query Usage
     try:

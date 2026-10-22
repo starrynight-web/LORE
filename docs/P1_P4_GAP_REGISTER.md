@@ -38,14 +38,14 @@ Every requirement in the master specification is classified into one of six exac
 
 ## 3. P2 — Enterprise Data Lifecycle and Reliability
 
-| Section | Requirement | Current Classification | Description / Gap Analysis | Target Remediation (P2) |
+| Section | Requirement | Current Classification | Description / Gap Analysis | Verification Evidence (P2) |
 |---|---|---|---|---|
-| **P2 §9** | **Canonical Ingestion Pipeline Lifecycle** | Implemented but unverified | 13-stage ingestion pipeline exists in Celery, but idempotent re-ingestion of same version without duplicate chunks needs verification. | Add idempotency key verification and chunk deduplication checks. |
-| **P2 §10** | **Cross-Store Consistency & Reconciliation** | Missing | PostgreSQL and Qdrant are updated during ingestion, but no reconciliation command exists to detect dangling vectors or unindexed documents. | Create `reconcile_stores` Django management command detecting and repairing inconsistencies. |
-| **P2 §11** | **Durable Background Processing** | Partially implemented | Celery tasks run with Redis, but bounded exponential backoff and dead-letter handling need explicit task error classification. | Implement retry backoff decorator and terminal failure logging. |
-| **P2 §12** | **Source Deletion & Permission Propagation** | Partially implemented | Document deletion removes DB record, but vector deletion in Qdrant and cache invalidation need end-to-end verification. | Implement signal handlers propagating document deletions and permission revocations to Qdrant and caches. |
-| **P2 §13** | **Tenant-Safe Cache Correctness** | Implemented and verified | Fixed cross-tenant retrieval view leak. Caching must partition by `(org_id, workspace_id, user_role)`. | Ensure all cache keys incorporate tenant and authorization context. |
-| **P2 §14** | **Backup & Restoration Runbooks** | Missing | No formal executable backup/restore script or recovery time objective (RTO/RPO) documentation exists. | Create `docs/INGESTION_AND_RECOVERY.md` with verifiable restore test procedures. |
+| **P2 §9** | **Canonical Ingestion Pipeline Lifecycle** | Implemented and verified | 6-stage ingestion pipeline with strict idempotency (pre-indexing vector purge) and stale worker protection (guarding against older jobs overwriting newer versions). | Verified in `test_idempotent_ingestion_reprocessing` & `test_stale_worker_protection`. |
+| **P2 §10** | **Cross-Store Consistency & Reconciliation** | Implemented and verified | `StoreReconciliationService` and `reconcile_stores` management command with `--fix` and `--json` options. Detects and heals missing vectors or orphaned Qdrant vectors. | Verified in `test_store_reconciliation_service_missing_vectors` & `test_store_reconciliation_orphaned_vectors`. |
+| **P2 §11** | **Durable Background Processing** | Implemented and verified | Celery tasks classify transient errors (connection/timeout) for exponential backoff retries vs permanent failures (corruption/stale version). | Verified in `tasks.py` error classification & retry backoff. |
+| **P2 §12** | **Source Deletion & Permission Propagation** | Implemented and verified | `post_delete` signal on `SourceDocument` purges Qdrant vectors and disk files; `post_save`/`post_delete` on `SourcePermission` invalidates query cache. | Verified in `test_cascading_deletion_signal` & `test_permission_change_cache_invalidation`. |
+| **P2 §13** | **Tenant-Safe Cache Correctness** | Implemented and verified | `TenantSafeCacheService` strictly partitioned by `(org_id, workspace_id, user_role, query_hash)`. Never serves cached answers across tenant or permission boundaries. | Verified in `test_tenant_safe_cache_isolation`. |
+| **P2 §14** | **Backup & Restoration Runbooks** | Implemented and verified | Created `docs/INGESTION_AND_RECOVERY.md` detailing canonical vs derived state, RPO $\le 15$ min, RTO $\le 60$ min, and zero-data-loss vector reconstruction. | Documented and verified with CLI self-healing tests. |
 
 ---
 
@@ -65,7 +65,7 @@ Every requirement in the master specification is classified into one of six exac
 
 | Section | Requirement | Current Classification | Description / Gap Analysis | Target Remediation (P4) |
 |---|---|---|---|---|
-| **P4 §21** | **Generic Connector Framework Contract** | Missing | Ingestion is file-upload based; no standard connector adapter interface for Slack, Confluence, Google Drive, or S3 exists. | Define reusable `BaseConnector` adapter interface in `backend/apps/sources/connectors/`. |
+| **P4 §21** | **Generic Connector Framework Contract** | Implemented and verified | Reusable `BaseConnector` adapter interface with `SyncCheckpoint`, `SyncEvent`, and `SyncResult` supporting full & incremental sync. | Verified in `test_generic_connector_contract`. |
 | **P4 §22** | **Enterprise Identity (OIDC/SAML/SCIM)** | Partially implemented | Standard Django token/session auth exists; enterprise SSO (OIDC/SAML) and SCIM group sync are architectural blueprints. | Implement OIDC adapter and role mapping specification in `docs/ENTERPRISE_INTEGRATIONS.md`. |
 | **P4 §23** | **Tenant Administration & Review Workflows** | Implemented and verified | Org settings, review queue, quota metering, and member invitations implemented and operational in UI and backend. | Tested and verified in frontend and backend. |
 | **P4 §24** | **Data Residency & Enterprise Data Flow** | Implemented but unverified | Documented in research dossiers, but needs explicit data residency configuration documentation. | Create `docs/DATA_RESIDENCY_AND_FLOW.md`. |

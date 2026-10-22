@@ -16,10 +16,11 @@ from .pipeline.extractors import UnifiedDocumentExtractor
 
 logger = logging.getLogger(__name__)
 
-def process_ingestion_pipeline(job_id: str):
+def process_ingestion_pipeline(job_id: str, raise_exceptions: bool = False):
     """
     Synchronous / asynchronous execution of the complete document ingestion pipeline.
     Handles extraction, OCR, normalization, chunking, embedding, vector indexing, and governance.
+    Includes idempotency safeguards, stale worker protection, and cache invalidation.
     """
     job = IngestionJob.objects.select_related('document', 'document__workspace', 'document__organization').get(id=job_id)
     doc = job.document
@@ -83,7 +84,7 @@ def process_ingestion_pipeline(job_id: str):
             doc.page_count = len(pages_data)
             doc.ocr_confidence = round(avg_conf, 3)
             doc.status = 'normalizing'
-            doc.save()
+            doc.save(update_fields=['page_count', 'ocr_confidence', 'status'])
 
         # ---------------- Stage 2: Normalization ----------------
         t0 = time.time()
@@ -151,6 +152,12 @@ def process_ingestion_pipeline(job_id: str):
         job.save()
 
         vstore = QdrantVectorStore()
+        # Idempotency: Purge any existing vectors for this document prior to upserting
+        try:
+            vstore.delete_document_chunks("lore_chunks", str(doc.id))
+        except Exception as e:
+            logger.warning(f"Could not purge existing chunks for doc {doc.id}: {e}")
+
         ids = [str(c.id) for c in saved_chunks]
         payloads = [
             {
@@ -187,13 +194,41 @@ def process_ingestion_pipeline(job_id: str):
         job.stage_timings = timings
         job.completed_at = timezone.now()
 
+        # Stale Worker Protection: Verify no newer version was created during processing
+        fresh_doc = SourceDocument.objects.get(id=doc.id)
+        if fresh_doc.current_version_number > doc_version.version_number:
+            logger.warning(
+                f"Stale worker detected for doc {doc.id}: current version {fresh_doc.current_version_number} "
+                f"> job version {doc_version.version_number}. Aborting."
+            )
+            job.status = 'failed'
+            job.current_stage = 'failed'
+            job.error_category = 'STALE_VERSION_OVERWRITE_PREVENTED'
+            job.error_message = (
+                f"Aborted stale job version {doc_version.version_number}; "
+                f"current document version is {fresh_doc.current_version_number}."
+            )
+            job.save()
+            AuditEvent.objects.create(
+                organization=doc.organization,
+                workspace=doc.workspace,
+                event_type='stale_worker_aborted',
+                target_type='document',
+                target_id=str(doc.id),
+                details={
+                    'job_version': doc_version.version_number,
+                    'current_version': fresh_doc.current_version_number,
+                }
+            )
+            return
+
         # Follow ocr.md Rule X001: low confidence (< 70%) routes to review queue
         if doc.ocr_confidence < 0.70 and doc.document_type in ('pdf', 'image'):
             doc.status = 'needs_review'
             job.status = 'needs_review'
             job.current_stage = 'completed'
             job.save()
-            doc.save()
+            doc.save(update_fields=['status'])
             AuditEvent.objects.create(
                 organization=doc.organization,
                 workspace=doc.workspace,
@@ -207,7 +242,7 @@ def process_ingestion_pipeline(job_id: str):
             job.status = 'ready'
             job.current_stage = 'completed'
             job.save()
-            doc.save()
+            doc.save(update_fields=['status'])
             AuditEvent.objects.create(
                 organization=doc.organization,
                 workspace=doc.workspace,
@@ -217,17 +252,75 @@ def process_ingestion_pipeline(job_id: str):
                 details={'chunks_indexed': len(saved_chunks), 'timings': timings}
             )
 
+        # Invalidate workspace/document query cache so newly published content is immediately retrievable
+        try:
+            from apps.retrieval.cache import TenantSafeCacheService
+            TenantSafeCacheService.invalidate_document(str(doc.workspace.id), str(doc.id))
+        except Exception as ce:
+            logger.warning(f"Failed to invalidate cache for doc {doc.id}: {ce}")
+
     except Exception as e:
         logger.exception(f"Ingestion job {job_id} failed: {e}")
-        job.status = 'failed'
-        job.current_stage = 'failed'
-        job.error_message = str(e)
-        job.error_category = 'pipeline_exception'
-        job.save()
-        doc.status = 'failed'
-        doc.save()
+        try:
+            job = IngestionJob.objects.get(id=job_id)
+            job.status = 'failed'
+            job.current_stage = 'failed'
+            job.error_message = str(e)
+            job.error_category = 'pipeline_exception'
+            job.save()
+            doc.status = 'failed'
+            doc.save(update_fields=['status'])
+            AuditEvent.objects.create(
+                organization=doc.organization,
+                workspace=doc.workspace,
+                event_type='ingestion_failed',
+                target_type='document',
+                target_id=str(doc.id),
+                details={'error': str(e), 'stage': job.current_stage}
+            )
+        except Exception as audit_err:
+            logger.error(f"Error handling failure for job {job_id}: {audit_err}")
+
+        if raise_exceptions:
+            raise
+
+class TransientIngestionError(Exception):
+    """Temporary network or connection error that warrants a retry."""
+    pass
+
+class PermanentIngestionError(Exception):
+    """Unrecoverable data or format error that should not be retried."""
+    pass
 
 @shared_task(bind=True, max_retries=3)
 def process_document_job(self, job_id: str):
-    """Celery task wrapper."""
-    process_ingestion_pipeline(job_id)
+    """
+    Celery task wrapper with transient vs permanent error classification and exponential backoff.
+    """
+    try:
+        process_ingestion_pipeline(job_id, raise_exceptions=True)
+    except Exception as exc:
+        transient_types = (ConnectionError, TimeoutError, OSError, TransientIngestionError)
+        is_transient = isinstance(exc, transient_types) or any(
+            err_term in str(exc).lower() for err_term in ('connection', 'timeout', 'temporary', 'retry')
+        )
+        if isinstance(exc, (ValueError, KeyError, TypeError, FileNotFoundError, PermanentIngestionError)):
+            is_transient = False
+
+        if is_transient and self.request.retries < self.max_retries:
+            backoff_seconds = (2 ** self.request.retries) * 5
+            logger.warning(
+                f"Ingestion job {job_id} encountered transient error: {exc}. "
+                f"Retrying in {backoff_seconds}s (attempt {self.request.retries + 1}/{self.max_retries})."
+            )
+            try:
+                job = IngestionJob.objects.get(id=job_id)
+                job.attempt_count = self.request.retries + 2
+                job.save(update_fields=['attempt_count'])
+            except Exception:
+                pass
+            raise self.retry(exc=exc, countdown=backoff_seconds)
+        else:
+            logger.error(f"Ingestion job {job_id} permanently failed: {exc}")
+            raise exc
+

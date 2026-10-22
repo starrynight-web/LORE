@@ -15,17 +15,31 @@ class BaseVectorStore:
     def delete_document_chunks(self, collection_name: str, document_id: str):
         raise NotImplementedError
 
+    def count_document_chunks(self, collection_name: str, document_id: str) -> int:
+        raise NotImplementedError
+
+    def list_indexed_document_ids(self, collection_name: str) -> set:
+        raise NotImplementedError
+
 class QdrantVectorStore(BaseVectorStore):
     """
     Qdrant vector store adapter:
     Supports local embedded file storage or remote Qdrant service.
+    Reuses a process-wide shared client to prevent storage folder locks
+    and disparate in-memory fallback instances.
     """
+    _shared_client = None
+
     def __init__(self, vector_dim: int = 384):
         self.vector_dim = vector_dim
         self.client = None
         self._init_client()
 
     def _init_client(self):
+        if QdrantVectorStore._shared_client is not None:
+            self.client = QdrantVectorStore._shared_client
+            return
+
         try:
             from qdrant_client import QdrantClient
             from qdrant_client.http import models as rest_models
@@ -40,11 +54,14 @@ class QdrantVectorStore(BaseVectorStore):
                 os.makedirs(storage_path, exist_ok=True)
                 self.client = QdrantClient(path=storage_path)
 
+            QdrantVectorStore._shared_client = self.client
+
         except Exception as e:
-            logger.warning(f"Could not initialize QdrantClient: {e}. Falling back to in-memory mode.")
+            logger.warning(f"Could not initialize QdrantClient: {e}. Falling back to shared in-memory mode.")
             try:
                 from qdrant_client import QdrantClient
                 self.client = QdrantClient(":memory:")
+                QdrantVectorStore._shared_client = self.client
             except Exception:
                 self.client = None
 
@@ -133,13 +150,60 @@ class QdrantVectorStore(BaseVectorStore):
     def delete_document_chunks(self, collection_name: str, document_id: str):
         if not self.client:
             return
+        self._ensure_collection(collection_name)
         try:
             from qdrant_client.http import models as rest_models
             self.client.delete(
                 collection_name=collection_name,
                 points_selector=rest_models.Filter(
-                    must=[rest_models.FieldCondition(key="document_id", match=rest_models.MatchValue(value=document_id))]
+                    must=[rest_models.FieldCondition(key="document_id", match=rest_models.MatchValue(value=str(document_id)))]
                 )
             )
         except Exception as e:
             logger.warning(f"Error deleting chunks for document {document_id}: {e}")
+
+    def count_document_chunks(self, collection_name: str, document_id: str) -> int:
+        if not self.client:
+            return 0
+        self._ensure_collection(collection_name)
+        try:
+            from qdrant_client.http import models as rest_models
+            res = self.client.count(
+                collection_name=collection_name,
+                count_filter=rest_models.Filter(
+                    must=[rest_models.FieldCondition(key="document_id", match=rest_models.MatchValue(value=str(document_id)))]
+                )
+            )
+            return getattr(res, 'count', 0)
+        except Exception as e:
+            logger.warning(f"Error counting chunks for document {document_id}: {e}")
+            return 0
+
+    def list_indexed_document_ids(self, collection_name: str) -> set:
+        if not self.client:
+            return set()
+        self._ensure_collection(collection_name)
+        try:
+            doc_ids = set()
+            offset = None
+            while True:
+                scroll_res = self.client.scroll(
+                    collection_name=collection_name,
+                    limit=250,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False
+                )
+                points, next_offset = scroll_res
+                for p in points:
+                    if p.payload and 'document_id' in p.payload:
+                        doc_ids.add(str(p.payload['document_id']))
+                if not next_offset:
+                    break
+                offset = next_offset
+            return doc_ids
+        except Exception as e:
+            logger.warning(f"Error listing indexed document ids from Qdrant: {e}")
+            return set()
+
+
