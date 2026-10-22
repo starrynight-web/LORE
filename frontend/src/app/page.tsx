@@ -11,6 +11,7 @@ import { ReviewQueueView } from '@/components/ReviewQueueView';
 import { AuditView } from '@/components/AuditView';
 import { UploadModal } from '@/components/UploadModal';
 import { DocumentDetailModal } from '@/components/DocumentDetailModal';
+import { RealtimeOCRStudio } from '@/components/RealtimeOCRStudio';
 import { 
   api, 
   Workspace, 
@@ -89,6 +90,19 @@ export default function Home() {
     initApp();
   }, []);
 
+  // Poll for background ingestion updates if jobs are in-progress
+  useEffect(() => {
+    if (!currentWorkspace) return;
+    const interval = setInterval(() => {
+      const hasActive = jobs.some(j => j.status !== 'ready' && j.status !== 'failed');
+      if (hasActive) {
+        api.getJobs(currentWorkspace.id).then(setJobs).catch(() => {});
+        api.getDocuments(currentWorkspace.id).then(setDocuments).catch(() => {});
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [currentWorkspace, jobs]);
+
   const handleRefreshCurrentWorkspace = () => {
     if (currentWorkspace) {
       loadWorkspaceData(currentWorkspace.id);
@@ -141,6 +155,15 @@ export default function Home() {
                   jobs={jobs}
                   onOpenUpload={() => setIsUploadModalOpen(true)}
                   onNavigate={setActiveTab}
+                />
+              )}
+
+              {activeTab === 'ocr' && (
+                <RealtimeOCRStudio
+                  workspaceId={currentWorkspace?.id}
+                  collections={collections}
+                  onDocumentSaved={() => handleRefreshCurrentWorkspace()}
+                  onNavigateToRAG={() => setActiveTab('rag')}
                 />
               )}
 

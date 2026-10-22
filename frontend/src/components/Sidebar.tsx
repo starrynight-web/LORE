@@ -10,7 +10,8 @@ import {
   ShieldCheck, 
   Clock, 
   Layers,
-  Sparkles
+  Sparkles,
+  Scan
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navItems = [
     { id: 'overview', label: 'Workspace Overview', icon: Layers },
+    { id: 'ocr', label: 'Live OCR Studio', icon: Scan, badge: 'Realtime', badgeColor: 'bg-emerald-600' },
     { id: 'documents', label: 'All Documents', icon: FileText },
     { id: 'activity', label: 'Ingestion Activity', icon: Cpu, badge: activeJobsCount > 0 ? activeJobsCount : undefined, badgeColor: 'bg-blue-600' },
     { id: 'rag', label: 'Governed Search & RAG', icon: Search, highlight: true },

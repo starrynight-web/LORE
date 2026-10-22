@@ -268,6 +268,24 @@ class ApiClient {
     });
   }
 
+  async liveOCR(formData: FormData) {
+    return this.request<{
+      status: string;
+      filename: string;
+      file_hash: string;
+      document_type: string;
+      pages: DocumentPage[];
+      page_count: number;
+      ocr_confidence: number;
+      total_words: number;
+      timings_ms: number;
+      document_id: string | null;
+    }>('/sources/documents/live-ocr/', {
+      method: 'POST',
+      body: formData
+    });
+  }
+
   // Ingestion Jobs
   async getJobs(workspaceId: string) {
     const res = await this.request<any>(`/ingestion/jobs/?workspace_id=${workspaceId}`);

@@ -224,3 +224,31 @@ class TestLOREEnterprisePipeline:
         # If Tesseract is installed and recognized, bounding boxes are generated
         assert isinstance(page.bounding_boxes, list)
 
+    def test_live_realtime_ocr_endpoint(self):
+        """Tests POST /api/v1/sources/documents/live-ocr/ for immediate real-time extraction."""
+        img = Image.new('RGB', (600, 150), color='white')
+        d = ImageDraw.Draw(img)
+        d.text((40, 50), "REALTIME OCR STREAMING TEST", fill='black')
+
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        png_bytes = buf.getvalue()
+
+        png_file = SimpleUploadedFile("live-test.png", png_bytes, content_type="image/png")
+        res = self.client.post('/api/v1/sources/documents/live-ocr/', {
+            'file': png_file,
+            'bengali_repair': 'true',
+            'arabic_digits': 'true',
+        }, format='multipart')
+
+        assert res.status_code == 200
+        data = res.json()
+        assert data['status'] == 'success'
+        assert data['page_count'] == 1
+        assert data['timings_ms'] > 0
+        assert 'pages' in data
+        assert len(data['pages']) == 1
+        assert len(data['pages'][0]['text']) > 0
+        assert data['ocr_confidence'] > 0.0
+
+
