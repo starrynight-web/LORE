@@ -45,10 +45,13 @@ def readiness_check(request):
         }
     }, status=status_code)
 
+from apps.governance.views import telemetry_view
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/health/', health_check, name='health-check'),
     path('api/v1/health/ready/', readiness_check, name='readiness-check'),
+    path('api/v1/health/telemetry/', telemetry_view, name='health-telemetry'),
     path('api/v1/identity/', include('apps.identity.urls')),
     path('api/v1/workspaces/', include('apps.workspaces.urls')),
     path('api/v1/sources/', include('apps.sources.urls')),

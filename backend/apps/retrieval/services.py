@@ -181,11 +181,16 @@ class HybridRetrievalService:
         if document_id:
             qdrant_filter["document_id"] = str(document_id)
 
-        vector_hits = self.vector_store.search(
+        from apps.retrieval.resilience import resilient_vector_search
+
+        vector_hits = resilient_vector_search(
+            vector_store=self.vector_store,
             collection_name="lore_chunks",
             query_vector=query_vec,
             filter_dict=qdrant_filter,
-            limit=25
+            limit=25,
+            workspace_id=str(workspace_id) if workspace_id else None,
+            query_text=query
         )
 
         vector_ranks = {}

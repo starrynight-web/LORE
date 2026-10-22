@@ -255,3 +255,13 @@ def layers_status_view(request):
         'layers': layers,
         'timestamp': timezone.now().isoformat()
     })
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def telemetry_view(request):
+    """LORE Enterprise Telemetry and SLO Observability endpoint."""
+    from apps.governance.telemetry import TelemetryService
+    workspace_id = request.query_params.get('workspace_id')
+    snapshot = TelemetryService.get_telemetry_snapshot(workspace_id=workspace_id)
+    return Response(snapshot)
+

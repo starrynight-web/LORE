@@ -6,4 +6,4 @@ class SourcesConfig(AppConfig):
     name = 'apps.sources'
 
     def ready(self):
-        import apps.sources.signals  # noqa
+        from . import signals  # noqa: F401
