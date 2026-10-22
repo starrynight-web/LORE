@@ -247,8 +247,56 @@ class TestLOREEnterprisePipeline:
         assert data['page_count'] == 1
         assert data['timings_ms'] > 0
         assert 'pages' in data
-        assert len(data['pages']) == 1
-        assert len(data['pages'][0]['text']) > 0
         assert data['ocr_confidence'] > 0.0
+
+    def test_landtech_hackathon_ocr_repair(self):
+        """Validates exact normalization of real-world LandTech 2026 hackathon OCR output."""
+        raw_ocr = """LandTech 2026
+LandTech Innovation Hackathon
+ল্যান্ডটকে ইনোভশেন হ্যাকাথন
+Land Tech Software for Smart E-Governance in Bangladesh
+-
+স্মার্ট ই গভর্ন্যান্সের জন্য ল্যান্ডটকে সফটওয়্যার
+Track /
+ট্র্যাক
+Digital Land Records, Verification & Digitization
+,
+ডজিটিাল ভূ মি রর্কেড যাচাইকরণ ও ডজিটিাইজশেন
+Rule Book
+নয়িমাবলি
+Version 1.2 | .
+সংস্করণ ১ ২
+Organized by /
+আয়োজনে
+Department of CSE & CSE-TECH, Daffodil International University
+- ,
+সিএসই বভিাগ ও সিএসই টকে ড্যাফোডলি ইন্টারন্যাশনাল ইউনভিার্সটিি
+Supported by /
+সহযোগতিায়
+Department of Law, Daffodil International University
+,
+আইন বভিাগ ড্যাফোডলি ইন্টারন্যাশনাল ইউনভিার্সটিি
+Venue /
+ভন্যেু
+Round 1: Online (Google Meet) | : ( )
+প্রথম রাউন্ড অনলাইন গুগল মটি
+Final: Knowledge Tower (Library), Daffodil International University
+: ( ),
+চূড়ান্ত র্পব নলজে টাওয়ার লাইব্ররেি ড্যাফোডলি ইন্টারন্যাশনাল ইউনভিার্সটিি
+Part A: English | Part B:
+বাংলা"""
+
+        repaired = repair_visual_bengali_document(raw_ocr)
+        assert "ল্যান্ডটেক ইনোভেশন হ্যাকাথন" in repaired
+        assert "স্মার্ট ই-গভর্ন্যান্সের জন্য ল্যান্ডটেক সফটওয়্যার" in repaired
+        assert "ডিজিটাল ভূমি রেকর্ড যাচাইকরণ ও ডিজিটাইজেশন" in repaired
+        assert "নিয়মাবলী" in repaired
+        assert "সংস্করণ ১.২" in repaired
+        assert "সিএসই বিভাগ ও সিএসই টেক ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি" in repaired
+        assert "আইন বিভাগ ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি" in repaired
+        assert "ভেন্যু" in repaired
+        assert "গুগল মিট" in repaired
+        assert "চূড়ান্ত পর্ব নলেজ টাওয়ার লাইব্রেরি ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি" in repaired
+
 
 

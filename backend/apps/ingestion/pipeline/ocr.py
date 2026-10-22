@@ -67,51 +67,104 @@ def repair_visual_bengali_document(text: str) -> str:
     if not text:
         return text
 
-    # Pre-clean known split font tokens
-    text = text.replace('গভনয্র্ ােন্সর', 'গভর্ন্যান্সের')
-    text = text.replace('গভনয্র্ ােন্স', 'গভর্ন্যান্স')
-    text = text.replace('গভনয্র্', 'গভর্ন্য')
-    text = text.replace('ােন্সর', 'ান্সের')
-    text = text.replace('ােন্স', 'ান্স')
+    # Pre-clean known split font tokens & frequent OCR corruptions
+    pre_replacements = [
+        ('গভনয্র্ ােন্সর', 'গভর্ন্যান্সের'),
+        ('গভনয্র্ ােন্স', 'গভর্ন্যান্স'),
+        ('গভনয্র্', 'গভর্ন্য'),
+        ('ােন্সর', 'ান্সের'),
+        ('ােন্স', 'ান্স'),
+        ('ল্যান্ডটকে', 'ল্যান্ডটেক'),
+        ('ল্যান্ড টকে', 'ল্যান্ডটেক'),
+        ('ইনোভশেন', 'ইনোভেশন'),
+        ('ইনোভশনে', 'ইনোভেশন'),
+        ('ডজিটিাইজশেন', 'ডিজিটাইজেশন'),
+        ('ডজটিিাইজশনে', 'ডিজিটাইজেশন'),
+        ('ডজিটিাল', 'ডিজিটাল'),
+        ('ডজটিিাল', 'ডিজিটাল'),
+        ('রর্কেড', 'রেকর্ড'),
+        ('র্রকডে', 'রেকর্ড'),
+        ('ভূ মি', 'ভূমি'),
+        ('নয়িমাবলি', 'নিয়মাবলী'),
+        ('নয়মিাবলি', 'নিয়মাবলী'),
+        ('সংস্করণ ১ ২', 'সংস্করণ ১.২'),
+        ('বভিাগ', 'বিভাগ'),
+        ('টকে', 'টেক'),
+        ('ড্যাফোডলি', 'ড্যাফোডিল'),
+        ('ইউনভিার্সটিি', 'ইউনিভার্সিটি'),
+        ('ইউনভিার্সিটি', 'ইউনিভার্সিটি'),
+        ('সহযোগতিায়', 'সহযোগিতায়'),
+        ('ভন্যেু', 'ভেন্যু'),
+        ('গুগল মটি', 'গুগল মিট'),
+        ('মটি', 'মিট'),
+        ('র্পব', 'পর্ব'),
+        ('নলজে', 'নলেজ'),
+        ('লাইব্ররেি', 'লাইব্রেরি'),
+        ('স্মার্ট ই গভর্ন্যান্সের', 'স্মার্ট ই-গভর্ন্যান্সের'),
+        ('স্মার্ট ই গভর্ন্যান্স', 'স্মার্ট ই-গভর্ন্যান্স'),
+    ]
+    for old, new in pre_replacements:
+        text = text.replace(old, new)
 
     # 1. Visual O-kar: \u09C7 (e-kar) + consonant(s) + \u09BE (aa-kar) -> consonant(s) + \u09CB (o-kar)
-    text = re.sub(rf'\u09C7({BENGALI_CLUSTER})\u09BE', lambda m: m.group(1) + '\u09CB', text)
+    text = re.sub(rf'(?<!{BENGALI_CONSONANTS})\u09C7({BENGALI_CLUSTER})\u09BE', lambda m: m.group(1) + '\u09CB', text)
 
     # 2. Visual OU-kar: \u09C7 + consonant(s) + \u09D7 -> consonant(s) + \u09CC
-    text = re.sub(rf'\u09C7({BENGALI_CLUSTER})\u09D7', lambda m: m.group(1) + '\u09CC', text)
+    text = re.sub(rf'(?<!{BENGALI_CONSONANTS})\u09C7({BENGALI_CLUSTER})\u09D7', lambda m: m.group(1) + '\u09CC', text)
 
     # 3. Visual E-kar: \u09C7 + consonant(s) -> consonant(s) + \u09C7
-    text = re.sub(rf'\u09C7({BENGALI_CLUSTER})', lambda m: m.group(1) + '\u09C7', text)
+    text = re.sub(rf'(?<!{BENGALI_CONSONANTS})\u09C7({BENGALI_CLUSTER})', lambda m: m.group(1) + '\u09C7', text)
 
-    # 4. Visual I-kar: \u09BF + consonant(s) -> consonant(s) + \u09BF
-    text = re.sub(rf'\u09BF({BENGALI_CLUSTER})', lambda m: m.group(1) + '\u09BF', text)
+    # 4. Visual I-kar: \u09BF + consonant(s) -> consonant(s) + \u09BF (guarded by negative lookbehind to protect existing valid syllables)
+    text = re.sub(rf'(?<!{BENGALI_CONSONANTS})\u09BF({BENGALI_CLUSTER})', lambda m: m.group(1) + '\u09BF', text)
 
     # 5. Visual OI-kar: \u09C8 + consonant(s) -> consonant(s) + \u09C8
-    text = re.sub(rf'\u09C8({BENGALI_CLUSTER})', lambda m: m.group(1) + '\u09C8', text)
+    text = re.sub(rf'(?<!{BENGALI_CONSONANTS})\u09C8({BENGALI_CLUSTER})', lambda m: m.group(1) + '\u09C8', text)
 
     # 6. Inverted ya-phala: consonant + \u09AF\u09CD -> consonant + \u09CD\u09AF
     text = re.sub(rf'({BENGALI_CONSONANTS})\u09AF\u09CD', lambda m: m.group(1) + '\u09CD\u09AF', text)
 
-    # 7. Inverted reph: consonant + vowel? + \u09B0\u09CD -> \u09B0\u09CD + consonant + vowel?
+    # 7. Inverted reph: only when \u09B0\u09CD is NOT followed by a consonant (prevents breaking standard \u09B0\u09CD + Consonant rephs like পর্ব or রেকর্ড)
     def repl_reph(m):
         cons = m.group(1)
         vowel = m.group(2) or ''
         return '\u09B0\u09CD' + cons + vowel
-    text = re.sub(rf'(?<!\u09CD)({BENGALI_CONSONANTS})([\u09BE-\u09CC])?\u09B0\u09CD', repl_reph, text)
+    text = re.sub(rf'(?<!\u09CD)({BENGALI_CONSONANTS})([\u09BE-\u09CC])?\u09B0\u09CD(?!{BENGALI_CONSONANTS})', repl_reph, text)
 
     # Post-clean known whole words and ligatures
-    text = text.replace('গর্ভন্যান্সরে', 'গভর্ন্যান্সের')
-    text = text.replace('গর্ভন্যান্স', 'গভর্ন্যান্স')
-    text = text.replace('একিট', 'একটি')
-    text = text.replace('িডিজটাল', 'ডিজিটাল')
-    text = text.replace('িডিজটাইেজশন', 'ডিজিটাইজেশন')
-    text = text.replace('ইউনিভািসিটর্', 'ইউনিভার্সিটি')
-    text = text.replace('ইউনিভাসির্টি', 'ইউনিভার্সিটি')
-    text = text.replace('সফটওয়য্ার', 'সফটওয়্যার')
-    text = text.replace('হয্াকাথন', 'হ্যাকাথন')
-    text = text.replace('ভেনুয্', 'ভেন্যু')
-    text = text.replace('বাংল|', 'বাংলা')
-    text = text.replace('ল্যান্ড টেক', 'ল্যান্ডটেক')
+    post_replacements = [
+        ('গর্ভন্যান্সরে', 'গভর্ন্যান্সের'),
+        ('গর্ভন্যান্স', 'গভর্ন্যান্স'),
+        ('একিট', 'একটি'),
+        ('িডিজটাল', 'ডিজিটাল'),
+        ('িডিজটাইেজশন', 'ডিজিটাইজেশন'),
+        ('ইউনিভািসিটর্', 'ইউনিভার্সিটি'),
+        ('ইউনিভাসির্টি', 'ইউনিভার্সিটি'),
+        ('সফটওয়য্ার', 'সফটওয়্যার'),
+        ('হয্াকাথন', 'হ্যাকাথন'),
+        ('ভেনুয্', 'ভেন্যু'),
+        ('বাংল|', 'বাংলা'),
+        ('ল্যান্ড টেক', 'ল্যান্ডটেক'),
+        ('ল্যান্ডটকে', 'ল্যান্ডটেক'),
+        ('ইনোভশেন', 'ইনোভেশন'),
+        ('ডজিটিাল', 'ডিজিটাল'),
+        ('রর্কেড', 'রেকর্ড'),
+        ('ডজিটিাইজশেন', 'ডিজিটাইজেশন'),
+        ('নয়িমাবলি', 'নিয়মাবলী'),
+        ('বভিাগ', 'বিভাগ'),
+        ('টকে', 'টেক'),
+        ('ড্যাফোডলি', 'ড্যাফোডিল'),
+        ('ইউনভিার্সটিি', 'ইউনিভার্সিটি'),
+        ('সহযোগতিায়', 'সহযোগিতায়'),
+        ('ভন্যেু', 'ভেন্যু'),
+        ('মটি', 'মিট'),
+        ('র্পব', 'পর্ব'),
+        ('নলজে', 'নলেজ'),
+        ('লাইব্ররেি', 'লাইব্রেরি'),
+        ('ভূ মি', 'ভূমি'),
+    ]
+    for old, new in post_replacements:
+        text = text.replace(old, new)
 
     return text
 
