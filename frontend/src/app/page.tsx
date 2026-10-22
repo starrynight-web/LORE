@@ -270,12 +270,12 @@ export default function Home() {
                 />
               )}
 
-              {(activeTab === 'settings' || activeTab === 'api_connect' || activeTab === 'mcp_server') && (
+              {(activeTab === 'settings' || activeTab === 'api_connect' || activeTab === 'mcp_server' || activeTab === 'governance_layers') && (
                 <OrganizationSettingsView
                   currentOrg={currentOrg}
                   userRole={currentOrg?.role}
                   onRefreshOrg={handleRefreshCurrentWorkspace}
-                  initialSection={activeTab === 'api_connect' ? 'api' : activeTab === 'mcp_server' ? 'mcp' : 'all'}
+                  initialSection={activeTab === 'api_connect' ? 'api' : activeTab === 'mcp_server' ? 'mcp' : activeTab === 'governance_layers' ? 'layers' : 'all'}
                 />
               )}
             </>

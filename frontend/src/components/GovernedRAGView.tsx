@@ -14,7 +14,16 @@ import {
   ShieldCheck,
   Cpu,
   Filter,
-  Check
+  Check,
+  Layers,
+  ShieldAlert,
+  Clock,
+  Key,
+  FileCheck,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  Shield
 } from 'lucide-react';
 import { GovernedResult, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -38,6 +47,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState('gpt-oss-120B');
   const [hasGroqKey, setHasGroqKey] = useState(false);
+  const [showLayersInspector, setShowLayersInspector] = useState(true);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -577,6 +587,232 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* L4 Scoped Exceptions Section */}
+          {result.exceptions_applied && result.exceptions_applied.length > 0 && (
+            <div 
+              className="p-4 rounded-xl border space-y-2"
+              style={{
+                backgroundColor: 'var(--accent-light)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <div className="text-xs font-bold text-[var(--brand-accent)] uppercase tracking-wider flex items-center gap-2">
+                <Key className="w-4 h-4 text-[var(--accent-parrot)]" />
+                <span>L4 Scoped Exception Override Active ({result.exceptions_applied.length})</span>
+              </div>
+              <div className="space-y-2 pt-1">
+                {result.exceptions_applied.map((exc, idx) => (
+                  <div 
+                    key={idx} 
+                    className="p-2.5 rounded-lg border text-xs space-y-1" 
+                    style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}
+                  >
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-[var(--text-primary)]">{exc.name} ({exc.rule_code})</span>
+                      <span 
+                        className="px-2 py-0.5 rounded text-[10px] font-mono uppercase border"
+                        style={{
+                          backgroundColor: 'var(--accent-light)',
+                          borderColor: 'var(--border-color)',
+                          color: 'var(--brand-accent)',
+                        }}
+                      >
+                        Scope: {exc.scope_type} = {exc.scope_value}
+                      </span>
+                    </div>
+                    <p className="text-[var(--text-secondary)] leading-relaxed">{exc.justification}</p>
+                    {exc.override_state && (
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">
+                        Governed state override: <strong className="text-[var(--brand-accent)]">{exc.override_state}</strong> (approved by {exc.approved_by || 'Admin'})
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* L5 Temporal Validity Notice */}
+          {result.layers_breakdown?.l5_temporal?.temporal_notes && result.layers_breakdown.l5_temporal.temporal_notes.length > 0 && (
+            <div 
+              className="p-3.5 rounded-xl border flex items-center justify-between text-xs"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--warning)',
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 shrink-0" />
+                <span>{result.layers_breakdown.l5_temporal.temporal_notes.join(' · ')}</span>
+              </div>
+              <span 
+                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                L5 Temporal Gate
+              </span>
+            </div>
+          )}
+
+          {/* 9-Layer Enterprise Governance Stack Inspector */}
+          {result.layers_breakdown && (
+            <div 
+              className="rounded-xl border overflow-hidden transition-all duration-200"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowLayersInspector(!showLayersInspector)}
+                className="w-full px-4 py-3 flex items-center justify-between text-left cursor-pointer transition hover:bg-[var(--accent-light)]"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Layers className="w-4 h-4 text-[var(--brand-accent)]" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    9-Layer Enterprise Governance Stack Audit (LORE v3.0 §3, §4, §10)
+                  </span>
+                  <span 
+                    className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                    style={{
+                      backgroundColor: 'var(--success-bg)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--success)',
+                    }}
+                  >
+                    9/9 Active
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                    Latency: {Object.values(result.layers_breakdown.l0_observability?.timings_ms || {}).reduce((a, b) => a + b, 0).toFixed(2)}ms
+                  </span>
+                  {showLayersInspector ? <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />}
+                </div>
+              </button>
+
+              {showLayersInspector && (
+                <div className="p-4 border-t space-y-3" style={{ borderColor: 'var(--border-color)' }}>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                    {/* L7 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L7: PERMISSION</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l7_permission.status === 'passed' ? 'text-[var(--success)] bg-[var(--success-bg)]' : 'text-[var(--error)] bg-[var(--error-bg)]'}`}>
+                          {result.layers_breakdown.l7_permission.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Zero-leakage clearance & pre-retrieval role filtering</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l7_permission_ms || 0).toFixed(3)}ms</div>
+                    </div>
+
+                    {/* L1 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L1: DECISION INTEL</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                          {(result.layers_breakdown.l1_decision_intelligence.risk || 'NORMAL').toUpperCase()} RISK
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Type: <strong>{result.layers_breakdown.l1_decision_intelligence.decision_type}</strong></p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Escalates: {result.layers_breakdown.l1_decision_intelligence.escalation}</div>
+                    </div>
+
+                    {/* L6 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L6: AUTHORITY</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--text-secondary)] bg-[var(--bg-surface-soft)]">
+                          {result.layers_breakdown.l6_authority.conflicts_count} Resolved
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">7-rank authority ladder precedence & tie arbitration</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Unresolved tie: {result.layers_breakdown.l6_authority.unresolved_tie ? 'YES' : 'NO'}</div>
+                    </div>
+
+                    {/* L5 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L5: TEMPORAL</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l5_temporal.stale_data ? 'text-[var(--warning)] bg-[var(--warning-bg)]' : 'text-[var(--success)] bg-[var(--success-bg)]'}`}>
+                          {result.layers_breakdown.l5_temporal.stale_data ? 'STALE DETECTED' : 'FRESH'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Effective date bounds & document aging verification</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l5_temporal_ms || 0).toFixed(3)}ms</div>
+                    </div>
+
+                    {/* L4 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L4: SCOPED EXCEPTION</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                          {result.layers_breakdown.l4_exceptions.applied_count} Matched
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Tenant/project/vendor scoped rule overrides</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l4_exception_ms || 0).toFixed(3)}ms</div>
+                    </div>
+
+                    {/* L3 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L3: SUFFICIENCY</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l3_sufficiency.is_sufficient ? 'text-[var(--success)] bg-[var(--success-bg)]' : 'text-[var(--error)] bg-[var(--error-bg)]'}`}>
+                          {result.layers_breakdown.l3_sufficiency.is_sufficient ? 'SATISFIED' : 'DEFICIT'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Mandatory checklist evidence completeness</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Missing items: {result.layers_breakdown.l3_sufficiency.missing_count}</div>
+                    </div>
+
+                    {/* L2 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L2: ANSWER STATE</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                          {result.layers_breakdown.l2_answer_state.final_state.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Strict 9-state precedence ladder arbitration</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Directive: {result.layers_breakdown.l2_answer_state.directive}</div>
+                    </div>
+
+                    {/* L0 */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L0: OBSERVABILITY</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--success)] bg-[var(--success-bg)]">
+                          RECORDED
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Decision ledger entry, audit trace & token metering</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Tokens: {result.token_count}</div>
+                    </div>
+
+                    {/* Core Retrieval */}
+                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">CORE RETRIEVAL</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                          HYBRID RRF
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)]">Qdrant dense vectors + BM25 lexical + Context Reranker</p>
+                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Evidence chunks: {result.evidence_found?.length || 0}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

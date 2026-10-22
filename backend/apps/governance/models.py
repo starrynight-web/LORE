@@ -36,3 +36,92 @@ class ConflictRecord(models.Model):
 
     def __str__(self):
         return f"Conflict: {self.source_a.title} vs {self.source_b.title} [{self.resolution_status}]"
+
+
+class AccessLevel(models.TextChoices):
+    PUBLIC = 'public', 'Public'
+    INTERNAL = 'internal', 'Internal'
+    RESTRICTED = 'restricted', 'Restricted'
+    CONFIDENTIAL = 'confidential', 'Confidential'
+
+
+class SourcePermission(models.Model):
+    """
+    L7 Permission Layer (lore.md §4 L7):
+    Query-time authorization happening BEFORE context enters the model.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.OneToOneField(SourceDocument, on_delete=models.CASCADE, related_name='permissions')
+    access_level = models.CharField(max_length=20, choices=AccessLevel.choices, default=AccessLevel.INTERNAL)
+    allowed_roles = models.JSONField(default=list, blank=True)
+    allowed_users = models.JSONField(default=list, blank=True)
+    redaction_required = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_user_permitted(self, user=None, user_role='member'):
+        if self.access_level == AccessLevel.PUBLIC:
+            return True
+        if self.access_level == AccessLevel.INTERNAL:
+            return user_role in ['workspace_admin', 'member', 'admin', 'compliance_auditor', 'owner']
+        if self.access_level in [AccessLevel.RESTRICTED, AccessLevel.CONFIDENTIAL]:
+            if user and getattr(user, 'is_superuser', False):
+                return True
+            if user and self.allowed_users and (getattr(user, 'username', '') in self.allowed_users or str(getattr(user, 'id', '')) in self.allowed_users):
+                return True
+            if self.allowed_roles and user_role in self.allowed_roles:
+                return True
+            if user_role in ['workspace_admin', 'owner']:
+                return True
+            return False
+        return True
+
+    def __str__(self):
+        return f"Permission [{self.document.title}] - {self.access_level}"
+
+
+class ScopedException(models.Model):
+    """
+    L4 Exception Layer (lore.md §4 L4):
+    Scoped, time-bounded overrides.
+    An exception applies only if every scope dimension matches and the query time falls within window.
+    """
+    SCOPE_TYPES = [
+        ('department', 'Department / Business Unit'),
+        ('project', 'Project / Repository'),
+        ('data_type', 'Data Type / Classification'),
+        ('vendor', 'Third-Party Vendor / Tool'),
+    ]
+
+    STATUS_CHOICES = [
+        ('active', 'Active & Effective'),
+        ('expired', 'Expired'),
+        ('revoked', 'Revoked by Human'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='exceptions')
+    rule_code = models.CharField(max_length=100, db_index=True)
+    scope_type = models.CharField(max_length=30, choices=SCOPE_TYPES, default='vendor')
+    scope_value = models.CharField(max_length=255)
+    window_start = models.DateTimeField(null=True, blank=True)
+    window_end = models.DateTimeField(null=True, blank=True)
+    justification = models.TextField()
+    approved_by = models.CharField(max_length=150)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def is_currently_valid(self, as_of=None):
+        import django.utils.timezone as tz
+        now = as_of or tz.now()
+        if self.status != 'active':
+            return False
+        if self.window_start and now < self.window_start:
+            return False
+        if self.window_end and now > self.window_end:
+            return False
+        return True
+
+    def __str__(self):
+        return f"Exception [{self.rule_code}] for {self.scope_type}={self.scope_value} ({self.status})"
+

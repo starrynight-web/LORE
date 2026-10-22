@@ -9,9 +9,9 @@ from django.shortcuts import get_object_or_404
 
 from apps.workspaces.models import Workspace
 from apps.decisions.models import DecisionRecord
-from apps.audit.models import AuditEvent
 from .services import HybridRetrievalService
 from apps.decisions.engine import AnswerStateMachine
+from apps.governance.layers import EnterpriseGovernanceEngine
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
@@ -107,52 +107,24 @@ def governed_query_view(request):
         limit=10
     )
 
-    # 2. Evaluate via 9-State Governance Machine with Anti-Hallucination & Groq gpt-oss-120B
-    envelope = AnswerStateMachine.evaluate(
+    # 2. Evaluate via Complete 9-Layer Enterprise Governance Engine (L7 -> L0)
+    user_role = 'workspace_admin' if getattr(effective_user, 'is_staff', False) else 'member'
+    envelope = EnterpriseGovernanceEngine.evaluate(
         query=query,
         retrieved_chunks=candidate_chunks,
-        workspace_id=str(workspace.id),
+        workspace=workspace,
         user=effective_user,
+        user_role=user_role,
         groq_api_key=groq_api_key,
         llm_model=llm_model
     )
 
     # 3. Record Metered Query Usage
-    QuotaEnforcementService.record_query(workspace.organization, workspace, envelope.get('token_count', 0))
-
-    # 4. Persist Decision Record
-    decision = DecisionRecord.objects.create(
-        trace_id=envelope['trace_id'],
-        organization=workspace.organization,
-        workspace=workspace,
-        user=effective_user,
-        query=query,
-        decision_type=envelope['decision_type'],
-        state=envelope['state'],
-        directive=envelope['directive'],
-        answer_text=envelope.get('answer', ''),
-        evidence_found=envelope.get('evidence_found', []),
-        evidence_missing=envelope.get('evidence_missing', []),
-        conflicts_resolved=envelope.get('conflicts_resolved', []),
-        citations=envelope.get('citations', []),
-        token_count=envelope.get('token_count', 0)
-    )
-
-    # 5. Log Audit Event
-    AuditEvent.objects.create(
-        organization=workspace.organization,
-        workspace=workspace,
-        user=effective_user,
-        event_type='retrieval_query',
-        target_type='decision',
-        target_id=str(decision.id),
-        details={
-            'query': query,
-            'state': envelope['state'],
-            'directive': envelope['directive'],
-            'citations_count': len(envelope.get('citations', []))
-        }
-    )
+    try:
+        from apps.subscriptions.services import QuotaEnforcementService
+        QuotaEnforcementService.record_query(workspace.organization, workspace, envelope.get('token_count', 0))
+    except Exception:
+        pass
 
     return Response(envelope)
 

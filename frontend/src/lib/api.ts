@@ -117,12 +117,83 @@ export interface Citation {
   authority_level: number;
 }
 
+export interface ScopedExceptionResult {
+  id?: string;
+  name: string;
+  rule_code: string;
+  scope_type: string;
+  scope_value: string;
+  action: string;
+  override_state?: string;
+  justification: string;
+  approved_by?: string;
+}
+
+export interface LayerBreakdown {
+  l7_permission: {
+    status: 'passed' | 'denied';
+    denials: string[];
+  };
+  l1_decision_intelligence: {
+    decision_type: string;
+    escalation: string;
+    risk: string;
+  };
+  l6_authority: {
+    conflicts_count: number;
+    unresolved_tie: boolean;
+  };
+  l5_temporal: {
+    stale_data: boolean;
+    temporal_notes: string[];
+  };
+  l4_exceptions: {
+    applied_count: number;
+    exceptions: ScopedExceptionResult[];
+  };
+  l3_sufficiency: {
+    is_sufficient: boolean;
+    missing_count: number;
+  };
+  l2_answer_state: {
+    final_state: string;
+    directive: string;
+  };
+  l0_observability: {
+    trace_id: string;
+    timings_ms: Record<string, number>;
+  };
+}
+
+export interface GovernanceLayerDef {
+  layer: string;
+  name: string;
+  decides: string;
+  status: string;
+  mechanism: string;
+  capabilities?: string[];
+  catalog?: Record<string, any>;
+  precedence_ladder?: Array<{ state: string; directive: string; precedence: number }>;
+}
+
+export interface GovernanceLayersStatus {
+  status: string;
+  total_layers: number;
+  layers_built: number;
+  compliance: string;
+  specification: string;
+  layers: GovernanceLayerDef[];
+  timestamp: string;
+}
+
 export interface GovernedResult {
   schema: string;
   state: 'denied' | 'violation' | 'conflicting' | 'insufficient' | 'abstain' | 'human_review' | 'qualified' | 'supported' | 'no_knowledge';
   directive: 'stop' | 'ask_user' | 'escalate' | 'proceed_and_cite' | 'proceed';
   answer: string;
   decision_type: string;
+  escalation_target?: string;
+  risk_level?: string;
   evidence_found: Array<{
     document_id: string;
     document_title: string;
@@ -144,6 +215,7 @@ export interface GovernedResult {
     resolution?: string;
     note?: string;
   }>;
+  exceptions_applied?: ScopedExceptionResult[];
   citations: Citation[];
   notes: string[];
   decision_id: string;
@@ -152,6 +224,8 @@ export interface GovernedResult {
   llm_provider?: string;
   llm_model?: string;
   anti_hallucination_active?: boolean;
+  layers_breakdown?: LayerBreakdown;
+  audit_id?: string;
 }
 
 export interface AuditEvent {
@@ -375,6 +449,41 @@ class ApiClient {
   // Audit
   async getAuditEvents(workspaceId: string) {
     const res = await this.request<any>(`/audit/events/?workspace_id=${workspaceId}`);
+    return Array.isArray(res) ? res : res.results || [];
+  }
+
+  // 9-Layer Governance Stack (LORE Architecture v3.0 §3, §4, §10)
+  async getGovernanceLayersStatus(): Promise<GovernanceLayersStatus> {
+    return this.request<GovernanceLayersStatus>('/governance/layers/');
+  }
+
+  async getScopedExceptions(workspaceId?: string) {
+    const q = workspaceId ? `?workspace_id=${workspaceId}` : '';
+    const res = await this.request<any>(`/governance/exceptions/${q}`);
+    return Array.isArray(res) ? res : res.results || [];
+  }
+
+  async createScopedException(data: {
+    workspace_id: string;
+    name: string;
+    rule_code: string;
+    scope_type: string;
+    scope_value: string;
+    action?: string;
+    override_state?: string;
+    justification: string;
+    valid_from?: string;
+    valid_until?: string;
+  }) {
+    return this.request<any>('/governance/exceptions/', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async getEvidenceRequirements(workspaceId?: string) {
+    const q = workspaceId ? `?workspace_id=${workspaceId}` : '';
+    const res = await this.request<any>(`/governance/requirements/${q}`);
     return Array.isArray(res) ? res : res.results || [];
   }
 

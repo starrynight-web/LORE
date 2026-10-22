@@ -43,6 +43,7 @@ from apps.sources.models import SourceDocument, DocumentPage
 from apps.knowledge.models import DocumentChunk
 from apps.retrieval.services import HybridRetrievalService
 from apps.decisions.engine import AnswerStateMachine
+from apps.governance.layers import EnterpriseGovernanceEngine
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="[LORE-MCP] %(levelname)s: %(message)s")
 logger = logging.getLogger("lore_mcp")
@@ -208,11 +209,13 @@ def handle_governed_query(args: Dict[str, Any]) -> str:
         limit=10
     )
 
-    # 2. Evaluate via 9-State Governance Machine
-    envelope = AnswerStateMachine.evaluate(
+    # 2. Evaluate via Complete 9-Layer Enterprise Governance Engine
+    envelope = EnterpriseGovernanceEngine.evaluate(
         query=query,
         retrieved_chunks=chunks,
-        workspace_id=str(ws.id),
+        workspace=ws,
+        user=None,
+        user_role='workspace_admin',
         groq_api_key=groq_api_key,
         llm_model=llm_model
     )
@@ -221,6 +224,12 @@ def handle_governed_query(args: Dict[str, Any]) -> str:
         "status": envelope.get("state"),
         "directive": envelope.get("directive"),
         "answer": envelope.get("answer"),
+        "decision_type": envelope.get("decision_type"),
+        "escalation_target": envelope.get("escalation_target"),
+        "evidence_missing": envelope.get("evidence_missing", []),
+        "conflicts_resolved": envelope.get("conflicts_resolved", []),
+        "exceptions_applied": envelope.get("exceptions_applied", []),
+        "layers_breakdown": envelope.get("layers_breakdown", {}),
         "llm_provider": envelope.get("llm_provider"),
         "llm_model": envelope.get("llm_model"),
         "anti_hallucination_active": True,

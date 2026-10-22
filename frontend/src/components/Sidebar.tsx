@@ -12,7 +12,8 @@ import {
   Scan,
   Building2,
   Zap,
-  Server
+  Server,
+  Shield
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 
@@ -37,6 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'documents', label: t('nav.all_documents'), icon: FileText },
     { id: 'activity', label: t('nav.ingestion_activity'), icon: Cpu, badge: activeJobsCount > 0 ? activeJobsCount : undefined },
     { id: 'rag', label: t('nav.governed_rag'), icon: Search, highlight: true },
+    { id: 'governance_layers', label: '9 Governance Layers', icon: Shield, badge: '9/9' },
     { id: 'review', label: t('nav.review_queue'), icon: AlertTriangle, badge: reviewCount > 0 ? reviewCount : undefined, isWarning: true },
     { id: 'audit', label: t('nav.audit_ledger'), icon: ShieldCheck },
     { id: 'api_connect', label: 'AI Connect (Groq)', icon: Zap, badge: 'gpt-oss-120B' },
