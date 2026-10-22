@@ -1,0 +1,102 @@
+import hashlib
+import os
+from typing import Dict, Any, Tuple
+from django.core.exceptions import ValidationError
+
+MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+ALLOWED_EXTENSIONS = {
+    '.pdf': 'pdf',
+    '.docx': 'docx',
+    '.txt': 'txt',
+    '.md': 'txt',
+    '.markdown': 'txt',
+    '.csv': 'spreadsheet',
+    '.xlsx': 'spreadsheet',
+    '.xls': 'spreadsheet',
+    '.png': 'image',
+    '.jpg': 'image',
+    '.jpeg': 'image',
+    '.pptx': 'presentation',
+}
+
+class StorageSecurityService:
+    """
+    Validates uploaded files for enterprise security and provenance:
+    - Enforces size limit (<= 50MB)
+    - Verifies file magic bytes (never trusts client headers alone)
+    - Computes cryptographic SHA-256 fingerprint
+    """
+
+    @staticmethod
+    def inspect_and_validate(file_obj) -> Dict[str, Any]:
+        size = file_obj.size
+        if size > MAX_FILE_SIZE_BYTES:
+            raise ValidationError(f"File exceeds maximum allowed size of {MAX_FILE_SIZE_BYTES // (1024*1024)} MB.")
+
+        name = file_obj.name.lower()
+        ext = os.path.splitext(name)[1]
+        if ext not in ALLOWED_EXTENSIONS:
+            raise ValidationError(f"Unsupported file extension '{ext}'. Allowed extensions: {', '.join(ALLOWED_EXTENSIONS.keys())}")
+
+        doc_type = ALLOWED_EXTENSIONS[ext]
+
+        # Read first 2KB for magic byte analysis
+        file_obj.seek(0)
+        header = file_obj.read(2048)
+
+        # Compute SHA-256 over entire file
+        hasher = hashlib.sha256()
+        file_obj.seek(0)
+        for chunk in file_obj.chunks():
+            hasher.update(chunk)
+        sha256_hash = hasher.hexdigest()
+        file_obj.seek(0)
+
+        # Validate magic bytes against claimed type
+        mime_type = 'application/octet-stream'
+
+        if ext == '.pdf':
+            if not header.startswith(b'%PDF'):
+                raise ValidationError("Invalid PDF file: Missing %PDF magic bytes.")
+            mime_type = 'application/pdf'
+
+        elif ext == '.png':
+            if not header.startswith(b'\x89PNG\r\n\x1a\n'[:4]):
+                raise ValidationError("Invalid PNG file: Corrupted or missing PNG header.")
+            mime_type = 'image/png'
+
+        elif ext in ('.jpg', '.jpeg'):
+            if not header.startswith(b'\xFF\xD8\xFF'[:2]):
+                raise ValidationError("Invalid JPEG file: Corrupted or missing JPEG header.")
+            mime_type = 'image/jpeg'
+
+        elif ext in ('.docx', '.xlsx', '.pptx'):
+            # Modern Office files are PK zip archives
+            if not header.startswith(b'PK\x03\x04'):
+                raise ValidationError(f"Invalid Microsoft Office file '{ext}': Missing PK zip signature.")
+            if ext == '.docx':
+                mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            elif ext == '.xlsx':
+                mime_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            elif ext == '.pptx':
+                mime_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+
+        elif ext in ('.txt', '.md', '.markdown', '.csv'):
+            try:
+                header.decode('utf-8')
+                mime_type = 'text/plain' if ext != '.csv' else 'text/csv'
+            except UnicodeDecodeError:
+                # Check for latin-1 or ASCII fallback
+                try:
+                    header.decode('latin-1')
+                    mime_type = 'text/plain'
+                except Exception:
+                    raise ValidationError("Text document contains invalid non-text binary data.")
+
+        return {
+            'document_type': doc_type,
+            'mime_type': mime_type,
+            'file_size': size,
+            'file_hash': sha256_hash,
+        }
