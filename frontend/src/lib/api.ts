@@ -149,6 +149,9 @@ export interface GovernedResult {
   decision_id: string;
   trace_id: string;
   token_count: number;
+  llm_provider?: string;
+  llm_model?: string;
+  anti_hallucination_active?: boolean;
 }
 
 export interface AuditEvent {
@@ -303,10 +306,42 @@ class ApiClient {
   }
 
   // Retrieval & Governed RAG
-  async governedQuery(workspaceId: string, query: string, collectionId?: string) {
+  async governedQuery(
+    workspaceId: string, 
+    query: string, 
+    collectionId?: string,
+    groqApiKey?: string,
+    llmModel?: string
+  ) {
+    const activeGroqKey = groqApiKey || (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
+    const activeModel = llmModel || (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
+
     return this.request<GovernedResult>('/retrieval/query/', {
       method: 'POST',
-      body: JSON.stringify({ workspace: workspaceId, query, collection: collectionId })
+      body: JSON.stringify({ 
+        workspace: workspaceId, 
+        query, 
+        collection: collectionId,
+        groq_api_key: activeGroqKey,
+        llm_model: activeModel
+      })
+    });
+  }
+
+  async testGroqConnection(apiKey: string, model: string = 'gpt-oss-120B') {
+    return this.request<{
+      status: string;
+      provider: string;
+      requested_model: string;
+      model_available: boolean;
+      models_count: number;
+      latency_ms: number;
+      anti_hallucination: string;
+      default_temperature: number;
+      message: string;
+    }>('/retrieval/test-groq/', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: apiKey, model })
     });
   }
 

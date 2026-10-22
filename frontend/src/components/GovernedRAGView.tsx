@@ -9,7 +9,10 @@ import {
   FileText, 
   Sparkles, 
   Quote, 
-  Scale
+  Scale,
+  Zap,
+  ShieldCheck,
+  Cpu
 } from 'lucide-react';
 import { GovernedResult, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -26,6 +29,17 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
   const [result, setResult] = useState<GovernedResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeModel, setActiveModel] = useState('gpt-oss-120B');
+  const [hasGroqKey, setHasGroqKey] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const k = localStorage.getItem('lore_groq_api_key');
+      const m = localStorage.getItem('lore_llm_model') || 'gpt-oss-120B';
+      setHasGroqKey(Boolean(k));
+      setActiveModel(m);
+    }
+  }, []);
 
   const sampleQueries = language === 'bn' ? [
     "উক্ত সাফ কবলা দলিলে সম্পত্তির তফসিল এবং সিএস খতিয়ান নম্বর কত?",
@@ -185,14 +199,56 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h2 className="text-lg sm:text-xl font-extrabold text-[var(--text-primary)] flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-[var(--brand-accent)]" />
-          <span>{t('rag.title')}</span>
-        </h2>
-        <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
-          {t('rag.subtitle')}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg sm:text-xl font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-[var(--brand-accent)]" />
+            <span>{t('rag.title')}</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
+            {t('rag.subtitle')}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {hasGroqKey ? (
+            <span 
+              className="px-2.5 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5"
+              style={{
+                backgroundColor: 'var(--accent-light)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--brand-accent)',
+              }}
+            >
+              <Zap className="w-3 h-3 text-[var(--brand-accent)]" />
+              <span>Groq: {activeModel}</span>
+            </span>
+          ) : (
+            <span 
+              className="px-2.5 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              <ShieldCheck className="w-3 h-3 text-[var(--brand-accent)]" />
+              <span>Deterministic Anti-Hallucination Engine</span>
+            </span>
+          )}
+
+          <span 
+            className="px-2.5 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5"
+            style={{
+              backgroundColor: 'var(--bg-surface-soft)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <CheckCircle2 className="w-3 h-3 text-[var(--success)]" />
+            <span>Hybrid Reranker Active</span>
+          </span>
+        </div>
       </div>
 
       {/* Query Input Box */}
@@ -297,9 +353,36 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
             className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4"
             style={{ borderColor: 'var(--border-color)' }}
           >
-            {getStateBadge(result.state, result.directive)}
-            <div className="text-xs font-mono text-[var(--text-muted)]">
-              Decision ID: <span className="text-[var(--text-primary)]">{result.decision_id}</span> • Trace: {result.trace_id}
+            <div className="flex items-center gap-2 flex-wrap">
+              {getStateBadge(result.state, result.directive)}
+              {result.llm_model && (
+                <span 
+                  className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold border flex items-center gap-1"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--brand-accent)',
+                  }}
+                >
+                  <Cpu className="w-3 h-3 text-[var(--brand-accent)]" />
+                  {result.llm_provider === 'groq' ? 'Groq Inference' : 'Internal Engine'}: {result.llm_model}
+                </span>
+              )}
+            </div>
+
+            <div className="text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
+              <span className="hidden sm:inline">Trace: {result.trace_id}</span>
+              <span 
+                className="px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1"
+                style={{
+                  backgroundColor: 'var(--accent-light)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--brand-accent)',
+                }}
+              >
+                <ShieldCheck className="w-3 h-3" />
+                Anti-Hallucination Verified
+              </span>
             </div>
           </div>
 

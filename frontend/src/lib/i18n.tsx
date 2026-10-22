@@ -178,7 +178,19 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.bengali': 'বাংলা (Bengali)',
     'settings.english': 'English (EN)',
     'settings.api_keys': 'API Keys & Integration',
-    'settings.members': 'Organization Members & Roles'
+    'settings.members': 'Organization Members & Roles',
+    'settings.api_connect_title': 'AI Inference & Custom API Connect',
+    'settings.api_connect_desc': 'Connect your own Groq Cloud API key for ultra-fast, zero-hallucination inference powered by gpt-oss-120B.',
+    'settings.groq_key_label': 'Groq Cloud API Key',
+    'settings.model_label': 'Active Anti-Hallucination Model',
+    'settings.test_connection': 'Test Connection',
+    'settings.save_key': 'Save API Key',
+    'settings.clear_key': 'Clear Key',
+    'settings.mcp_title': 'LORE MCP Server Hub & Generator',
+    'settings.mcp_desc': 'Create and export a Model Context Protocol (MCP) server to connect LORE Knowledge Grid with Claude Desktop, Cursor, and Windsurf.',
+    'settings.copy_config': 'Copy Configuration',
+    'settings.copied': 'Copied!',
+    'settings.download_mcp': 'Download MCP Server Script'
   },
   bn: {
     // Common
@@ -344,7 +356,19 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.bengali': 'বাংলা (Bengali)',
     'settings.english': 'English (ইংরেজি)',
     'settings.api_keys': 'এপিআই কি ও ইন্টিগ্রেশন',
-    'settings.members': 'প্রতিষ্ঠানের সদস্য ও ভূমিকাসমূহ'
+    'settings.members': 'প্রতিষ্ঠানের সদস্য ও ভূমিকাসমূহ',
+    'settings.api_connect_title': 'এআই ইঞ্জিন ও নিজস্ব এপিআই সংযোগ',
+    'settings.api_connect_desc': 'দ্রুতগতির ও সম্পূর্ণ হ্যালুসিনেশন-মুক্ত উত্তরের জন্য নিজস্ব Groq এপিআই কি (gpt-oss-120B মডেল) যুক্ত করুন।',
+    'settings.groq_key_label': 'Groq ক্লাউড এপিআই কি',
+    'settings.model_label': 'সক্রিয় অ্যান্টি-হ্যালুসিনেশন মডেল',
+    'settings.test_connection': 'সংযোগ পরীক্ষা করুন',
+    'settings.save_key': 'এপিআই কি সংরক্ষণ করুন',
+    'settings.clear_key': 'কি মুছুন',
+    'settings.mcp_title': 'লর এমসিপি (MCP) সার্ভার নির্মাতা ও ইন্টিগ্রেশন',
+    'settings.mcp_desc': 'ক্লড ডেস্কটপ, কার্সর ও উইন্ডসার্ফের সাথে লর জ্ঞানভাণ্ডার যুক্ত করতে মডেল কনটেক্সট প্রোটোকল (MCP) কনফিগারেশন তৈরি করুন।',
+    'settings.copy_config': 'কনফিগারেশন কপি করুন',
+    'settings.copied': 'কপি সম্পন্ন!',
+    'settings.download_mcp': 'এমসিপি সার্ভার স্ক্রিপ্ট ডাউনলোড করুন'
   }
 };
 

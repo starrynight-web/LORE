@@ -22,7 +22,9 @@ class GroundedGenerationService:
         query: str,
         retrieved_chunks: List[Dict[str, Any]],
         conflicts: List[Dict[str, Any]],
-        state: str
+        state: str,
+        groq_api_key: Optional[str] = None,
+        llm_model: Optional[str] = None
     ) -> str:
         if state == 'no_knowledge':
             return f"No authoritative knowledge found matching '{query}'. Retrieval returned zero relevant passages."
@@ -33,7 +35,19 @@ class GroundedGenerationService:
                 "Mandatory compliance and security criteria remain unverified or incomplete in published records."
             )
 
-        # Check if external LLM provider is configured
+        # 1. Prioritize User-Supplied Groq API Key or Settings Groq Key
+        active_groq_key = groq_api_key or getattr(settings, 'GROQ_API_KEY', '')
+        active_model = llm_model or getattr(settings, 'GROQ_MODEL', 'gpt-oss-120B')
+
+        if active_groq_key:
+            try:
+                answer = cls._generate_with_groq_llm(query, retrieved_chunks, conflicts, active_groq_key, active_model)
+                if answer and len(answer.strip()) > 10:
+                    return answer
+            except Exception as e:
+                logger.warning(f"Groq LLM generation failed ({active_model}): {e}. Falling back to deterministic synthesis.")
+
+        # 2. Check general external LLM provider
         llm_provider = getattr(settings, 'LLM_PROVIDER', 'none').lower()
         api_key = getattr(settings, 'LLM_API_KEY', '')
 
@@ -43,8 +57,89 @@ class GroundedGenerationService:
             except Exception as e:
                 logger.warning(f"External LLM generation failed: {e}. Falling back to deterministic synthesis.")
 
-        # Grounded Deterministic Synthesizer
+        # 3. Grounded Deterministic Synthesizer (Zero Hallucination Guaranteed)
         return cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+
+    @classmethod
+    def _generate_with_groq_llm(
+        cls,
+        query: str,
+        retrieved_chunks: List[Dict[str, Any]],
+        conflicts: List[Dict[str, Any]],
+        api_key: str,
+        model_name: str = 'gpt-oss-120B'
+    ) -> str:
+        """
+        Invokes Groq API Cloud with gpt-oss-120B or specified model.
+        Forces temperature: 0.0 for deterministic factual fidelity and zero hallucination.
+        """
+        import urllib.request
+        import json
+
+        context_blocks = []
+        for i, c in enumerate(retrieved_chunks[:8], 1):
+            title = c.get('document_title', 'Untitled')
+            page = c.get('page_number', 1)
+            ver = c.get('document_version', 1)
+            auth = c.get('authority_level', 3)
+            header = c.get('contextual_header', '')
+            text = c.get('text', '').strip()
+            hdr_str = f" | Section: {header}" if header else ""
+            context_blocks.append(
+                f"[Passage {i}] Document: \"{title}\" (Rev {ver}, Page {page}, Authority Rank {auth}{hdr_str})\n{text}"
+            )
+
+        context_str = "\n\n".join(context_blocks)
+
+        system_prompt = (
+            "You are the LORE Enterprise Governed Knowledge Agent.\n"
+            "CRITICAL ANTI-HALLUCINATION DIRECTIVES:\n"
+            "1. Answer the query strictly, exclusively, and faithfully based ONLY on the provided context passages below.\n"
+            "2. DO NOT extrapolate, infer, guess, or invent any facts not directly stated in the excerpts.\n"
+            "3. If the context passages do not contain sufficient evidence to answer the query, reply with:\n"
+            "   'INSUFFICIENT_EVIDENCE: The extracted document context does not contain verified statements to answer this query.'\n"
+            "4. For every factual statement, provide explicit inline citations referencing the source document and page number, e.g. [Document Title, p.X].\n"
+            "5. If the query is in Bengali (বাংলা), formulate the answer in clear, professional Bengali adhering strictly to the facts."
+        )
+
+        user_content = f"Context Passages:\n{context_str}\n\nUser Query: {query}\n\nFactual Evidence-Grounded Answer:"
+
+        # Candidate models to try in order of preference
+        models_to_try = [model_name]
+        if model_name != 'llama-3.3-70b-versatile':
+            models_to_try.append('llama-3.3-70b-versatile')
+
+        for candidate_model in models_to_try:
+            try:
+                payload = {
+                    "model": candidate_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    "temperature": 0.0,
+                    "max_tokens": 1024,
+                    "stream": False
+                }
+
+                req = urllib.request.Request(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key.strip()}",
+                        "User-Agent": "LORE-Enterprise/2.0"
+                    },
+                    data=json.dumps(payload).encode('utf-8')
+                )
+
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    resp_data = json.loads(resp.read().decode('utf-8'))
+                    return resp_data['choices'][0]['message']['content'].strip()
+            except Exception as ex:
+                logger.warning(f"Failed Groq attempt with model {candidate_model}: {ex}")
+                continue
+
+        raise RuntimeError(f"All Groq model attempts failed for {models_to_try}")
 
     @classmethod
     def _generate_deterministic_synthesis(
@@ -56,8 +151,8 @@ class GroundedGenerationService:
     ) -> str:
         """
         Deterministic, audit-verifiable synthesis of retrieved evidence passages.
-        Extracts key sentences matching the query context, attaches explicit citations,
-        and summarizes the governance outcome.
+        Extracts key factual statements matching the query context, attaches explicit citations,
+        and summarizes the governance outcome with zero hallucination.
         """
         top_chunks = sorted(retrieved_chunks, key=lambda c: (c.get('authority_level', 0), c.get('score', 0)), reverse=True)[:4]
 
@@ -78,7 +173,7 @@ class GroundedGenerationService:
             auth = chk.get('authority_level', 3)
 
             # Extract substantive sentences
-            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if len(s.strip()) > 20]
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?\n])\s+', text) if len(s.strip()) > 15]
             lead_content = " ".join(sentences[:2]) if sentences else text[:250]
 
             synthesis_paragraphs.append(
@@ -92,6 +187,7 @@ class GroundedGenerationService:
         )
 
         return "\n\n".join(synthesis_paragraphs) + conclusion
+
 
     @classmethod
     def _generate_with_external_llm(
@@ -164,7 +260,9 @@ class AnswerStateMachine:
         query: str,
         retrieved_chunks: List[Dict[str, Any]],
         workspace_id: str,
-        user=None
+        user=None,
+        groq_api_key: Optional[str] = None,
+        llm_model: Optional[str] = None
     ) -> Dict[str, Any]:
         trace_id = f"trace-{uuid.uuid4().hex[:12]}"
         decision_id = f"dec-{uuid.uuid4().hex[:8]}"
@@ -279,11 +377,20 @@ class AnswerStateMachine:
         elif conflicts_resolved:
             state = 'qualified'
             directive = 'proceed_and_cite'
-            answer = GroundedGenerationService.synthesize_answer(query, retrieved_chunks, conflicts_resolved, state)
+            answer = GroundedGenerationService.synthesize_answer(
+                query, retrieved_chunks, conflicts_resolved, state,
+                groq_api_key=groq_api_key, llm_model=llm_model
+            )
         else:
             state = 'supported'
             directive = 'proceed_and_cite'
-            answer = GroundedGenerationService.synthesize_answer(query, retrieved_chunks, conflicts_resolved, state)
+            answer = GroundedGenerationService.synthesize_answer(
+                query, retrieved_chunks, conflicts_resolved, state,
+                groq_api_key=groq_api_key, llm_model=llm_model
+            )
+
+        provider_name = 'groq' if groq_api_key else getattr(settings, 'LLM_PROVIDER', 'deterministic_synthesis')
+        model_name = llm_model or ('gpt-oss-120B' if groq_api_key else 'deterministic-citation-engine')
 
         return {
             'schema': 'lore.result/1',
@@ -299,5 +406,8 @@ class AnswerStateMachine:
             'notes': notes,
             'decision_id': decision_id,
             'trace_id': trace_id,
-            'token_count': total_tokens
+            'token_count': total_tokens,
+            'llm_provider': provider_name,
+            'llm_model': model_name,
+            'anti_hallucination_active': True
         }

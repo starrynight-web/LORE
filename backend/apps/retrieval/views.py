@@ -1,3 +1,7 @@
+import time
+import json
+import urllib.request
+from django.conf import settings
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -67,6 +71,18 @@ def governed_query_view(request):
     except Exception as e:
         return Response({'error': str(e), 'quota_exceeded': True}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
+    # Extract dynamic user Groq API configurations
+    groq_api_key = (
+        request.data.get('groq_api_key') or 
+        request.headers.get('X-Groq-Api-Key') or 
+        getattr(settings, 'GROQ_API_KEY', '')
+    )
+    llm_model = (
+        request.data.get('llm_model') or 
+        request.headers.get('X-LLM-Model') or 
+        getattr(settings, 'GROQ_MODEL', 'gpt-oss-120B')
+    )
+
     # 1. Retrieve Candidate Chunks
     retrieval_service = HybridRetrievalService()
     candidate_chunks = retrieval_service.search(
@@ -77,12 +93,14 @@ def governed_query_view(request):
         limit=10
     )
 
-    # 2. Evaluate via 9-State Governance Machine
+    # 2. Evaluate via 9-State Governance Machine with Anti-Hallucination & Groq gpt-oss-120B
     envelope = AnswerStateMachine.evaluate(
         query=query,
         retrieved_chunks=candidate_chunks,
         workspace_id=str(workspace.id),
-        user=request.user
+        user=request.user,
+        groq_api_key=groq_api_key,
+        llm_model=llm_model
     )
 
     # 3. Record Metered Query Usage
@@ -123,3 +141,58 @@ def governed_query_view(request):
     )
 
     return Response(envelope)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def test_groq_api_view(request):
+    """
+    Validates user-supplied Groq API key and model connectivity.
+    Default target model: gpt-oss-120B.
+    """
+    api_key = request.data.get('api_key', '').strip()
+    model = request.data.get('model', 'gpt-oss-120B').strip()
+
+    if not api_key:
+        return Response({'error': 'Groq API key is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    t0 = time.time()
+    try:
+        # First verify authorization against models endpoint or test chat completion
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/models",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "User-Agent": "LORE-Enterprise/2.0"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            models_list = [m.get('id') for m in data.get('data', [])]
+
+        latency_ms = int((time.time() - t0) * 1000)
+        has_exact_model = model in models_list
+
+        return Response({
+            'status': 'connected',
+            'provider': 'groq',
+            'requested_model': model,
+            'model_available': has_exact_model,
+            'models_count': len(models_list),
+            'latency_ms': latency_ms,
+            'anti_hallucination': 'active',
+            'default_temperature': 0.0,
+            'message': f"Successfully verified Groq connection in {latency_ms}ms. Ready for anti-hallucination inference."
+        })
+    except urllib.error.HTTPError as he:
+        err_msg = f"Groq API error ({he.code}): {he.reason}"
+        try:
+            body = json.loads(he.read().decode('utf-8'))
+            if 'error' in body and 'message' in body['error']:
+                err_msg = body['error']['message']
+        except Exception:
+            pass
+        return Response({'status': 'error', 'error': err_msg}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'status': 'error', 'error': f"Connection failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+

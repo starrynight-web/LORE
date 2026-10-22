@@ -37,6 +37,26 @@ export default function RootLayout({
       <head>
         <meta name="theme-color" content="#FAF8F5" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var t = localStorage.getItem('lore_theme') || localStorage.getItem('lore-theme');
+                  if (t === 'dark') {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    document.documentElement.style.colorScheme = 'dark';
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.setAttribute('data-theme', 'light');
+                    document.documentElement.style.colorScheme = 'light';
+                  }
+                } catch(e) {}
+              })();
+            `
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col transition-colors duration-200">
         <ThemeProvider>
