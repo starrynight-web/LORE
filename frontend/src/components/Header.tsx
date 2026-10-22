@@ -9,10 +9,12 @@ interface HeaderProps {
   currentOrg: Organization | null;
   currentWorkspace: Workspace | null;
   workspaces: Workspace[];
+  isGuestMode?: boolean;
   onSelectWorkspace: (ws: Workspace) => void;
   onOpenUpload: () => void;
   onSearchClick: () => void;
   onLogout: () => void;
+  onOpenAuthModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,10 +22,12 @@ export const Header: React.FC<HeaderProps> = ({
   currentOrg,
   currentWorkspace,
   workspaces,
+  isGuestMode = false,
   onSelectWorkspace,
   onOpenUpload,
   onSearchClick,
-  onLogout
+  onLogout,
+  onOpenAuthModal
 }) => {
   const [isWsDropdownOpen, setIsWsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -124,28 +128,46 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Upload Document</span>
         </button>
 
-        {/* User profile & Logout */}
-        <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
-              {getInitials(currentUser)}
+        {/* User profile / Guest Mode */}
+        {isGuestMode ? (
+          <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Guest Mode (All Features Active)</span>
             </div>
-            <div className="hidden md:block text-left">
-              <div className="text-xs font-medium text-white">{getDisplayName(currentUser)}</div>
-              <div className="text-[10px] text-indigo-400 font-semibold capitalize">
-                {currentOrg?.role || 'Member'}
+            {onOpenAuthModal && (
+              <button
+                onClick={onOpenAuthModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Sign In / Switch Persona</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                {getInitials(currentUser)}
+              </div>
+              <div className="hidden md:block text-left">
+                <div className="text-xs font-medium text-white">{getDisplayName(currentUser)}</div>
+                <div className="text-[10px] text-indigo-400 font-semibold capitalize">
+                  {currentOrg?.role || 'Member'}
+                </div>
               </div>
             </div>
-          </div>
 
-          <button
-            onClick={onLogout}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
-            title="Sign Out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
+            <button
+              onClick={onLogout}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

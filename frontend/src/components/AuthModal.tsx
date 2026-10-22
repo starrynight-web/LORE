@@ -11,15 +11,17 @@ import {
   Layers, 
   CheckCircle2, 
   AlertCircle,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 import { api, User as UserType, Organization } from '@/lib/api';
 
 interface AuthModalProps {
-  onSuccess: (data: { user: UserType; organizations: Organization[] }) => void;
+  onSuccess: (data: { user: UserType; organizations?: Organization[] }) => void;
+  onClose?: () => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
   const [mode, setMode] = useState<'signin' | 'register' | 'demo'>('demo');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -140,6 +142,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
                 <p className="text-xs text-slate-400">Governed Multi-Tenant Knowledge Workspace</p>
               </div>
             </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                title="Continue as Guest"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
 
           {/* Mode Switcher */}
@@ -355,7 +366,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
 
         {/* Footer */}
         <div className="p-4 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-          <span>Tenant Isolation Guaranteed by PostgreSQL & Qdrant Payloads</span>
+          <div className="flex items-center gap-2">
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Continue as Guest</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <span className="hidden sm:inline">Tenant Isolation Active</span>
+          </div>
           <span className="text-emerald-400 flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Zero Data Leakage

@@ -29,6 +29,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('overview');
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -62,10 +64,11 @@ export default function Home() {
     }
   };
 
-  const handleAuthSuccess = async (data: { user: UserType; organizations?: Organization[] }) => {
+  const handleAuthSuccess = async (data: { user: UserType; organizations?: Organization[] }, isGuest: boolean = false) => {
     setIsLoading(true);
     setCurrentUser(data.user);
     setIsAuthenticated(true);
+    setIsGuestMode(isGuest);
     try {
       const wsList = await api.getWorkspaces();
       setWorkspaces(wsList);
@@ -95,12 +98,7 @@ export default function Home() {
   const handleLogout = async () => {
     await api.logout();
     setIsAuthenticated(false);
-    setCurrentUser(null);
-    setCurrentOrg(null);
-    setCurrentWorkspace(null);
-    setWorkspaces([]);
-    setDocuments([]);
-    setJobs([]);
+    setIsAuthModalOpen(true);
   };
 
   useEffect(() => {
@@ -108,10 +106,17 @@ export default function Home() {
       setIsLoading(true);
       try {
         const meData = await api.me();
-        await handleAuthSuccess(meData);
+        await handleAuthSuccess(meData, false);
       } catch (err) {
-        // No active session or token expired; prompt with AuthModal
-        setIsAuthenticated(false);
+        // Automatic Guest Mode: Login as demo admin to enable full workspace access with zero friction
+        try {
+          const guestRes = await api.login('admin@northstar.demo', 'Northstar2026!');
+          await handleAuthSuccess(guestRes, true);
+        } catch (guestErr) {
+          console.error("Guest mode auto-connect error:", guestErr);
+          setIsAuthenticated(false);
+          setIsAuthModalOpen(true);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -163,6 +168,7 @@ export default function Home() {
           currentOrg={currentOrg}
           currentWorkspace={currentWorkspace}
           workspaces={workspaces}
+          isGuestMode={isGuestMode}
           onSelectWorkspace={(ws) => {
             setCurrentWorkspace(ws);
             loadWorkspaceData(ws.id);
@@ -170,6 +176,7 @@ export default function Home() {
           onOpenUpload={() => setIsUploadModalOpen(true)}
           onSearchClick={() => setActiveTab('rag')}
           onLogout={handleLogout}
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
         />
 
         {/* Viewport */}
@@ -248,9 +255,15 @@ export default function Home() {
         </main>
       </div>
 
-      {/* Auth Modal (shown when unauthenticated or after sign out) */}
-      {!isAuthenticated && (
-        <AuthModal onSuccess={handleAuthSuccess} />
+      {/* Auth Modal (shown when requested or switching profiles) */}
+      {isAuthModalOpen && (
+        <AuthModal
+          onSuccess={(data) => {
+            setIsAuthModalOpen(false);
+            handleAuthSuccess(data, false);
+          }}
+          onClose={() => setIsAuthModalOpen(false)}
+        />
       )}
 
       {/* Upload Modal */}
