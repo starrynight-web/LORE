@@ -15,7 +15,7 @@ Adheres strictly to docs/enterprise/docs/lore.md:
 import re
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import List, Dict, Any, Optional, Tuple
 from django.utils import timezone
 from apps.governance.models import SourcePermission, ScopedException, EvidenceRequirement, ConflictRecord, AccessLevel
@@ -290,7 +290,7 @@ class TemporalValidityLayer:
             ref_time = timezone.now()
 
         if timezone.is_naive(ref_time):
-            ref_time = timezone.make_aware(ref_time, timezone.utc)
+            ref_time = timezone.make_aware(ref_time, dt_timezone.utc)
 
         doc_ids = list({c.get('document_id') for c in chunks if c.get('document_id')})
         valid_uuids = []
@@ -324,7 +324,7 @@ class TemporalValidityLayer:
             eff = doc.effective_date
             if eff:
                 if timezone.is_naive(eff):
-                    eff = timezone.make_aware(eff, timezone.utc)
+                    eff = timezone.make_aware(eff, dt_timezone.utc)
                 if eff > ref_time:
                     temporal_notes.append(
                         f"Document '{doc.title}' is not yet effective (effective {eff.strftime('%Y-%m-%d')}). Excluded from active context."
@@ -335,7 +335,7 @@ class TemporalValidityLayer:
             exp = doc.expiration_date
             if exp:
                 if timezone.is_naive(exp):
-                    exp = timezone.make_aware(exp, timezone.utc)
+                    exp = timezone.make_aware(exp, dt_timezone.utc)
                 if exp < ref_time:
                     temporal_notes.append(
                         f"Document '{doc.title}' expired on {exp.strftime('%Y-%m-%d')}. Excluded."
@@ -348,7 +348,7 @@ class TemporalValidityLayer:
             upd = doc.updated_at
             if upd:
                 if timezone.is_naive(upd):
-                    upd = timezone.make_aware(upd, timezone.utc)
+                    upd = timezone.make_aware(upd, dt_timezone.utc)
                 if (ref_time - upd) > stale_threshold:
                     has_stale_data = True
                     temporal_notes.append(
@@ -476,8 +476,8 @@ class EvidenceSufficiencyLayer:
 
         # 2. Statutory Land & Legal Deed Checks
         elif dt == 'statutory_compliance':
-            has_deed = any('saf kabla' in all_text or 'deed' in all_text or 'দলিল' in all_text or 'খতিয়ান' in all_text or 'খতিয়ান' in all_text)
-            has_schedule = any('schedule' in all_text or 'তফসিল' in all_text or 'মৌজা' in all_text)
+            has_deed = any(term in all_text for term in ['saf kabla', 'deed', 'দলিল', 'খতিয়ান', 'খতিয়ান'])
+            has_schedule = any(term in all_text for term in ['schedule', 'তফসিল', 'মৌজা'])
             if not has_deed:
                 evidence_missing.append({
                     'requirement': 'statutory_registered_deed',

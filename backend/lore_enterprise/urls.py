@@ -30,7 +30,7 @@ def readiness_check(request):
         db_ok = False
 
     vstore = QdrantVectorStore()
-    qdrant_ok = bool(vstore.client is not None)
+    qdrant_ok = vstore.client is not None
 
     is_ready = db_ok and qdrant_ok
     status_code = 200 if is_ready else 503

@@ -215,3 +215,53 @@ class OrganizationViewSet(viewsets.ModelViewSet):
             target_mem.role = new_role
             target_mem.save(update_fields=['role'])
             return Response(OrganizationMembershipSerializer(target_mem).data)
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def scim_users_view(request):
+    """SCIM 2.0 /Users endpoint."""
+    from apps.identity.scim import SCIMService
+    org_id = request.query_params.get('org_id')
+    if request.method == 'GET':
+        return Response(SCIMService.list_users(org_id=org_id))
+    elif request.method == 'POST':
+        try:
+            user_data = SCIMService.create_user(request.data, org_id=org_id)
+            return Response(user_data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'schemas': ['urn:ietf:params:scim:api:messages:2.0:Error'], 'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def scim_user_detail_view(request, user_id: int):
+    """SCIM 2.0 /Users/{id} endpoint."""
+    from apps.identity.scim import SCIMService
+    try:
+        if request.method == 'GET':
+            return Response(SCIMService.serialize_user(User.objects.get(id=user_id)))
+        elif request.method in ('PUT', 'PATCH'):
+            return Response(SCIMService.update_user(user_id, request.data))
+        elif request.method == 'DELETE':
+            SCIMService.deactivate_user(user_id)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+    except User.DoesNotExist:
+        return Response({'schemas': ['urn:ietf:params:scim:api:messages:2.0:Error'], 'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def scim_groups_view(request):
+    """SCIM 2.0 /Groups endpoint."""
+    from apps.identity.scim import SCIMService
+    org_id = request.query_params.get('org_id')
+    return Response(SCIMService.list_groups(org_id=org_id))
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def scim_group_sync_view(request, workspace_id: str):
+    """SCIM 2.0 group membership sync to workspace roles."""
+    from apps.identity.scim import SCIMService
+    member_user_ids = request.data.get('member_user_ids', [])
+    role = request.data.get('role', 'contributor')
+    res = SCIMService.sync_group_members(workspace_id=workspace_id, member_user_ids=member_user_ids, role=role)
+    return Response(res)
+

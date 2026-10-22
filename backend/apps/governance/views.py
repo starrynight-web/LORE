@@ -62,7 +62,14 @@ class ReviewQueueViewSet(viewsets.ReadOnlyModelViewSet):
     def approve(self, request, pk=None):
         doc = self.get_object()
         doc.status = 'ready'
-        doc.save()
+        doc.save(update_fields=['status'])
+
+        # Invalidate workspace cache so newly approved document is live immediately
+        try:
+            from apps.retrieval.cache import TenantSafeCacheService
+            TenantSafeCacheService.invalidate_document(str(doc.workspace_id), str(doc.id))
+        except Exception:
+            pass
 
         user = request.user if request.user and request.user.is_authenticated else None
         AuditEvent.objects.create(
@@ -80,7 +87,14 @@ class ReviewQueueViewSet(viewsets.ReadOnlyModelViewSet):
     def reject(self, request, pk=None):
         doc = self.get_object()
         doc.status = 'quarantined'
-        doc.save()
+        doc.save(update_fields=['status'])
+
+        # Invalidate workspace cache to remove unapproved content
+        try:
+            from apps.retrieval.cache import TenantSafeCacheService
+            TenantSafeCacheService.invalidate_document(str(doc.workspace_id), str(doc.id))
+        except Exception:
+            pass
 
         user = request.user if request.user and request.user.is_authenticated else None
         AuditEvent.objects.create(
