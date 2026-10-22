@@ -4,8 +4,6 @@ import React, { useState } from 'react';
 import { 
   AlertTriangle, 
   CheckCircle, 
-  XCircle, 
-  Shield, 
   FileText, 
   RotateCw,
   Eye,
@@ -13,6 +11,7 @@ import {
   X
 } from 'lucide-react';
 import { SourceDocument, api } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface ReviewQueueViewProps {
   documents: SourceDocument[];
@@ -25,6 +24,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
   onRefresh,
   onInspectDocument
 }) => {
+  const { t } = useI18n();
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const handleApprove = async (docId: string) => {
@@ -53,53 +53,83 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-400" />
-            <span>Human-in-the-Loop Review Queue</span>
+          <h2 className="text-lg sm:text-xl font-extrabold flex items-center gap-2 text-[var(--text-primary)]">
+            <AlertTriangle className="w-5 h-5 text-[var(--warning)]" />
+            <span>{t('review.title')}</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Documents routed here have low OCR confidence (&lt; 70%), conflicting claims, or require human promotion to live context.
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            {t('review.subtitle')}
           </p>
         </div>
         <button
           onClick={onRefresh}
-          className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3.5 py-2 rounded-lg text-xs font-semibold border border-slate-700 transition cursor-pointer"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer active:scale-95 shadow-sm"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+            color: 'var(--text-primary)',
+          }}
         >
-          <RotateCw className="w-3.5 h-3.5" />
-          <span>Refresh Queue</span>
+          <RotateCw className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+          <span>{t('common.refresh')}</span>
         </button>
       </div>
 
       <div className="space-y-4">
         {documents.length === 0 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500 text-sm">
-            <CheckCircle className="w-8 h-8 text-emerald-500/40 mx-auto mb-2" />
-            <span>All documents are verified. No items currently require human review.</span>
+          <div 
+            className="rounded-2xl p-12 text-center border shadow-sm"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            <CheckCircle className="w-8 h-8 mx-auto mb-2 text-[var(--success)] opacity-80" />
+            <h3 className="text-sm font-bold text-[var(--text-primary)]">{t('review.empty_title')}</h3>
+            <p className="text-xs text-[var(--text-muted)] mt-1">{t('review.empty_desc')}</p>
           </div>
         ) : (
           documents.map((doc) => (
             <div
               key={doc.id}
-              className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-700 transition"
+              className="rounded-2xl p-5 border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-color)',
+              }}
             >
               <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <div 
+                  className="w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{
+                    backgroundColor: 'var(--warning-bg)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--warning)',
+                  }}
+                >
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-white text-sm">{doc.title}</h4>
-                  <div className="text-xs text-slate-400 mt-0.5 space-x-2">
+                  <h4 className="font-bold text-sm text-[var(--text-primary)]">{doc.title}</h4>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5 space-x-2">
                     <span>{doc.original_filename}</span>
                     <span>•</span>
                     <span>Pages: {doc.page_count}</span>
                     <span>•</span>
-                    <span className="font-mono text-amber-400">
+                    <span className="font-mono font-bold text-[var(--warning)]">
                       OCR Confidence: {(doc.ocr_confidence * 100).toFixed(1)}%
                     </span>
                   </div>
-                  <div className="mt-2 text-xs text-slate-300 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/40 inline-block">
+                  <div 
+                    className="mt-2 text-xs px-3 py-1.5 rounded-xl border inline-block"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
                     <b>Routing Reason:</b> Rule X001 flagged OCR confidence &lt; 70% for human inspection.
                   </div>
                 </div>
@@ -108,26 +138,40 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
                   onClick={() => onInspectDocument(doc)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-primary)',
+                  }}
                 >
-                  <Eye className="w-3.5 h-3.5" />
+                  <Eye className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
                   <span>Inspect Scan</span>
                 </button>
                 <button
                   onClick={() => handleApprove(doc.id)}
                   disabled={processingId === doc.id}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer active:scale-95 disabled:opacity-50"
+                  style={{
+                    backgroundColor: 'var(--brand-accent)',
+                    color: 'var(--cta-text)',
+                  }}
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>Approve & Promote</span>
+                  <span>{t('review.approve_btn')}</span>
                 </button>
                 <button
                   onClick={() => handleReject(doc.id)}
                   disabled={processingId === doc.id}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer active:scale-95 disabled:opacity-50"
+                  style={{
+                    backgroundColor: 'var(--error-bg)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--error)',
+                  }}
                 >
                   <X className="w-3.5 h-3.5" />
-                  <span>Reject</span>
+                  <span>{t('review.quarantine_btn')}</span>
                 </button>
               </div>
             </div>

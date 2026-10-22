@@ -1,26 +1,163 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* =========================================================================
+       PARROT & CREAM — LIGHT THEME (EXACT TOKENS)
+       ========================================================================= */
+    --bg-primary: #FAF8F5;          /* Main page canvas */
+    --bg-surface: #FFFFFF;          /* Cards, dialogs, navigation surfaces */
+    --bg-surface-soft: #F3EFE6;     /* Inputs, selected controls, secondary panels */
+    --border-color: #E6DFD1;        /* Borders, dividers, outlines */
+    --border-focus: #15803D;        /* Keyboard focus */
+    --text-primary: #151F16;        /* Main headings and body content */
+    --text-secondary: #3B4A3D;      /* Secondary text and labels */
+    --text-muted: #596B5B;          /* Metadata and supporting content */
+    --brand-accent: #15803D;        /* Primary actions and active states */
+    --brand-accent-hover: #126E34;  /* Hover state for primary actions */
+    --accent-deep: #0F5132;         /* Deep green emphasis */
+    --accent-parrot: #1EA955;       /* Restrained brand highlight */
+    --accent-cream: #FAF8F5;        /* Cream accent surface */
+    --accent-cream-soft: #F3EFE6;   /* Soft cream accent */
+    --accent-light: rgba(21, 128, 61, 0.08); /* Selected row or navigation wash */
+    --cta-text: #FFFFFF;            /* Text on primary green actions */
+    --success: #15803D;             /* Positive status */
+    --success-bg: #EAF7EE;          /* Positive status surface */
+    --warning: #B45309;             /* Warning status */
+    --warning-bg: #FEF3C7;          /* Warning surface */
+    --error: #DC2626;               /* Error and destructive actions */
+    --error-bg: #FEE2E2;            /* Error surface */
+
+    /* Semantic Additions */
+    --input-bg: #FFFFFF;
+    --input-border: #DCD4C4;
+    --modal-overlay: rgba(21, 31, 22, 0.45);
+    --table-header-bg: #F3EFE6;
+    --table-row-hover: rgba(21, 128, 61, 0.04);
+    --table-row-selected: rgba(21, 128, 61, 0.09);
+    --badge-neutral-bg: #EFEAE0;
+    --badge-neutral-text: #3B4A3D;
+    --badge-neutral-border: #DCD4C4;
+    --shadow-sm: 0 1px 2px 0 rgba(21, 31, 22, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(21, 31, 22, 0.07), 0 2px 4px -2px rgba(21, 31, 22, 0.05);
+    --shadow-lg: 0 10px 15px -3px rgba(21, 31, 22, 0.08), 0 4px 6px -4px rgba(21, 31, 22, 0.05);
+    --shadow-xl: 0 20px 25px -5px rgba(21, 31, 22, 0.1), 0 8px 10px -6px rgba(21, 31, 22, 0.06);
+
+    --scrollbar-track: #F3EFE6;
+    --scrollbar-thumb: #D0C6B3;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    /* =========================================================================
+       OBSIDIAN & EMERALD — DARK THEME (EXACT TOKENS)
+       ========================================================================= */
+    --bg-primary: #0C130E;          /* Main page canvas */
+    --bg-surface: #121E16;          /* Cards, dialogs, navigation surfaces */
+    --bg-surface-soft: #18281E;     /* Inputs, selected controls, secondary panels */
+    --border-color: #243B2D;        /* Borders, dividers, outlines */
+    --border-focus: #22C55E;        /* Keyboard focus */
+    --text-primary: #F8F9F5;        /* Main headings and body content */
+    --text-secondary: #C8D6CA;      /* Secondary text and labels */
+    --text-muted: #8FA693;          /* Metadata and supporting content */
+    --brand-accent: #16A34A;        /* Primary actions and active states */
+    --brand-accent-hover: #15803D;  /* Hover state for primary actions */
+    --accent-deep: #22C55E;         /* Bright green emphasis */
+    --accent-parrot: #1EA955;       /* Brand highlight */
+    --accent-cream: #F8F9F5;        /* Light text accent */
+    --accent-cream-soft: #18281E;   /* Dark soft surface */
+    --accent-light: rgba(22, 163, 74, 0.12); /* Selected row or navigation wash */
+    --cta-text: #FFFFFF;            /* Text on primary green actions */
+    --success: #16A34A;             /* Positive status */
+    --success-bg: #064E3B;          /* Positive status surface */
+    --warning: #F59E0B;             /* Warning status */
+    --warning-bg: #78350F;          /* Warning surface */
+    --error: #EF4444;               /* Error and destructive actions */
+    --error-bg: #7F1D1D;            /* Error surface */
+
+    /* Semantic Additions */
+    --input-bg: #142219;
+    --input-border: #243B2D;
+    --modal-overlay: rgba(0, 0, 0, 0.72);
+    --table-header-bg: #15241B;
+    --table-row-hover: rgba(22, 163, 74, 0.07);
+    --table-row-selected: rgba(22, 163, 74, 0.14);
+    --badge-neutral-bg: #18281E;
+    --badge-neutral-text: #C8D6CA;
+    --badge-neutral-border: #243B2D;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
+
+    --scrollbar-track: #0C130E;
+    --scrollbar-thumb: #243B2D;
+
+    color-scheme: dark;
   }
 }
 
+/* =========================================================================
+   GLOBAL RESET & TYPOGRAPHY SYSTEM
+   ========================================================================= */
+html {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans, "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Bangla Typography Optimization: Hind Siliguri / Noto Sans Bengali with 1.62 line-height */
+html[lang="bn"] body,
+[lang="bn"] {
+  font-family: var(--font-bangla, "Hind Siliguri", "Noto Sans Bengali", "Tiro Bangla", "Kalpurush", system-ui, sans-serif);
+  line-height: 1.62;
+}
+
+/* Monospace metadata, citations, IDs */
+.font-mono,
+code,
+pre,
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-accent);
+}
+
+/* Accessible focus ring */
+*:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* Theme transition rule */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { ShieldCheck, RotateCw, Clock, User, Hash } from 'lucide-react';
+import { ShieldCheck, RotateCw } from 'lucide-react';
 import { AuditEvent } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface AuditViewProps {
   events: AuditEvent[];
@@ -13,70 +14,104 @@ export const AuditView: React.FC<AuditViewProps> = ({
   events,
   onRefresh
 }) => {
+  const { t } = useI18n();
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-indigo-400" />
-            <span>Immutable Governance Audit Ledger</span>
+          <h2 className="text-lg sm:text-xl font-extrabold flex items-center gap-2 text-[var(--text-primary)]">
+            <ShieldCheck className="w-5 h-5 text-[var(--brand-accent)]" />
+            <span>{t('audit.title')}</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Tamper-evident record of all uploads, OCR completions, retrieval queries, and governance decisions.
+          <p className="text-xs text-[var(--text-muted)] mt-1">
+            {t('audit.subtitle')}
           </p>
         </div>
         <button
           onClick={onRefresh}
-          className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3.5 py-2 rounded-lg text-xs font-semibold border border-slate-700 transition cursor-pointer"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer active:scale-95 shadow-sm"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+            color: 'var(--text-primary)',
+          }}
         >
-          <RotateCw className="w-3.5 h-3.5" />
-          <span>Refresh Ledger</span>
+          <RotateCw className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+          <span>{t('common.refresh')}</span>
         </button>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-        <table className="w-full text-left text-sm text-slate-300">
-          <thead className="bg-slate-800/60 text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-            <tr>
-              <th className="px-6 py-3.5">Timestamp</th>
-              <th className="px-4 py-3.5">Event Type</th>
-              <th className="px-4 py-3.5">Actor</th>
-              <th className="px-4 py-3.5">Target</th>
-              <th className="px-6 py-3.5">Details</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800 font-mono text-xs">
-            {events.length === 0 ? (
+      <div 
+        className="rounded-2xl border overflow-hidden shadow-sm"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border-color)',
+        }}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs sm:text-sm">
+            <thead 
+              className="text-xs font-bold uppercase tracking-wider border-b"
+              style={{
+                backgroundColor: 'var(--table-header-bg)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-muted)',
+              }}
+            >
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-slate-500 font-sans text-sm">
-                  No audit events recorded yet.
-                </td>
+                <th className="px-5 py-3.5">{t('audit.timestamp')}</th>
+                <th className="px-4 py-3.5">{t('audit.action')}</th>
+                <th className="px-4 py-3.5">{t('audit.actor')}</th>
+                <th className="px-4 py-3.5">{t('audit.resource')}</th>
+                <th className="px-5 py-3.5">{t('audit.details')}</th>
               </tr>
-            ) : (
-              events.map((ev) => (
-                <tr key={ev.id} className="hover:bg-slate-800/40 transition">
-                  <td className="px-6 py-3.5 text-slate-400 whitespace-nowrap">
-                    {new Date(ev.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <span className="px-2 py-0.5 rounded font-bold text-[11px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                      {ev.event_type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5 text-slate-300 font-sans">
-                    {ev.username || 'System'}
-                  </td>
-                  <td className="px-4 py-3.5 text-slate-400">
-                    {ev.target_type} ({ev.target_id.substring(0, 8)}...)
-                  </td>
-                  <td className="px-6 py-3.5 text-slate-300 truncate max-w-xs">
-                    {JSON.stringify(ev.details)}
+            </thead>
+            <tbody className="divide-y font-mono text-xs" style={{ borderColor: 'var(--border-color)' }}>
+              {events.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-sm font-sans text-[var(--text-muted)]">
+                    No audit events recorded yet.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                events.map((ev) => (
+                  <tr 
+                    key={ev.id} 
+                    className="transition-colors duration-150"
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--table-row-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <td className="px-5 py-3.5 text-[var(--text-muted)] whitespace-nowrap">
+                      {new Date(ev.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span 
+                        className="px-2 py-0.5 rounded font-bold text-[11px] border"
+                        style={{
+                          backgroundColor: 'var(--accent-light)',
+                          borderColor: 'var(--border-color)',
+                          color: 'var(--brand-accent)',
+                        }}
+                      >
+                        {ev.event_type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-[var(--text-primary)] font-sans font-medium">
+                      {ev.username || 'System'}
+                    </td>
+                    <td className="px-4 py-3.5 text-[var(--text-muted)]">
+                      {ev.target_type} ({ev.target_id.substring(0, 8)}...)
+                    </td>
+                    <td className="px-5 py-3.5 text-[var(--text-secondary)] truncate max-w-xs font-mono">
+                      {JSON.stringify(ev.details)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

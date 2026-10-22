@@ -152,7 +152,13 @@ export default function Home() {
   const activeJobsCount = jobs.filter(j => j.status !== 'ready' && j.status !== 'failed').length;
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+    <div 
+      className="flex h-screen overflow-hidden transition-colors duration-200"
+      style={{
+        backgroundColor: 'var(--bg-primary)',
+        color: 'var(--text-primary)',
+      }}
+    >
       {/* Sidebar */}
       <Sidebar
         activeTab={activeTab}
@@ -180,11 +186,22 @@ export default function Home() {
         />
 
         {/* Viewport */}
-        <main className="flex-1 overflow-y-auto p-8 bg-slate-950/60">
+        <main 
+          className="flex-1 overflow-y-auto p-6 md:p-8 transition-colors duration-200"
+          style={{
+            backgroundColor: 'var(--bg-primary)',
+          }}
+        >
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3">
-              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-              <div className="text-sm font-semibold text-white">Connecting to LORE Enterprise Grid...</div>
+            <div className="flex flex-col items-center justify-center h-full space-y-3">
+              <div 
+                className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
+                style={{
+                  borderColor: 'var(--brand-accent)',
+                  borderTopColor: 'transparent',
+                }}
+              />
+              <div className="text-xs font-semibold text-[var(--text-secondary)]">Connecting to LORE Enterprise Grid...</div>
             </div>
           ) : (
             <>

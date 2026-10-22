@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, ChevronDown, Building2, User, Search, LogOut, Check } from 'lucide-react';
 import { Workspace, Organization, User as UserType } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
+import { ThemeToggle, LanguageToggle } from '@/components/PremiumToggles';
 
 interface HeaderProps {
   currentUser: UserType | null;
@@ -29,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onOpenAuthModal
 }) => {
+  const { t } = useI18n();
   const [isWsDropdownOpen, setIsWsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -59,29 +62,49 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-16 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6 z-10 sticky top-0">
-      {/* Workspace Switcher */}
+    <header 
+      className="h-16 border-b flex items-center justify-between px-6 z-20 sticky top-0 transition-colors duration-200"
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        borderColor: 'var(--border-color)',
+      }}
+    >
+      {/* Left: Workspace Switcher */}
       <div className="flex items-center gap-4 relative" ref={dropdownRef}>
         <div 
           onClick={() => setIsWsDropdownOpen(!isWsDropdownOpen)}
-          className="flex items-center gap-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 px-3 py-1.5 rounded-lg cursor-pointer transition select-none"
+          className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl cursor-pointer border transition-all duration-200 select-none shadow-sm"
+          style={{
+            backgroundColor: 'var(--bg-surface-soft)',
+            borderColor: isWsDropdownOpen ? 'var(--brand-accent)' : 'var(--border-color)',
+          }}
         >
-          <Building2 className="w-4 h-4 text-indigo-400" />
+          <Building2 className="w-4 h-4 text-[var(--brand-accent)]" />
           <div className="text-left">
-            <div className="text-xs font-semibold text-white">
-              {currentWorkspace ? currentWorkspace.name : 'Select Workspace'}
+            <div className="text-xs font-semibold text-[var(--text-primary)]">
+              {currentWorkspace ? currentWorkspace.name : t('header.select_workspace')}
             </div>
-            <div className="text-[10px] text-slate-400">
-              {currentOrg ? currentOrg.name : 'Organization'}
+            <div className="text-[10px] text-[var(--text-muted)]">
+              {currentOrg ? currentOrg.name : t('header.organization')}
             </div>
           </div>
-          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-1 transition-transform ${isWsDropdownOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown 
+            className={`w-3.5 h-3.5 text-[var(--text-muted)] ml-1 transition-transform duration-200 ${
+              isWsDropdownOpen ? 'rotate-180' : ''
+            }`} 
+          />
         </div>
 
         {isWsDropdownOpen && (
-          <div className="absolute top-12 left-0 w-72 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl py-2 z-50">
-            <div className="px-3 py-1.5 text-[10px] uppercase font-semibold text-slate-400 tracking-wider">
-              Available Workspaces
+          <div 
+            className="absolute top-12 left-0 w-72 border rounded-xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">
+              {t('header.available_workspaces')}
             </div>
             <div className="max-h-60 overflow-y-auto">
               {workspaces.map((ws) => {
@@ -93,15 +116,19 @@ export const Header: React.FC<HeaderProps> = ({
                       onSelectWorkspace(ws);
                       setIsWsDropdownOpen(false);
                     }}
-                    className={`w-full px-3 py-2 text-left flex items-center justify-between transition cursor-pointer ${
-                      isSelected ? 'bg-indigo-600/20 text-indigo-300' : 'text-slate-300 hover:bg-slate-800'
-                    }`}
+                    className="w-full px-3 py-2 text-left flex items-center justify-between transition-colors duration-150 cursor-pointer"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--accent-light)' : 'transparent',
+                      color: isSelected ? 'var(--brand-accent)' : 'var(--text-primary)',
+                    }}
                   >
                     <div>
-                      <div className="text-xs font-medium">{ws.name}</div>
-                      <div className="text-[10px] text-slate-400">{ws.organization_name} • Role: {ws.role}</div>
+                      <div className="text-xs font-semibold">{ws.name}</div>
+                      <div className="text-[10px] text-[var(--text-muted)]">
+                        {ws.organization_name} • {t('header.role')}: {ws.role}
+                      </div>
                     </div>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                    {isSelected && <Check className="w-3.5 h-3.5 text-[var(--brand-accent)]" />}
                   </button>
                 );
               })}
@@ -110,50 +137,97 @@ export const Header: React.FC<HeaderProps> = ({
         )}
       </div>
 
-      {/* Global Quick Search & Actions */}
+      {/* Middle & Right: Search, Upload, Toggles, User Profile */}
       <div className="flex items-center gap-3">
+        {/* Quick Search */}
         <div 
           onClick={onSearchClick}
-          className="flex items-center gap-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-3.5 py-1.5 rounded-lg text-sm text-slate-400 cursor-pointer w-64 transition"
+          className="hidden sm:flex items-center gap-2 border px-3.5 py-1.5 rounded-xl text-sm cursor-pointer w-56 md:w-64 transition-all duration-200 shadow-sm"
+          style={{
+            backgroundColor: 'var(--bg-surface-soft)',
+            borderColor: 'var(--border-color)',
+            color: 'var(--text-muted)',
+          }}
         >
-          <Search className="w-4 h-4 text-slate-400" />
-          <span>Ask or search knowledge...</span>
+          <Search className="w-4 h-4 text-[var(--text-muted)]" />
+          <span className="truncate text-xs">{t('header.search_placeholder')}</span>
         </div>
 
+        {/* Upload Action */}
         <button
           onClick={onOpenUpload}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-lg text-sm font-semibold shadow-md shadow-indigo-600/20 transition cursor-pointer"
+          className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-95"
+          style={{
+            backgroundColor: 'var(--brand-accent)',
+            color: 'var(--cta-text)',
+          }}
         >
-          <Upload className="w-4 h-4" />
-          <span>Upload Document</span>
+          <Upload className="w-3.5 h-3.5" />
+          <span>{t('header.upload_button')}</span>
         </button>
+
+        {/* Language Toggle (Bangla / English) */}
+        <div className="pl-1">
+          <LanguageToggle />
+        </div>
+
+        {/* Custom Sliding-Pill Theme Toggle (78x40px desktop, 68x36px compact) */}
+        <div className="pl-1">
+          <ThemeToggle />
+        </div>
 
         {/* User profile / Guest Mode */}
         {isGuestMode ? (
-          <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Guest Mode (All Features Active)</span>
+          <div 
+            className="flex items-center gap-2.5 pl-3 border-l"
+            style={{ borderColor: 'var(--border-color)' }}
+          >
+            <div 
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
+              style={{
+                backgroundColor: 'var(--accent-light)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--brand-accent)',
+              }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] animate-pulse" />
+              <span className="text-[11px] font-semibold">{t('header.guest_mode')}</span>
             </div>
             {onOpenAuthModal && (
               <button
                 onClick={onOpenAuthModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--bg-surface-soft)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-primary)',
+                }}
               >
-                <User className="w-3.5 h-3.5" />
-                <span>Sign In / Switch Persona</span>
+                <User className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                <span>{t('header.sign_in')}</span>
               </button>
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
+          <div 
+            className="flex items-center gap-3 pl-3 border-l"
+            style={{ borderColor: 'var(--border-color)' }}
+          >
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+              <div 
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
+                style={{
+                  backgroundColor: 'var(--brand-accent)',
+                  color: 'var(--cta-text)',
+                }}
+              >
                 {getInitials(currentUser)}
               </div>
               <div className="hidden md:block text-left">
-                <div className="text-xs font-medium text-white">{getDisplayName(currentUser)}</div>
-                <div className="text-[10px] text-indigo-400 font-semibold capitalize">
+                <div className="text-xs font-semibold text-[var(--text-primary)]">
+                  {getDisplayName(currentUser)}
+                </div>
+                <div className="text-[10px] text-[var(--brand-accent)] font-medium capitalize">
                   {currentOrg?.role || 'Member'}
                 </div>
               </div>
@@ -161,8 +235,11 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={onLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
-              title="Sign Out"
+              className="p-1.5 rounded-lg transition-colors cursor-pointer hover:text-red-500"
+              style={{
+                color: 'var(--text-muted)',
+              }}
+              title={t('header.sign_out')}
             >
               <LogOut className="w-4 h-4" />
             </button>

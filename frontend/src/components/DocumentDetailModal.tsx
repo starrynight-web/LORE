@@ -4,18 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, 
   FileText, 
-  Layers, 
-  Hash, 
   Eye, 
   RefreshCw, 
   Shield, 
-  CheckCircle2, 
-  ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Sparkles
 } from 'lucide-react';
 import { SourceDocument, DocumentPage, api } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface DocumentDetailModalProps {
   document: SourceDocument | null;
@@ -28,7 +24,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   onClose,
   onReprocessSuccess
 }) => {
-  const [activeTab, setActiveTab] = useState<'text' | 'pages' | 'chunks'>('text');
+  const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState<'text' | 'pages'>('text');
   const [pages, setPages] = useState<DocumentPage[]>([]);
   const [selectedPageIndex, setSelectedPageIndex] = useState(0);
   const [selectedBox, setSelectedBox] = useState<any | null>(null);
@@ -66,27 +63,58 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   const currentPage = pages[selectedPageIndex] || null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col h-[90vh] overflow-hidden">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ backgroundColor: 'var(--modal-overlay)' }}
+    >
+      <div 
+        className="w-full max-w-5xl rounded-2xl border shadow-2xl flex flex-col h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border-color)',
+        }}
+      >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div 
+          className="px-6 py-4 border-b flex items-center justify-between"
+          style={{ 
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)' 
+          }}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center flex-shrink-0">
+            <div 
+              className="w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0"
+              style={{
+                backgroundColor: 'var(--accent-light)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--brand-accent)',
+              }}
+            >
               <FileText className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-wide">{document.title}</h2>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase">
+                <h2 className="text-sm sm:text-base font-bold text-[var(--text-primary)] tracking-wide">
+                  {document.title}
+                </h2>
+                <span 
+                  className="text-[10px] font-bold px-2 py-0.5 rounded border uppercase"
+                  style={{
+                    backgroundColor: 'var(--accent-light)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--brand-accent)',
+                  }}
+                >
                   {document.document_type}
                 </span>
               </div>
-              <div className="text-xs text-slate-400 font-mono mt-0.5 flex items-center gap-2">
-                <span>SHA-256: {document.file_hash.substring(0, 24)}...</span>
+              <div className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5 flex items-center gap-2">
+                <span>SHA-256: {document.file_hash.substring(0, 20)}...</span>
                 <span>•</span>
                 <span>{(document.file_size / 1024).toFixed(1)} KB</span>
                 <span>•</span>
-                <span>Authority Rank: {document.authority_level}</span>
+                <span>Rank: {document.authority_level}</span>
               </div>
             </div>
           </div>
@@ -95,40 +123,56 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             <button
               onClick={handleReprocess}
               disabled={isReprocessing}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer active:scale-95"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-primary)',
+              }}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isReprocessing ? 'animate-spin' : ''}`} />
-              <span>Reprocess OCR</span>
+              <span>{t('docs.reprocess')}</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-1.5 rounded-xl border transition cursor-pointer hover:border-[var(--brand-accent)]"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-muted)',
+              }}
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center px-6 border-b border-slate-800 bg-slate-900/90 text-sm">
+        <div 
+          className="flex items-center px-6 border-b text-xs sm:text-sm font-semibold"
+          style={{
+            backgroundColor: 'var(--bg-surface-soft)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
           <button
             onClick={() => setActiveTab('text')}
-            className={`py-3 px-4 font-semibold border-b-2 transition flex items-center gap-2 ${
-              activeTab === 'text'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
+            className="py-3 px-4 border-b-2 transition-colors flex items-center gap-2 cursor-pointer"
+            style={{
+              borderColor: activeTab === 'text' ? 'var(--brand-accent)' : 'transparent',
+              color: activeTab === 'text' ? 'var(--brand-accent)' : 'var(--text-muted)',
+            }}
           >
             <FileText className="w-4 h-4" />
             <span>Extracted Text</span>
           </button>
           <button
             onClick={() => setActiveTab('pages')}
-            className={`py-3 px-4 font-semibold border-b-2 transition flex items-center gap-2 ${
-              activeTab === 'pages'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
+            className="py-3 px-4 border-b-2 transition-colors flex items-center gap-2 cursor-pointer"
+            style={{
+              borderColor: activeTab === 'pages' ? 'var(--brand-accent)' : 'transparent',
+              color: activeTab === 'pages' ? 'var(--brand-accent)' : 'var(--text-muted)',
+            }}
           >
             <Eye className="w-4 h-4" />
             <span>Pages & OCR Bounding Boxes ({pages.length})</span>
@@ -136,24 +180,41 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-hidden p-6 bg-slate-950/20">
+        <div 
+          className="flex-1 overflow-hidden p-6"
+          style={{ backgroundColor: 'var(--bg-primary)' }}
+        >
           {activeTab === 'text' && (
-            <div className="h-full overflow-y-auto bg-slate-900/90 border border-slate-800 rounded-xl p-6 font-mono text-xs leading-relaxed text-slate-200 whitespace-pre-wrap select-text">
+            <div 
+              className="h-full overflow-y-auto border rounded-2xl p-6 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text shadow-sm"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-primary)',
+              }}
+            >
               {pages.length > 0 ? (
                 pages.map((p) => (
-                  <div key={p.id} className="mb-8 pb-6 border-b border-slate-800/80 last:border-none">
-                    <div className="flex items-center justify-between text-[11px] font-sans font-semibold text-slate-400 mb-3 bg-slate-800/40 px-3 py-1.5 rounded-lg border border-slate-700/40">
+                  <div key={p.id} className="mb-8 pb-6 border-b last:border-none" style={{ borderColor: 'var(--border-color)' }}>
+                    <div 
+                      className="flex items-center justify-between text-[11px] font-sans font-semibold mb-3 px-3.5 py-1.5 rounded-xl border"
+                      style={{
+                        backgroundColor: 'var(--bg-surface-soft)',
+                        borderColor: 'var(--border-color)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
                       <span>PAGE {p.page_number} • {p.extraction_type.toUpperCase()} ({p.engine})</span>
-                      <span className={p.confidence >= 0.7 ? 'text-emerald-400' : 'text-amber-400'}>
+                      <span className={p.confidence >= 0.7 ? 'text-[var(--success)] font-bold' : 'text-[var(--warning)] font-bold'}>
                         Confidence: {(p.confidence * 100).toFixed(1)}%
                       </span>
                     </div>
-                    {p.text}
+                    <div className="leading-relaxed">{p.text}</div>
                   </div>
                 ))
               ) : (
-                <div className="text-center text-slate-500 py-12">
-                  No text extracted yet or processing in progress.
+                <div className="text-center py-12 text-sm text-[var(--text-muted)]">
+                  {isLoadingPages ? 'Loading extracted text...' : 'No text extracted yet or processing in progress.'}
                 </div>
               )}
             </div>
@@ -162,32 +223,48 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
           {activeTab === 'pages' && (
             <div className="h-full flex flex-col gap-4">
               {/* Page Carousel Bar */}
-              <div className="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-800">
+              <div 
+                className="flex items-center justify-between p-3 rounded-xl border shadow-sm"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  borderColor: 'var(--border-color)',
+                }}
+              >
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setSelectedPageIndex(Math.max(0, selectedPageIndex - 1))}
                     disabled={selectedPageIndex === 0}
-                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40"
+                    className="p-1 rounded-lg border transition disabled:opacity-40 cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <span className="text-xs font-semibold text-white px-2">
+                  <span className="text-xs font-semibold px-2 text-[var(--text-primary)]">
                     Page {selectedPageIndex + 1} of {pages.length || 1}
                   </span>
                   <button
                     onClick={() => setSelectedPageIndex(Math.min(pages.length - 1, selectedPageIndex + 1))}
                     disabled={selectedPageIndex >= pages.length - 1}
-                    className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40"
+                    className="p-1 rounded-lg border transition disabled:opacity-40 cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
 
                 {currentPage && (
-                  <div className="text-xs text-slate-400 flex items-center gap-3">
-                    <span>Engine: <b className="text-slate-200">{currentPage.engine}</b></span>
-                    <span>Tokens: <b className="text-slate-200">{currentPage.words_count}</b></span>
-                    <span>Confidence: <b className={currentPage.confidence >= 0.7 ? 'text-emerald-400' : 'text-amber-400'}>{(currentPage.confidence * 100).toFixed(1)}%</b></span>
+                  <div className="text-xs text-[var(--text-muted)] flex items-center gap-3">
+                    <span>Engine: <b className="text-[var(--text-primary)]">{currentPage.engine}</b></span>
+                    <span>Tokens: <b className="text-[var(--text-primary)]">{currentPage.words_count}</b></span>
+                    <span>Confidence: <b className={currentPage.confidence >= 0.7 ? 'text-[var(--success)]' : 'text-[var(--warning)]'}>{(currentPage.confidence * 100).toFixed(1)}%</b></span>
                   </div>
                 )}
               </div>
@@ -195,12 +272,31 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               {/* Interactive Bounding Box Stage */}
               <div className="flex-1 flex gap-4 overflow-hidden">
                 {/* Visualizer Canvas */}
-                <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl relative p-4 flex flex-col items-center justify-center overflow-auto">
+                <div 
+                  className="flex-1 border rounded-xl relative p-4 flex flex-col items-center justify-center overflow-auto shadow-sm"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
                   {currentPage ? (
-                    <div className="relative w-full h-full max-w-2xl bg-slate-950 border border-slate-800 rounded-lg overflow-hidden flex flex-col">
-                      <div className="p-3 bg-slate-900 border-b border-slate-800 text-xs font-semibold text-slate-300 flex items-center justify-between">
-                        <span>OCR Token Spatial Grid (0-1000 Normalized Scale)</span>
-                        <span className="text-[11px] text-indigo-400">Hover token to inspect coordinates</span>
+                    <div 
+                      className="relative w-full h-full max-w-2xl border rounded-lg overflow-hidden flex flex-col"
+                      style={{
+                        backgroundColor: 'var(--bg-surface-soft)',
+                        borderColor: 'var(--border-color)',
+                      }}
+                    >
+                      <div 
+                        className="p-3 border-b text-xs font-semibold flex items-center justify-between"
+                        style={{
+                          backgroundColor: 'var(--bg-surface)',
+                          borderColor: 'var(--border-color)',
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        <span>OCR Token Spatial Grid</span>
+                        <span className="text-[11px] text-[var(--brand-accent)] font-medium">Hover token to inspect provenance</span>
                       </div>
                       
                       {/* Interactive Token Mesh */}
@@ -212,19 +308,28 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                                 key={bIdx}
                                 onMouseEnter={() => setSelectedBox(box)}
                                 onMouseLeave={() => setSelectedBox(null)}
-                                className={`px-1.5 py-0.5 rounded text-xs transition cursor-pointer ${
-                                  selectedBox === box
-                                    ? 'bg-indigo-600 text-white font-bold ring-2 ring-indigo-400'
+                                className="px-1.5 py-0.5 rounded text-xs transition cursor-pointer"
+                                style={{
+                                  backgroundColor: selectedBox === box
+                                    ? 'var(--brand-accent)'
                                     : box.confidence >= 0.8
-                                    ? 'bg-slate-800/80 hover:bg-indigo-900/50 text-slate-200'
-                                    : 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-800/40'
-                                }`}
+                                    ? 'var(--bg-surface)'
+                                    : 'var(--warning-bg)',
+                                  color: selectedBox === box
+                                    ? 'var(--cta-text)'
+                                    : box.confidence >= 0.8
+                                    ? 'var(--text-primary)'
+                                    : 'var(--warning)',
+                                  border: selectedBox === box
+                                    ? '1px solid var(--border-focus)'
+                                    : '1px solid var(--border-color)',
+                                }}
                               >
                                 {box.word}
                               </span>
                             ))
                           ) : (
-                            <div className="text-xs text-slate-300 whitespace-pre-wrap">
+                            <div className="text-xs text-[var(--text-primary)] whitespace-pre-wrap">
                               {currentPage.text || "No tokens extracted."}
                             </div>
                           )}
@@ -232,58 +337,80 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="text-slate-500 text-sm">No page selected.</div>
+                    <div className="text-sm text-[var(--text-muted)]">No page selected.</div>
                   )}
                 </div>
 
                 {/* Token Provenance Inspector */}
-                <div className="w-72 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col text-xs text-slate-300 overflow-y-auto">
-                  <div className="font-bold text-white mb-3 pb-2 border-b border-slate-800 flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                <div 
+                  className="w-72 border rounded-xl p-4 flex flex-col text-xs overflow-y-auto shadow-sm"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <div 
+                    className="font-bold mb-3 pb-2 border-b flex items-center gap-1.5 text-[var(--text-primary)]"
+                    style={{ borderColor: 'var(--border-color)' }}
+                  >
+                    <Shield className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
                     <span>OCR Provenance Inspector</span>
                   </div>
 
                   {selectedBox ? (
                     <div className="space-y-3">
                       <div>
-                        <span className="text-slate-400 block text-[11px]">Selected Token</span>
-                        <span className="text-base font-bold text-indigo-400 break-words">{selectedBox.word}</span>
+                        <span className="text-[var(--text-muted)] block text-[11px]">Selected Token</span>
+                        <span className="text-base font-bold text-[var(--brand-accent)] break-words">{selectedBox.word}</span>
                       </div>
 
-                      <div className="bg-slate-800/60 p-2.5 rounded-lg space-y-1.5">
+                      <div 
+                        className="p-3 rounded-xl border space-y-2"
+                        style={{
+                          backgroundColor: 'var(--bg-surface-soft)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      >
                         <div className="flex justify-between">
-                          <span className="text-slate-400">OCR Confidence:</span>
-                          <span className="font-semibold text-emerald-400 font-mono">
+                          <span className="text-[var(--text-muted)]">OCR Confidence:</span>
+                          <span className="font-bold text-[var(--success)] font-mono">
                             {(selectedBox.confidence * 100).toFixed(1)}%
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Pixel Left (X):</span>
-                          <span className="font-mono text-slate-200">{selectedBox.x} px</span>
+                          <span className="text-[var(--text-muted)]">Pixel Left (X):</span>
+                          <span className="font-mono text-[var(--text-primary)]">{selectedBox.x} px</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Pixel Top (Y):</span>
-                          <span className="font-mono text-slate-200">{selectedBox.y} px</span>
+                          <span className="text-[var(--text-muted)]">Pixel Top (Y):</span>
+                          <span className="font-mono text-[var(--text-primary)]">{selectedBox.y} px</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Dimensions (WxH):</span>
-                          <span className="font-mono text-slate-200">{selectedBox.w} x {selectedBox.h}</span>
+                          <span className="text-[var(--text-muted)]">Dimensions (WxH):</span>
+                          <span className="font-mono text-[var(--text-primary)]">{selectedBox.w} x {selectedBox.h}</span>
                         </div>
                       </div>
 
                       {selectedBox.normalized_box && (
                         <div>
-                          <span className="text-slate-400 block text-[11px] mb-1">
+                          <span className="text-[var(--text-muted)] block text-[11px] mb-1">
                             Normalized Box [ymin, xmin, ymax, xmax]
                           </span>
-                          <div className="bg-slate-950 p-2 rounded border border-slate-800 font-mono text-[11px] text-indigo-300">
+                          <div 
+                            className="p-2 rounded-xl border font-mono text-[11px] text-[var(--brand-accent)]"
+                            style={{
+                              backgroundColor: 'var(--bg-surface-soft)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
                             [{selectedBox.normalized_box.join(', ')}]
                           </div>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="text-slate-500 py-8 text-center leading-relaxed">
+                    <div className="text-[var(--text-muted)] py-8 text-center leading-relaxed">
                       Hover over any word in the token mesh to view its exact coordinate provenance and confidence score.
                     </div>
                   )}

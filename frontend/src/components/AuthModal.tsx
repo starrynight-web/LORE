@@ -7,14 +7,13 @@ import {
   Lock, 
   User, 
   ArrowRight, 
-  KeyRound, 
-  Layers, 
   CheckCircle2, 
   AlertCircle,
   Sparkles,
   X
 } from 'lucide-react';
 import { api, User as UserType, Organization } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface AuthModalProps {
   onSuccess: (data: { user: UserType; organizations?: Organization[] }) => void;
@@ -22,6 +21,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
+  const { t } = useI18n();
   const [mode, setMode] = useState<'signin' | 'register' | 'demo'>('demo');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -37,8 +37,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
       email: 'admin@northstar.demo',
       pass: 'Northstar2026!',
       org: 'Northstar Digital',
-      plan: 'Enterprise Scale',
-      color: 'border-indigo-500/50 hover:border-indigo-500 bg-indigo-950/20 text-indigo-400',
       badge: 'Full Governance & Ingestion Control'
     },
     {
@@ -47,8 +45,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
       email: 'reviewer@northstar.demo',
       pass: 'Northstar2026!',
       org: 'Northstar Digital',
-      plan: 'Enterprise Scale',
-      color: 'border-amber-500/50 hover:border-amber-500 bg-amber-950/20 text-amber-400',
       badge: 'Document Review & Verification'
     },
     {
@@ -57,8 +53,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
       email: 'viewer@northstar.demo',
       pass: 'Northstar2026!',
       org: 'Northstar Digital',
-      plan: 'Enterprise Scale',
-      color: 'border-slate-500/50 hover:border-slate-500 bg-slate-900 text-slate-300',
       badge: 'Governed Search & Citations'
     },
     {
@@ -67,8 +61,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
       email: 'admin@acme.demo',
       pass: 'Acme2026!',
       org: 'Acme Aerospace (Tenant 2)',
-      plan: 'Starter Tier',
-      color: 'border-rose-500/50 hover:border-rose-500 bg-rose-950/20 text-rose-400',
       badge: 'Strict Cross-Tenant Isolation Proof'
     }
   ];
@@ -123,65 +115,105 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ backgroundColor: 'var(--modal-overlay)' }}
+    >
+      <div 
+        className="rounded-2xl border w-full max-w-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border-color)',
+        }}
+      >
         {/* Header */}
-        <div className="p-6 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border-b border-slate-800">
+        <div 
+          className="p-6 border-b"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
+              <div 
+                className="w-10 h-10 rounded-xl border flex items-center justify-center"
+                style={{
+                  backgroundColor: 'var(--accent-light)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--brand-accent)',
+                }}
+              >
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2 text-[var(--text-primary)]">
                   LORE Enterprise
-                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <span 
+                    className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border"
+                    style={{
+                      backgroundColor: 'var(--accent-light)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--brand-accent)',
+                    }}
+                  >
                     SaaS Auth
                   </span>
                 </h2>
-                <p className="text-xs text-slate-400">Governed Multi-Tenant Knowledge Workspace</p>
+                <p className="text-xs text-[var(--text-muted)]">Governed Multi-Tenant Knowledge Workspace</p>
               </div>
             </div>
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-xl border transition cursor-pointer hover:border-[var(--brand-accent)]"
+                style={{
+                  backgroundColor: 'var(--bg-surface-soft)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-muted)',
+                }}
                 title="Continue as Guest"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
           {/* Mode Switcher */}
-          <div className="flex items-center gap-2 mt-4 bg-slate-950/50 p-1 rounded-lg border border-slate-800">
+          <div 
+            className="flex items-center gap-1.5 mt-4 p-1 rounded-xl border"
+            style={{
+              backgroundColor: 'var(--bg-surface-soft)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
             <button
               onClick={() => { setMode('demo'); setError(null); }}
-              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${
-                mode === 'demo'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              className="flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+              style={{
+                backgroundColor: mode === 'demo' ? 'var(--brand-accent)' : 'transparent',
+                color: mode === 'demo' ? 'var(--cta-text)' : 'var(--text-secondary)',
+              }}
             >
               1-Click Demo Profiles
             </button>
             <button
               onClick={() => { setMode('signin'); setError(null); }}
-              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${
-                mode === 'signin'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              className="flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+              style={{
+                backgroundColor: mode === 'signin' ? 'var(--brand-accent)' : 'transparent',
+                color: mode === 'signin' ? 'var(--cta-text)' : 'var(--text-secondary)',
+              }}
             >
               Sign In
             </button>
             <button
               onClick={() => { setMode('register'); setError(null); }}
-              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${
-                mode === 'register'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              className="flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+              style={{
+                backgroundColor: mode === 'register' ? 'var(--brand-accent)' : 'transparent',
+                color: mode === 'register' ? 'var(--cta-text)' : 'var(--text-secondary)',
+              }}
             >
               Register
             </button>
@@ -191,7 +223,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
         {/* Content Area */}
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {error && (
-            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center gap-2 text-xs text-rose-400">
+            <div 
+              className="p-3 rounded-xl border text-xs flex items-center gap-2"
+              style={{
+                backgroundColor: 'var(--error-bg)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--error)',
+              }}
+            >
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -199,9 +238,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
 
           {mode === 'demo' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-slate-400 pb-1">
-                <span>Select a persona to test role-based access & tenant isolation:</span>
-                <span className="text-[11px] text-indigo-400 font-mono">Password: Northstar2026!</span>
+              <div className="flex items-center justify-between text-xs text-[var(--text-muted)] pb-1">
+                <span>Select a persona to test role-based access & isolation:</span>
+                <span className="text-[11px] font-mono text-[var(--brand-accent)] font-semibold">Password: Northstar2026!</span>
               </div>
 
               <div className="grid grid-cols-1 gap-2.5">
@@ -210,34 +249,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
                     key={acc.email}
                     disabled={isLoading}
                     onClick={() => handleDemoLogin(acc.email, acc.pass)}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border text-left transition ${acc.color} cursor-pointer group hover:scale-[1.01]`}
+                    className="flex items-center justify-between p-3.5 rounded-xl border text-left transition-all cursor-pointer group hover:scale-[1.01]"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                    }}
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-white group-hover:text-indigo-300 transition">
+                        <span className="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--brand-accent)] transition">
                           {acc.name}
                         </span>
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700/60 font-medium">
+                        <span 
+                          className="text-[10px] px-2 py-0.5 rounded-full border font-semibold"
+                          style={{
+                            backgroundColor: 'var(--bg-surface)',
+                            borderColor: 'var(--border-color)',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
                           {acc.role}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                      <div className="text-xs text-[var(--text-muted)] mt-1 flex items-center gap-2">
                         <span>{acc.org}</span>
                         <span>•</span>
-                        <span className="text-[11px] text-slate-400">{acc.email}</span>
+                        <span className="text-[11px]">{acc.email}</span>
                       </div>
-                      <div className="text-[11px] text-indigo-400 mt-1 font-medium">
+                      <div className="text-[11px] text-[var(--brand-accent)] mt-1 font-semibold">
                         {acc.badge}
                       </div>
                     </div>
-                    <ArrowRight className="w-4 h-4 opacity-70 group-hover:opacity-100 group-hover:translate-x-1 transition shrink-0" />
+                    <ArrowRight className="w-4 h-4 text-[var(--brand-accent)] opacity-70 group-hover:opacity-100 group-hover:translate-x-1 transition shrink-0" />
                   </button>
                 ))}
               </div>
 
               {/* SSO Announcement */}
-              <div className="mt-4 p-3 rounded-lg bg-slate-800/40 border border-slate-700/40 flex items-center gap-2.5 text-xs text-slate-400">
-                <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
+              <div 
+                className="mt-4 p-3 rounded-xl border flex items-center gap-2.5 text-xs text-[var(--text-muted)]"
+                style={{
+                  backgroundColor: 'var(--bg-surface-soft)',
+                  borderColor: 'var(--border-color)',
+                }}
+              >
+                <Sparkles className="w-4 h-4 text-[var(--brand-accent)] shrink-0" />
                 <span>
                   <strong>Google OAuth 2.0 SSO</strong> connector placeholder is ready; multi-tenant identity federation will link to this boundary.
                 </span>
@@ -248,34 +304,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
           {mode === 'signin' && (
             <form onSubmit={handleSignIn} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   Username or Email
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <User className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-3" />
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="admin@northstar.demo"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full border rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      borderColor: 'var(--input-border)',
+                      color: 'var(--text-primary)',
+                    }}
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   Password
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <Lock className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-3" />
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full border rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      borderColor: 'var(--input-border)',
+                      color: 'var(--text-primary)',
+                    }}
                     required
                   />
                 </div>
@@ -284,7 +350,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/30 transition flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+                style={{
+                  backgroundColor: 'var(--brand-accent)',
+                  color: 'var(--cta-text)',
+                }}
               >
                 {isLoading ? 'Signing In...' : 'Sign In to Workspace'}
                 <ArrowRight className="w-4 h-4" />
@@ -295,24 +365,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
           {mode === 'register' && (
             <form onSubmit={handleRegister} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   Organization / Company Name
                 </label>
                 <div className="relative">
-                  <Building2 className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <Building2 className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-3" />
                   <input
                     type="text"
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     placeholder="Northstar Digital"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full border rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--input-bg)',
+                      borderColor: 'var(--input-border)',
+                      color: 'var(--text-primary)',
+                    }}
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   Email Address
                 </label>
                 <input
@@ -320,12 +395,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="sarah.chen@northstar.demo"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none"
+                  style={{
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--text-primary)',
+                  }}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   Username
                 </label>
                 <input
@@ -333,13 +413,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="sarah_admin"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none"
+                  style={{
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--text-primary)',
+                  }}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   Password
                 </label>
                 <input
@@ -347,7 +432,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none"
+                  style={{
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--text-primary)',
+                  }}
                   required
                 />
               </div>
@@ -355,7 +445,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/30 transition flex items-center justify-center gap-2 cursor-pointer mt-2"
+                className="w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 mt-2"
+                style={{
+                  backgroundColor: 'var(--brand-accent)',
+                  color: 'var(--cta-text)',
+                }}
               >
                 {isLoading ? 'Creating Enterprise Account...' : 'Create Organization & Join'}
                 <ArrowRight className="w-4 h-4" />
@@ -365,12 +459,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+        <div 
+          className="p-4 border-t flex items-center justify-between text-[11px]"
+          style={{
+            backgroundColor: 'var(--bg-surface-soft)',
+            borderColor: 'var(--border-color)',
+            color: 'var(--text-muted)',
+          }}
+        >
           <div className="flex items-center gap-2">
             {onClose && (
               <button
                 onClick={onClose}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--brand-accent)',
+                }}
               >
                 <span>Continue as Guest</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -378,7 +484,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
             )}
             <span className="hidden sm:inline">Tenant Isolation Active</span>
           </div>
-          <span className="text-emerald-400 flex items-center gap-1">
+          <span className="flex items-center gap-1 text-[var(--success)] font-semibold">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Zero Data Leakage
           </span>
