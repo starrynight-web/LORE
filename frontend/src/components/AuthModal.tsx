@@ -136,16 +136,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, onClose }) => {
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <div 
-                className="w-10 h-10 rounded-xl border flex items-center justify-center"
+              <img 
+                src="/logo.png" 
+                alt="LORE Logo" 
+                className="w-10 h-10 rounded-xl border object-contain p-0.5 shadow-sm"
                 style={{
-                  backgroundColor: 'var(--accent-light)',
+                  backgroundColor: 'var(--bg-surface-soft)',
                   borderColor: 'var(--border-color)',
-                  color: 'var(--brand-accent)',
                 }}
-              >
-                <ShieldCheck className="w-5 h-5" />
-              </div>
+              />
               <div>
                 <h2 className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2 text-[var(--text-primary)]">
                   LORE Enterprise

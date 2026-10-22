@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { 
-  FolderKanban, 
   FileText, 
   Cpu, 
   Search, 
@@ -54,15 +53,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className="h-16 flex items-center px-6 border-b gap-3"
         style={{ borderColor: 'var(--border-color)' }}
       >
-        <div 
-          className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
-          style={{
-            backgroundColor: 'var(--brand-accent)',
-            color: 'var(--cta-text)',
+        <img 
+          src="/logo.png" 
+          alt="LORE Logo" 
+          className="w-9 h-9 rounded-xl object-contain shadow-sm border p-0.5"
+          style={{ 
+            backgroundColor: 'var(--bg-surface-soft)',
+            borderColor: 'var(--border-color)' 
           }}
-        >
-          <FolderKanban className="w-5 h-5" />
-        </div>
+        />
         <div>
           <div className="flex items-center gap-2">
             <span className="font-bold tracking-wide text-base text-[var(--text-primary)]">
