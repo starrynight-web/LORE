@@ -46,14 +46,17 @@ interface OrgSettingsProps {
   currentOrg: Organization | null;
   userRole?: string;
   onRefreshOrg?: () => void;
+  initialSection?: string;
 }
 
 export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
   currentOrg,
   userRole = 'member',
-  onRefreshOrg
+  onRefreshOrg,
+  initialSection = 'all'
 }) => {
   const { t } = useI18n();
+  const [activeSection, setActiveSection] = useState<string>(initialSection);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subData, setSubData] = useState<SubscriptionData | null>(null);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -93,6 +96,12 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [initialSection]);
 
   const handleSaveGroqKey = () => {
     if (typeof window !== 'undefined') {
@@ -339,71 +348,117 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
         </div>
       )}
 
-      {/* Appearance & Localization Section (Master Prompt 11.K) */}
+      {/* Settings Navigation Tabs */}
       <div 
-        className="p-6 rounded-2xl border shadow-sm space-y-4"
+        className="flex items-center gap-1.5 p-1.5 rounded-xl border overflow-x-auto shadow-sm"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-color)',
         }}
       >
-        <div className="border-b pb-3" style={{ borderColor: 'var(--border-color)' }}>
-          <h2 className="text-sm sm:text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <Palette className="w-4 h-4 text-[var(--brand-accent)]" />
-            <span>{t('settings.theme_section')} & {t('settings.lang_section')}</span>
-          </h2>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Synchronize your workspace appearance and language preferences across the platform.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Theme Card */}
-          <div 
-            className="p-4 rounded-xl border flex items-center justify-between"
-            style={{
-              backgroundColor: 'var(--bg-surface-soft)',
-              borderColor: 'var(--border-color)',
-            }}
-          >
-            <div>
-              <div className="text-xs font-bold text-[var(--text-primary)]">{t('settings.theme_desc')}</div>
-              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                Light (Parrot & Cream) ↔ Dark (Obsidian & Emerald)
-              </div>
-            </div>
-            <ThemeToggle />
-          </div>
-
-          {/* Language Card */}
-          <div 
-            className="p-4 rounded-xl border flex items-center justify-between"
-            style={{
-              backgroundColor: 'var(--bg-surface-soft)',
-              borderColor: 'var(--border-color)',
-            }}
-          >
-            <div>
-              <div className="text-xs font-bold text-[var(--text-primary)]">{t('settings.lang_desc')}</div>
-              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                বাংলা (Bengali) ↔ English (EN)
-              </div>
-            </div>
-            <LanguageToggle />
-          </div>
-        </div>
+        {[
+          { id: 'all', label: 'All Settings', icon: Building2 },
+          { id: 'api', label: 'AI Connect (Groq · gpt-oss-120B)', icon: Zap, highlight: true },
+          { id: 'mcp', label: 'LORE MCP Server Hub', icon: Server, highlight: true },
+          { id: 'theme', label: 'Appearance & Language', icon: Palette },
+          { id: 'team', label: 'Team & Quotas', icon: Users },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeSection === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSection(tab.id)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer whitespace-nowrap active:scale-95"
+              style={{
+                backgroundColor: isActive ? 'var(--accent-light)' : 'transparent',
+                color: isActive ? 'var(--brand-accent)' : 'var(--text-secondary)',
+                border: isActive ? '1px solid var(--border-color)' : '1px solid transparent',
+              }}
+            >
+              <Icon 
+                className="w-3.5 h-3.5" 
+                style={{
+                  color: isActive ? 'var(--brand-accent)' : tab.highlight ? 'var(--accent-parrot)' : 'var(--text-muted)'
+                }}
+              />
+              <span>{tab.label}</span>
+              {tab.highlight && !isActive && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-parrot)]" />
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Appearance & Localization Section (Master Prompt 11.K) */}
+      {(activeSection === 'all' || activeSection === 'theme') && (
+        <div 
+          className="p-6 rounded-2xl border shadow-sm space-y-4"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          <div className="border-b pb-3" style={{ borderColor: 'var(--border-color)' }}>
+            <h2 className="text-sm sm:text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Palette className="w-4 h-4 text-[var(--brand-accent)]" />
+              <span>{t('settings.theme_section')} & {t('settings.lang_section')}</span>
+            </h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Synchronize your workspace appearance and language preferences across the platform.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Theme Card */}
+            <div 
+              className="p-4 rounded-xl border flex items-center justify-between"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <div>
+                <div className="text-xs font-bold text-[var(--text-primary)]">{t('settings.theme_desc')}</div>
+                <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  Light (Parrot & Cream) ↔ Dark (Obsidian & Emerald)
+                </div>
+              </div>
+              <ThemeToggle />
+            </div>
+
+            {/* Language Card */}
+            <div 
+              className="p-4 rounded-xl border flex items-center justify-between"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <div>
+                <div className="text-xs font-bold text-[var(--text-primary)]">{t('settings.lang_desc')}</div>
+                <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  বাংলা (Bengali) ↔ English (EN)
+                </div>
+              </div>
+              <LanguageToggle />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* =====================================================================
           AI Inference & Custom API Connect (Master Prompt: Groq & gpt-oss-120B)
           ===================================================================== */}
-      <div 
-        className="p-6 rounded-2xl border shadow-sm space-y-5"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border-color)',
-        }}
-      >
+      {(activeSection === 'all' || activeSection === 'api') && (
+        <div 
+          className="p-6 rounded-2xl border shadow-sm space-y-5"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3" style={{ borderColor: 'var(--border-color)' }}>
           <div>
             <h2 className="text-sm sm:text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -619,17 +674,19 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* =====================================================================
           LORE MCP Server Hub & Generator (Master Prompt: Claude/Cursor/Windsurf)
           ===================================================================== */}
-      <div 
-        className="p-6 rounded-2xl border shadow-sm space-y-5"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border-color)',
-        }}
-      >
+      {(activeSection === 'all' || activeSection === 'mcp') && (
+        <div 
+          className="p-6 rounded-2xl border shadow-sm space-y-5"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3" style={{ borderColor: 'var(--border-color)' }}>
           <div>
             <h2 className="text-sm sm:text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -790,9 +847,12 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
           </pre>
         </div>
       </div>
+      )}
 
-      {/* Quota Usage Meters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Quota Usage Meters & Team Management */}
+      {(activeSection === 'all' || activeSection === 'team') && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div 
           className="p-5 rounded-2xl border shadow-sm"
           style={{
@@ -1150,6 +1210,8 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

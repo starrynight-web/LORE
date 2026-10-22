@@ -12,20 +12,27 @@ import {
   Scale,
   Zap,
   ShieldCheck,
-  Cpu
+  Cpu,
+  Filter,
+  Check
 } from 'lucide-react';
 import { GovernedResult, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 interface GovernedRAGViewProps {
   workspaceId: string;
+  documents?: any[];
+  initialDocumentId?: string;
 }
 
 export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
-  workspaceId
+  workspaceId,
+  documents = [],
+  initialDocumentId
 }) => {
   const { t, language } = useI18n();
   const [query, setQuery] = useState('');
+  const [selectedDocId, setSelectedDocId] = useState<string>(initialDocumentId || 'all');
   const [result, setResult] = useState<GovernedResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +47,14 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
       setActiveModel(m);
     }
   }, []);
+
+  React.useEffect(() => {
+    if (initialDocumentId) {
+      setSelectedDocId(initialDocumentId);
+    }
+  }, [initialDocumentId]);
+
+  const selectedDocObj = documents.find((d: any) => d.id === selectedDocId);
 
   const sampleQueries = language === 'bn' ? [
     "উক্ত সাফ কবলা দলিলে সম্পত্তির তফসিল এবং সিএস খতিয়ান নম্বর কত?",
@@ -61,7 +76,8 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
     setError(null);
 
     try {
-      const res = await api.governedQuery(workspaceId, q);
+      const docId = selectedDocId === 'all' ? undefined : selectedDocId;
+      const res = await api.governedQuery(workspaceId, q, undefined, docId);
       setResult(res);
     } catch (err: any) {
       setError(err.message || 'Error executing governed query.');
@@ -251,6 +267,78 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
         </div>
       </div>
 
+      {/* Document Context Scope Selector (PDF / Entire Knowledge Base) */}
+      <div 
+        className="rounded-2xl p-4 sm:p-5 border shadow-sm space-y-3.5 transition-all duration-200"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderColor: 'var(--border-color)',
+        }}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-[var(--brand-accent)]" />
+            <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+              {language === 'bn' ? 'নথির প্রাসঙ্গিক পরিধি (Context Scope)' : 'Document Context Scope'}
+            </span>
+          </div>
+
+          <span 
+            className="text-[11px] font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1.5"
+            style={{
+              backgroundColor: selectedDocId !== 'all' ? 'var(--accent-light)' : 'var(--bg-surface-soft)',
+              borderColor: 'var(--border-color)',
+              color: selectedDocId !== 'all' ? 'var(--brand-accent)' : 'var(--text-secondary)',
+            }}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+            <span>
+              {selectedDocId !== 'all' 
+                ? (language === 'bn' ? 'শুধুমাত্র এই পিডিএফ-এর ভিত্তিতে উত্তর দেবে • জিরো হ্যালুসিনেশন' : `Strictly Scoped to PDF: ${selectedDocObj?.title || 'Selected Document'} • Zero Hallucination`)
+                : (language === 'bn' ? 'হাইব্রিড সার্চ ও রি-র‍্যাঙ্কিং (সমস্ত জ্ঞানভাণ্ডার)' : 'Hybrid Search & Reranking across Entire Knowledge Base')}
+            </span>
+          </span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="relative w-full">
+            <select
+              value={selectedDocId}
+              onChange={(e) => setSelectedDocId(e.target.value)}
+              className="w-full border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold focus:outline-none cursor-pointer"
+              style={{
+                backgroundColor: 'var(--input-bg)',
+                borderColor: 'var(--input-border)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value="all">
+                🌐 {language === 'bn' ? 'সম্পূর্ণ ওয়ার্কস্পেস (সমস্ত পিডিএফ ও নথি — হাইব্রিড ভেক্টর + লেক্সিক্যাল রি-র‍্যাঙ্কার)' : 'Entire Workspace (All PDFs & Docs — Hybrid Qdrant Vector + Lexical RRF)'}
+              </option>
+              {documents && documents.map((doc: any) => (
+                <option key={doc.id} value={doc.id}>
+                  📄 [PDF] {doc.title} ({doc.page_count || 1} pg • Auth Rank {doc.authority_level || 3} • Status: {doc.status})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedDocId !== 'all' && (
+            <button
+              onClick={() => setSelectedDocId('all')}
+              className="px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer flex-shrink-0 active:scale-95 whitespace-nowrap"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {language === 'bn' ? 'সকল নথিতে রিসেট' : 'Reset to All Docs'}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Query Input Box */}
       <div 
         className="rounded-2xl p-4 sm:p-5 border shadow-sm transition-all duration-200"
@@ -385,6 +473,47 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Scoped Context Banner */}
+          {selectedDocId !== 'all' && selectedDocObj ? (
+            <div 
+              className="p-3 rounded-xl border flex items-center justify-between text-xs font-semibold"
+              style={{
+                backgroundColor: 'var(--accent-light)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--brand-accent)',
+              }}
+            >
+              <div className="flex items-center gap-2 truncate">
+                <FileText className="w-4 h-4 shrink-0" />
+                <span className="truncate">
+                  {language === 'bn' ? 'শুধুমাত্র এই নথির নির্যাস থেকে উত্তর প্রদান করা হয়েছে:' : 'Answer strictly synthesized from extracted context of:'} <strong>{selectedDocObj.title}</strong>
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold shrink-0 hidden sm:inline px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-color)]">
+                Zero Extrapolation
+              </span>
+            </div>
+          ) : (
+            <div 
+              className="p-3 rounded-xl border flex items-center justify-between text-xs font-semibold"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <div className="flex items-center gap-2 truncate">
+                <Sparkles className="w-4 h-4 text-[var(--brand-accent)] shrink-0" />
+                <span className="truncate">
+                  {language === 'bn' ? 'হাইব্রিড অনুসন্ধান: কিউড্রান্ট ডেন্স ভেক্টর + লেক্সিক্যাল বিএম২৫ + আরআরএফ রি-র‍্যাঙ্কিং' : 'Hybrid Retrieval: Qdrant Dense Vectors + Lexical BM25 + Reciprocal Rank Fusion Reranker'}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold shrink-0 hidden sm:inline px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-color)]">
+                Multi-Document Knowledge Base
+              </span>
+            </div>
+          )}
 
           {/* Answer Narrative */}
           <div 

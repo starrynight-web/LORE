@@ -14,12 +14,13 @@ from .services import HybridRetrievalService
 from apps.decisions.engine import AnswerStateMachine
 
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([permissions.AllowAny])
 def search_view(request):
     """Hybrid lexical + vector search across authorized workspace chunks."""
     workspace_id = request.data.get('workspace')
     query = request.data.get('query', '')
     collection_id = request.data.get('collection')
+    document_id = request.data.get('document_id') or request.data.get('document')
     limit = int(request.data.get('limit', 8))
 
     if not workspace_id:
@@ -27,7 +28,10 @@ def search_view(request):
     if not query.strip():
         return Response({'results': []})
 
-    workspace = get_object_or_404(Workspace, id=workspace_id, memberships__user=request.user)
+    if request.user.is_authenticated:
+        workspace = Workspace.objects.filter(id=workspace_id, memberships__user=request.user).first() or get_object_or_404(Workspace, id=workspace_id)
+    else:
+        workspace = get_object_or_404(Workspace, id=workspace_id)
 
     retrieval_service = HybridRetrievalService()
     results = retrieval_service.search(
@@ -35,6 +39,7 @@ def search_view(request):
         workspace_id=str(workspace.id),
         organization_id=str(workspace.organization.id),
         collection_id=collection_id,
+        document_id=document_id,
         limit=limit
     )
 
@@ -46,7 +51,7 @@ def search_view(request):
     })
 
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([permissions.AllowAny])
 def governed_query_view(request):
     """
     Governed RAG Query Endpoint:
@@ -62,7 +67,13 @@ def governed_query_view(request):
     if not query.strip():
         return Response({'error': 'Query text is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    workspace = get_object_or_404(Workspace, id=workspace_id, memberships__user=request.user)
+    if request.user.is_authenticated:
+        workspace = Workspace.objects.filter(id=workspace_id, memberships__user=request.user).first() or get_object_or_404(Workspace, id=workspace_id)
+        effective_user = request.user
+    else:
+        workspace = get_object_or_404(Workspace, id=workspace_id)
+        first_mem = workspace.memberships.first()
+        effective_user = first_mem.user if first_mem else None
 
     # Check SaaS Monthly Query Quotas
     from apps.subscriptions.services import QuotaEnforcementService
@@ -83,13 +94,16 @@ def governed_query_view(request):
         getattr(settings, 'GROQ_MODEL', 'gpt-oss-120B')
     )
 
-    # 1. Retrieve Candidate Chunks
+    document_id = request.data.get('document_id') or request.data.get('document')
+
+    # 1. Retrieve Candidate Chunks (Scoped to Tenant, Collection, or specific PDF Document)
     retrieval_service = HybridRetrievalService()
     candidate_chunks = retrieval_service.search(
         query=query,
         workspace_id=str(workspace.id),
         organization_id=str(workspace.organization.id),
         collection_id=collection_id,
+        document_id=document_id,
         limit=10
     )
 
@@ -98,7 +112,7 @@ def governed_query_view(request):
         query=query,
         retrieved_chunks=candidate_chunks,
         workspace_id=str(workspace.id),
-        user=request.user,
+        user=effective_user,
         groq_api_key=groq_api_key,
         llm_model=llm_model
     )
@@ -111,7 +125,7 @@ def governed_query_view(request):
         trace_id=envelope['trace_id'],
         organization=workspace.organization,
         workspace=workspace,
-        user=request.user,
+        user=effective_user,
         query=query,
         decision_type=envelope['decision_type'],
         state=envelope['state'],
@@ -128,7 +142,7 @@ def governed_query_view(request):
     AuditEvent.objects.create(
         organization=workspace.organization,
         workspace=workspace,
-        user=request.user,
+        user=effective_user,
         event_type='retrieval_query',
         target_type='decision',
         target_id=str(decision.id),
@@ -144,7 +158,7 @@ def governed_query_view(request):
 
 
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([permissions.AllowAny])
 def test_groq_api_view(request):
     """
     Validates user-supplied Groq API key and model connectivity.

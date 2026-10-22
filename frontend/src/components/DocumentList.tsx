@@ -11,7 +11,8 @@ import {
   Shield, 
   ChevronRight,
   RefreshCw,
-  Folder
+  Folder,
+  Sparkles
 } from 'lucide-react';
 import { SourceDocument, Collection } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -21,13 +22,15 @@ interface DocumentListProps {
   collections: Collection[];
   onSelectDocument: (doc: SourceDocument) => void;
   onRefresh: () => void;
+  onAskAgent?: (docId: string) => void;
 }
 
 export const DocumentList: React.FC<DocumentListProps> = ({
   documents,
   collections,
   onSelectDocument,
-  onRefresh
+  onRefresh,
+  onAskAgent
 }) => {
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
@@ -340,12 +343,33 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     </td>
 
                     <td className="px-4 py-3.5 text-right">
-                      <button 
-                        className="p-1 rounded-lg transition"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        <ChevronRight className="w-4 h-4 group-hover:text-[var(--brand-accent)]" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {onAskAgent && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAskAgent(doc.id);
+                            }}
+                            title="Ask Governed Agent about this PDF"
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                            style={{
+                              backgroundColor: 'var(--accent-light)',
+                              borderColor: 'var(--border-color)',
+                              color: 'var(--brand-accent)',
+                            }}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Ask Agent</span>
+                          </button>
+                        )}
+                        <button 
+                          className="p-1 rounded-lg transition"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          <ChevronRight className="w-4 h-4 group-hover:text-[var(--brand-accent)]" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

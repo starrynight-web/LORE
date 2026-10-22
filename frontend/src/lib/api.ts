@@ -310,6 +310,7 @@ class ApiClient {
     workspaceId: string, 
     query: string, 
     collectionId?: string,
+    documentId?: string,
     groqApiKey?: string,
     llmModel?: string
   ) {
@@ -322,6 +323,7 @@ class ApiClient {
         workspace: workspaceId, 
         query, 
         collection: collectionId,
+        document_id: documentId,
         groq_api_key: activeGroqKey,
         llm_model: activeModel
       })

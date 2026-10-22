@@ -100,12 +100,13 @@ class HybridRetrievalService:
         workspace_id: str,
         organization_id: str,
         collection_id: Optional[str] = None,
+        document_id: Optional[str] = None,
         limit: int = 8
     ) -> List[Dict[str, Any]]:
         if not query.strip():
             return []
 
-        # 1. Dense Vector Search via Qdrant with Strict Tenant Isolation
+        # 1. Dense Vector Search via Qdrant with Strict Tenant & Document Isolation
         query_vec = self.embedder.embed_text(query)
         qdrant_filter = {
             "workspace_id": str(workspace_id),
@@ -113,6 +114,8 @@ class HybridRetrievalService:
         }
         if collection_id:
             qdrant_filter["collection_id"] = str(collection_id)
+        if document_id:
+            qdrant_filter["document_id"] = str(document_id)
 
         vector_hits = self.vector_store.search(
             collection_name="lore_chunks",
@@ -136,6 +139,8 @@ class HybridRetrievalService:
         )
         if collection_id:
             lexical_qs = lexical_qs.filter(document__collection_id=collection_id)
+        if document_id:
+            lexical_qs = lexical_qs.filter(document_id=document_id)
 
         # Lexical matching over chunks
         lexical_chunk_ids = set()

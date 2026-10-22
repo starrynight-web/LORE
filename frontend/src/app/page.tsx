@@ -42,6 +42,7 @@ export default function Home() {
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<SourceDocument | null>(null);
+  const [ragScopedDocId, setRagScopedDocId] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
 
   // Authenticate and load initial data
@@ -219,7 +220,10 @@ export default function Home() {
                   workspaceId={currentWorkspace?.id}
                   collections={collections}
                   onDocumentSaved={() => handleRefreshCurrentWorkspace()}
-                  onNavigateToRAG={() => setActiveTab('rag')}
+                  onNavigateToRAG={(docId) => {
+                    if (docId) setRagScopedDocId(docId);
+                    setActiveTab('rag');
+                  }}
                 />
               )}
 
@@ -229,6 +233,10 @@ export default function Home() {
                   collections={collections}
                   onSelectDocument={(doc) => setSelectedDocument(doc)}
                   onRefresh={handleRefreshCurrentWorkspace}
+                  onAskAgent={(docId) => {
+                    setRagScopedDocId(docId);
+                    setActiveTab('rag');
+                  }}
                 />
               )}
 
@@ -242,6 +250,8 @@ export default function Home() {
               {activeTab === 'rag' && currentWorkspace && (
                 <GovernedRAGView
                   workspaceId={currentWorkspace.id}
+                  documents={documents}
+                  initialDocumentId={ragScopedDocId}
                 />
               )}
 
@@ -260,11 +270,12 @@ export default function Home() {
                 />
               )}
 
-              {activeTab === 'settings' && (
+              {(activeTab === 'settings' || activeTab === 'api_connect' || activeTab === 'mcp_server') && (
                 <OrganizationSettingsView
                   currentOrg={currentOrg}
                   userRole={currentOrg?.role}
                   onRefreshOrg={handleRefreshCurrentWorkspace}
+                  initialSection={activeTab === 'api_connect' ? 'api' : activeTab === 'mcp_server' ? 'mcp' : 'all'}
                 />
               )}
             </>

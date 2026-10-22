@@ -10,7 +10,9 @@ import {
   Layers,
   Sparkles,
   Scan,
-  Building2
+  Building2,
+  Zap,
+  Server
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 
@@ -37,6 +39,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'rag', label: t('nav.governed_rag'), icon: Search, highlight: true },
     { id: 'review', label: t('nav.review_queue'), icon: AlertTriangle, badge: reviewCount > 0 ? reviewCount : undefined, isWarning: true },
     { id: 'audit', label: t('nav.audit_ledger'), icon: ShieldCheck },
+    { id: 'api_connect', label: 'AI Connect (Groq)', icon: Zap, badge: 'gpt-oss-120B' },
+    { id: 'mcp_server', label: 'MCP Server Hub', icon: Server, badge: 'Active' },
     { id: 'settings', label: t('nav.settings'), icon: Building2 },
   ];
 

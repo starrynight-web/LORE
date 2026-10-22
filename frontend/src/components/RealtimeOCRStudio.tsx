@@ -27,7 +27,7 @@ interface RealtimeOCRStudioProps {
   workspaceId?: string;
   collections?: Collection[];
   onDocumentSaved?: (docId: string) => void;
-  onNavigateToRAG?: () => void;
+  onNavigateToRAG?: (docId?: string) => void;
 }
 
 export const RealtimeOCRStudio: React.FC<RealtimeOCRStudioProps> = ({
@@ -835,7 +835,7 @@ export const RealtimeOCRStudio: React.FC<RealtimeOCRStudioProps> = ({
                       </div>
                       {onNavigateToRAG && (
                         <button
-                          onClick={onNavigateToRAG}
+                          onClick={() => onNavigateToRAG(savedSuccessDocId || undefined)}
                           className="px-2.5 py-1 rounded-xl text-white text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
                           style={{ backgroundColor: 'var(--brand-accent)' }}
                         >

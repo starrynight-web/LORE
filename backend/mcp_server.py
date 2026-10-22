@@ -153,12 +153,14 @@ def handle_search(args: Dict[str, Any]) -> str:
     if not ws:
         return "Error: No active workspace found in LORE."
 
+    doc_id = args.get("document_id")
     limit = int(args.get("limit", 6))
     retriever = HybridRetrievalService()
     results = retriever.search(
         query=query,
         workspace_id=str(ws.id),
         organization_id=str(ws.organization.id),
+        document_id=doc_id,
         limit=limit
     )
 
@@ -194,13 +196,15 @@ def handle_governed_query(args: Dict[str, Any]) -> str:
 
     groq_api_key = args.get("groq_api_key")
     llm_model = args.get("llm_model", "gpt-oss-120B")
+    doc_id = args.get("document_id")
 
-    # 1. Retrieve Candidate Chunks
+    # 1. Retrieve Candidate Chunks (Scoped to PDF if document_id provided)
     retriever = HybridRetrievalService()
     chunks = retriever.search(
         query=query,
         workspace_id=str(ws.id),
         organization_id=str(ws.organization.id),
+        document_id=doc_id,
         limit=10
     )
 
