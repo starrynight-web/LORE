@@ -1,9 +1,0 @@
-{
-  "servers": {
-    "lore": {
-      "type": "stdio",
-      "command": "${userHome}/go/bin/lore",
-      "args": ["serve", "--root", "${workspaceFolder}"]
-    }
-  }
-}

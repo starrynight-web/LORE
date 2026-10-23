@@ -1,0 +1,90 @@
+#!/bin/sh
+# Install Lore, serve the setup site, or hand Lore to an editor.
+# The editor starts ~/.lore/bin/lore directly. Docker is not required.
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+PREFIX="${HOME:?}/.lore"
+BIN="$PREFIX/bin/lore"
+
+need_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return
+  fi
+  if [ -x "$HOME/.local/bin/uv" ]; then
+    PATH="$HOME/.local/bin:$PATH"
+    export PATH
+    return
+  fi
+  echo "Installing uv..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  PATH="$HOME/.local/bin:$PATH"
+  export PATH
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "uv could not be installed." >&2
+    exit 1
+  fi
+}
+
+build_site() {
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "Node.js was not found. The agent can use Lore. The setup site needs Node.js." >&2
+    return
+  fi
+  (cd "$ROOT/web" && npm ci && npm run build)
+  standalone="$ROOT/web/.next/standalone"
+  if [ -d "$ROOT/web/.next/static" ]; then
+    mkdir -p "$standalone/.next"
+    rm -rf "$standalone/.next/static"
+    cp -a "$ROOT/web/.next/static" "$standalone/.next/static"
+  fi
+  if [ -d "$ROOT/web/public" ]; then
+    rm -rf "$standalone/public"
+    cp -a "$ROOT/web/public" "$standalone/public"
+  fi
+}
+
+install_lore() {
+  need_uv
+  mkdir -p "$PREFIX"
+  UV_TOOL_DIR="$PREFIX/tools" UV_TOOL_BIN_DIR="$PREFIX/bin" \
+    uv tool install --python 3.12 --force --editable "$ROOT"
+  build_site
+  echo "Lore is installed at $BIN"
+}
+
+require_lore() {
+  if [ ! -x "$BIN" ]; then
+    echo "Lore is not installed. Run scripts/lore install" >&2
+    exit 1
+  fi
+}
+
+case "${1:-setup}" in
+  install)
+    install_lore
+    ;;
+  setup|up)
+    require_lore
+    export LORE_COMMAND="$BIN"
+    export LORE_LAUNCHER="$ROOT/scripts/lore"
+    export LORE_PROJECT_NAME=$(basename "$(pwd)")
+    exec "$BIN" setup
+    ;;
+  mcp)
+    require_lore
+    cd "${LORE_PROJECT:-$(pwd)}"
+    exec "$BIN" mcp
+    ;;
+  connect)
+    require_lore
+    export LORE_COMMAND="$BIN"
+    export LORE_LAUNCHER="$ROOT/scripts/lore"
+    export LORE_HOST_OS="$(uname -s)"
+    exec "$BIN" connect
+    ;;
+  *)
+    echo "usage: scripts/lore install|setup|mcp|connect" >&2
+    exit 2
+    ;;
+esac

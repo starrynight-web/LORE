@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "lore": {
-      "command": "${userHome}/go/bin/lore",
-      "args": ["serve", "--root", "${workspaceFolder}"]
-    }
-  }
-}

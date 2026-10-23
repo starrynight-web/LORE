@@ -1,0 +1,30 @@
+from django.urls import path
+
+from lore.setup import views
+
+urlpatterns = [
+    path("api/health", views.health),
+    path("api/browse", views.browse),
+    path("api/workspace", views.workspace),
+    path("api/workspace/example", views.workspace_example),
+    path("api/catalog", views.catalog),
+    path("api/catalog/<str:persona_id>", views.catalog_add),
+    path("api/provider", views.provider),
+    path("api/provider/models", views.provider_models),
+    path("api/provider/draft", views.provider_draft),
+    path("api/inbox", views.inbox),
+    path("api/inbox/<str:skill_id>", views.inbox_remove),
+    path("api/skills/search", views.skill_search),
+    path("api/skills/add", views.skill_add),
+    path("api/personas", views.personas),
+    path("api/personas/<str:persona_id>/skills", views.persona_skills),
+    path("api/personas/<str:persona_id>", views.persona_detail),
+    path("api/items/<path:item_id>/approve", views.approve),
+    path("api/decisions", views.decisions),
+    path("api/connect", views.connect),
+    path("api/connect/agents", views.connect_agents),
+    path("api/settings", views.settings_view),
+    path("api/graph/build", views.graph_build),
+    path("api/graph", views.graph),
+    path("graph/view/", views.graph_page),
+]

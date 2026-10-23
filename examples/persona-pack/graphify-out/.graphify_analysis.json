@@ -1,0 +1,41 @@
+{
+  "communities": {
+    "0": [
+      "src_ui_button",
+      "src_ui_button_button",
+      "src_ui_theme",
+      "src_ui_theme_theme"
+    ],
+    "1": [
+      "cursor_mcp",
+      "cursor_mcp_mcp_server_lore",
+      "mcp_command_python"
+    ]
+  },
+  "cohesion": {
+    "0": 0.6666666666666666,
+    "1": 0.6666666666666666
+  },
+  "gods": [
+    {
+      "id": "src_ui_theme_theme",
+      "label": "theme",
+      "degree": 2
+    },
+    {
+      "id": "cursor_mcp_mcp_server_lore",
+      "label": "lore",
+      "degree": 2
+    },
+    {
+      "id": "mcp_command_python",
+      "label": "python",
+      "degree": 1
+    }
+  ],
+  "surprises": [],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}

@@ -2,81 +2,74 @@
 
 [![ci](https://github.com/starrynight-web/LORE/actions/workflows/ci.yml/badge.svg)](https://github.com/starrynight-web/LORE/actions/workflows/ci.yml)
 
-Lore serves a team's governed knowledge (rules, skills, procedures and the conflicts between them) to coding agents over MCP. Before an agent edits a file, it asks Lore what applies. Lore answers with a verdict and a directive (`proceed`, `proceed_and_cite`, `ask_user`, `stop`), cites rule IDs, and refuses to settle contradictions on its own: it raises them to a person. Every answer is recorded as a decision you can trace later.
+Lore gives one developer’s coding agent a persona, the skills filed under that persona, and a short map of the codebase. The agent calls Lore over MCP and gets one persona back, inside a token budget. Every answer is written down as a decision.
 
-This repository currently contains the MCP server and its IDE integration. Knowledge lives as plain markdown files in `.lore/`, in the OKF bundle format. The graph database, extraction worker and Jev checker described in [LORE_ARCHITECTURE.md](docs/LORE_ARCHITECTURE.md) will plug in behind the same `Store` interface later.
+The project folder is the database. Personas and skills are markdown under `.lore/`. The setup site only makes those files easier to create. Closing the site does not stop the agent.
 
-Status: early prototype, built for the International AI Builders Congress 2026 (InfraSphere AI / Knowledge Grid track). Interfaces may still change.
-
-> **Where the code is:** `main` holds only the documentation and licence. The source code, the demo workspace and CI are still in progress on the [`dev`](https://github.com/starrynight-web/LORE/tree/dev) branch. Links to code below (`schemas/`, `examples/`) point to `dev`, and the commands in Quick start and Development need a checkout of `dev` until it is merged into `main`.
+The older architecture documents describe the previous Go design.
 
 ## Quick start
 
 ```bash
-go install ./cmd/lore            # installs ~/go/bin/lore
-cd /path/to/your/project
-lore init --demo                 # .lore/ with sample auth rules, plus IDE config snippets
-lore context --file src/auth/token.go --intent "add a refresh token endpoint"
+./scripts/lore install
+./scripts/lore setup
 ```
 
-The last command shows exactly what an agent would be told: two MUST rules, a skill, and a recorded conflict it must not resolve itself. It exits with code 3, meaning "ask the user".
+On Windows:
 
-To connect an IDE, see [docs/ide/](docs/ide/README.md). [`examples/demo-app`](https://github.com/starrynight-web/LORE/tree/dev/examples/demo-app) (on `dev`) is a ready-made workspace with configs for Cursor, VS Code and Antigravity.
+```powershell
+.\scripts\lore.ps1 install
+.\scripts\lore.ps1 setup
+```
 
-## Bring your existing skills
+`install` puts a private Python and the `lore` command in `~/.lore`. `setup` prints an address and keeps running until you press Ctrl+C. Open that link. Save a provider key, add skills, create a persona, then give the connect prompt to your agent. Personas you write stay drafts until you approve them. The setup site needs Node.js. The agent does not.
+
+The agent calls Lore from any project. A project with its own `.lore` directory uses that. Every other project uses the personas saved from setup.
+
+Connect shows a prompt to paste into an agent. The prompt runs `scripts/lore connect` (or `scripts/lore.ps1 connect` on Windows), which registers Lore with each editor already installed. Writing `.cursor/mcp.json` inside one project stays available as a backup:
+
+```json
+{
+  "mcpServers": {
+    "lore": {
+      "command": "lore",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Restart the editor. It starts Lore on its own. Lore looks for `.lore/` from the working directory upward, then uses the personas saved from setup.
+
+`examples/persona-pack` is a small project with a frontend persona, a backend persona, and a codebase map.
+
+## What the agent receives
+
+`get_context` returns one-line summaries of the stable skills for that persona, then a few nodes from the codebase map when one exists. `get_skill` returns the full steps for one skill. A draft persona asks you to approve it. An unknown persona returns nothing governed.
+
+## Development
 
 ```bash
-lore import skills ~/.cursor/skills ~/.agents/skills          # drafts, not served yet
-lore stats                                                     # lists drafts
-lore promote skill:frontend-design@v1                          # approve one
-lore import skills ~/.cursor/skills --stable                   # or approve on import
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/ruff check lore
+.venv/bin/mypy
+.venv/bin/pytest
 ```
 
-Skills are segmented, never served whole. `get_context` gets a one-line entry per matching skill; `get_skill` returns the section index; `lore://skills/<id>` returns the full text; and `search --unverified` finds individual sections. A skill that applies globally is only served when the task's wording matches it.
-
-## CLI
-
-| Command | What it does |
-| --- | --- |
-| `lore serve` | MCP server on stdio (started by the IDE) |
-| `lore init [--demo]` | create `.lore/` and print IDE config snippets |
-| `lore context -f <file> -i <intent>` | what an agent would receive; `--json`, `--agent`, `--diff <file>` |
-| `lore search <query> [-u]` | keyword search; `-u` adds unreviewed text |
-| `lore conflicts [scope]` | recorded conflicts |
-| `lore import skills <dir>...` | import `SKILL.md` folders |
-| `lore promote <id>...` | approve drafts (human only; not available over MCP) |
-| `lore stats` / `lore trace <dec-id>` | counts and decision provenance |
-
-Every command accepts `--root <project>`; otherwise Lore uses `$LORE_ROOT`, then the nearest parent folder containing `.lore/`.
-
-## MCP surface
-
-- Read tools return `lore.result/1` ([schema](https://github.com/starrynight-web/LORE/blob/dev/schemas/lore.result.v1.json), on `dev`) as `structuredContent`, plus a `<lore>` text block and resource links: `get_context`, `check_compliance`, `detect_conflicts`, `get_skill`, `search`, `get_history`, `trace`, `stats`, `ingest_status`.
-- Write tools only stage drafts or record outcomes, and take an `idempotency_key`: `ingest`, `update_persona`, `log_decision`.
-- Resources: `lore://rules|skills|procedures|sources|conflicts|decisions|schemas/...`
-- Prompts: `answer_with_lore`, `validate_change`, `explain_conflict`, `prepare_review_packet`.
-
-Every tool call is appended to `.lore/audit.log`. `get_context` and `check_compliance` also write `.lore/decisions/dec-NNNN.md`.
+`lore/core` reads and writes the files. `lore/mcp.py` is the stdio server the IDE starts. `lore/setup` and `web/` are the setup site. `schemas/lore.result.v1.json` is the answer envelope.
 
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
-| [docs/LORE_OVERVIEW.md](docs/LORE_OVERVIEW.md) | What Lore is, who it is for, how it works, with diagrams |
-| [docs/LORE_ARCHITECTURE.md](docs/LORE_ARCHITECTURE.md) | Target architecture (v2.0) |
-| [docs/PROJECT_REQUIREMENTS.md](docs/PROJECT_REQUIREMENTS.md) | Functional and non-functional requirements |
-| [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) | Scope, milestones, team |
-| [docs/ide/](docs/ide/README.md) | IDE setup, smoke test, compatibility matrix |
-
-## Development
-
-```bash
-go test ./...
-go vet ./...
-npx @modelcontextprotocol/inspector go run ./cmd/lore serve --root examples/demo-app
-```
-
-Layout: `cmd/lore` (CLI), `internal/mcp` (server), `internal/store/filestore` (retrieval over `.lore/`), `internal/okf` (bundle format), `internal/importer/skills`, `internal/lineage` (decision records), `internal/present` (agent and CLI rendering), `internal/result` + `schemas/` (envelope), `examples/` (demo workspace), `docs/` (design and IDE guides).
+| [docs/LORE_OVERVIEW.md](docs/LORE_OVERVIEW.md) | Earlier product overview |
+| [docs/LORE_ARCHITECTURE.md](docs/LORE_ARCHITECTURE.md) | Earlier target architecture |
+| [docs/PROJECT_REQUIREMENTS.md](docs/PROJECT_REQUIREMENTS.md) | Earlier requirements |
+| [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) | Earlier scope and milestones |
+| [docs/solo/HOW_IT_WORKS.md](docs/solo/HOW_IT_WORKS.md) | How the solo slice runs |
+| [docs/solo/UI.md](docs/solo/UI.md) | Setup site pages and how to change them |
+| [docs/solo/TASKLIST.md](docs/solo/TASKLIST.md) | Build record and the current shape |
+| [docs/solo/HOSTING.md](docs/solo/HOSTING.md) | What a later paid host would sync |
 
 ## License
 

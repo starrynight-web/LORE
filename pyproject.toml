@@ -1,0 +1,54 @@
+[project]
+name = "lore"
+version = "0.1.0"
+description = "Governed persona and skill context for a solo developer’s coding agent."
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6",
+    "tiktoken>=0.7",
+    "fastmcp>=2",
+    "django>=5.1",
+    "graphifyy==0.9.93",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "jsonschema>=4",
+    "types-PyYAML",
+    "types-jsonschema",
+]
+
+[project.scripts]
+lore = "lore.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["lore*"]
+
+[tool.pytest.ini_options]
+testpaths = ["lore"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["lore"]
+
+[[tool.mypy.overrides]]
+module = ["lore.setup.*", "lore.setup_cmd"]
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+module = ["django.*", "fastmcp.*", "tiktoken.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+src = ["lore"]

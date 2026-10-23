@@ -13,22 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-python@v5
         with:
-          go-version-file: go.mod
-      - name: gofmt
-        run: test -z "$(gofmt -l . | tee /dev/stderr)"
-      - run: go vet ./...
-      - run: go test -race -count=1 ./...
-      - name: demo scenario
-        run: |
-          go build -o bin/lore ./cmd/lore
-          cd examples/demo-app
-          set +e
-          ../../bin/lore context --file src/auth/token.go --intent "add a refresh token endpoint" --dry-run --json > /tmp/ctx.json
-          code=$?
-          set -e
-          test "$code" = 3
-          grep -q '"verdict": "conflict"' /tmp/ctx.json
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - run: ruff check lore
+      - run: mypy
+      - run: pytest
