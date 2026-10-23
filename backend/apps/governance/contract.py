@@ -68,6 +68,103 @@ CANONICAL_VERDICT_DIRECTIVE_MAP: Dict[Verdict, Directive] = {
 }
 
 
+class GovernanceReasonCode(str, Enum):
+    """Stable reason codes emitted across the 9 governance layers."""
+    # L7 Permission Layer
+    L7_PERMISSION_GRANTED = "L7_PERMISSION_GRANTED"
+    L7_PERMISSION_DENIED = "L7_PERMISSION_DENIED"
+    L7_UNAUTHORIZED_ROLE = "L7_UNAUTHORIZED_ROLE"
+    L7_ANONYMOUS_BLOCKED = "L7_ANONYMOUS_BLOCKED"
+
+    # L1 Decision Intelligence
+    L1_DECISION_CLASSIFIED = "L1_DECISION_CLASSIFIED"
+    L1_CRITICAL_RISK_FLAGGED = "L1_CRITICAL_RISK_FLAGGED"
+    L1_EXPLICIT_DECISION_TYPE = "L1_EXPLICIT_DECISION_TYPE"
+
+    # L5 Temporal Validity
+    L5_DOCUMENT_ACTIVE = "L5_DOCUMENT_ACTIVE"
+    L5_LIFECYCLE_EXCLUSION = "L5_LIFECYCLE_EXCLUSION"
+    L5_FUTURE_EFFECTIVE_EXCLUSION = "L5_FUTURE_EFFECTIVE_EXCLUSION"
+    L5_EXPIRATION_EXCLUSION = "L5_EXPIRATION_EXCLUSION"
+    L5_STALE_RECORD_CAVEAT = "L5_STALE_RECORD_CAVEAT"
+    L5_HISTORICAL_AS_OF_APPLIED = "L5_HISTORICAL_AS_OF_APPLIED"
+
+    # L4 Scoped Exceptions
+    L4_EXCEPTION_APPLIED = "L4_EXCEPTION_APPLIED"
+    L4_EXCEPTION_EXPIRED = "L4_EXCEPTION_EXPIRED"
+    L4_EXCEPTION_SCOPE_MISMATCH = "L4_EXCEPTION_SCOPE_MISMATCH"
+
+    # L6 Authority & Conflicts
+    L6_AUTHORITY_DOMINANCE = "L6_AUTHORITY_DOMINANCE"
+    L6_VERSION_SUPERSESSION = "L6_VERSION_SUPERSESSION"
+    L6_UNRESOLVED_CONTRADICTION = "L6_UNRESOLVED_CONTRADICTION"
+    L6_DATABASE_CONFLICT_DETECTED = "L6_DATABASE_CONFLICT_DETECTED"
+    L6_SINGLE_SOURCE_AUTHORITATIVE = "L6_SINGLE_SOURCE_AUTHORITATIVE"
+
+    # L3 Evidence Sufficiency
+    L3_ALL_MANDATORY_SATISFIED = "L3_ALL_MANDATORY_SATISFIED"
+    L3_MANDATORY_EVIDENCE_MISSING = "L3_MANDATORY_EVIDENCE_MISSING"
+    L3_INSUFFICIENT_AUTHORITY_RANK = "L3_INSUFFICIENT_AUTHORITY_RANK"
+    L3_CUSTOM_REQUIREMENT_UNSATISFIED = "L3_CUSTOM_REQUIREMENT_UNSATISFIED"
+
+    # L2 Answer State Precedence
+    L2_STATE_RESOLVED = "L2_STATE_RESOLVED"
+    L2_RULE_VIOLATION_TRIGGERED = "L2_RULE_VIOLATION_TRIGGERED"
+    L2_UNCERTAINTY_ABSTAIN = "L2_UNCERTAINTY_ABSTAIN"
+    L2_HUMAN_REVIEW_REQUIRED = "L2_HUMAN_REVIEW_REQUIRED"
+    L2_NO_KNOWLEDGE_DETERMINED = "L2_NO_KNOWLEDGE_DETERMINED"
+
+    # GraphRAG & Expansion
+    GRAPH_EXPANSION_APPLIED = "GRAPH_EXPANSION_APPLIED"
+    GRAPH_TRAVERSAL_BUDGET_DEGRADED = "GRAPH_TRAVERSAL_BUDGET_DEGRADED"
+    L5_SUPERSEDED_DOCUMENT_EXCLUSION = "L5_SUPERSEDED_DOCUMENT_EXCLUSION"
+
+    # Execution Strategy & Model-Minimal Operation
+    EXECUTION_MODE_LOCAL_ONLY = "EXECUTION_MODE_LOCAL_ONLY"
+    EXECUTION_MODE_DETERMINISTIC_FIRST = "EXECUTION_MODE_DETERMINISTIC_FIRST"
+    EXECUTION_MODE_APPROVED_REMOTE = "EXECUTION_MODE_APPROVED_REMOTE"
+    REMOTE_INFERENCE_BLOCKED_UNAUTHORIZED = "REMOTE_INFERENCE_BLOCKED_UNAUTHORIZED"
+    DETERMINISTIC_SYNTHESIS_APPLIED = "DETERMINISTIC_SYNTHESIS_APPLIED"
+    MODEL_INFERENCE_INVOKED = "MODEL_INFERENCE_INVOKED"
+
+    # Contract & Gate
+    CONTRACT_VALIDATION_PASSED = "CONTRACT_VALIDATION_PASSED"
+    FAIL_CLOSED_GATE_INVOKED = "FAIL_CLOSED_GATE_INVOKED"
+
+
+from dataclasses import dataclass, field
+
+@dataclass
+class GovernanceRequest:
+    """
+    Explicit, strongly-typed input contract for the LORE Governance Engine.
+    Specification: lore.md §4, Master Prompt Core Governance Completion.
+    """
+    workspace: Any
+    organization: Optional[Any] = None
+    principal: Optional[Any] = None
+    user_role: str = 'member'
+    query: str = ''
+    decision_type: Optional[str] = None
+    as_of: Optional[Any] = None
+    candidate_evidence: List[Dict[str, Any]] = field(default_factory=list)
+    policy_context: Optional[Dict[str, Any]] = None
+    trace_id: Optional[str] = None
+    schema_version: str = 'lore.result/2'
+    groq_api_key: Optional[str] = None
+    llm_model: Optional[str] = None
+    execution_mode: Optional[str] = None
+    synthesis_mode: Optional[str] = None
+
+    def __post_init__(self):
+        if not self.organization and hasattr(self.workspace, 'organization'):
+            self.organization = self.workspace.organization
+        self.user_role = (self.user_role or 'member').lower()
+        if not self.trace_id:
+            self.trace_id = f"trace-{uuid.uuid4().hex[:12]}"
+
+
+
 class ContractValidationError(Exception):
     """Raised when a governance result envelope violates schema invariants."""
     pass
@@ -139,6 +236,15 @@ def validate_canonical_envelope(data: Dict[str, Any]) -> Dict[str, Any]:
             f"Positive approval state '{state}' is invalid when mandatory evidence is missing or unsatisfied."
         )
 
+    # Security Invariant: L7 Permission Denial must NEVER expose citations or evidence_found
+    if state == Verdict.DENIED.value:
+        l7_status = data.get("layers_breakdown", {}).get("l7_permission", {}).get("status")
+        if l7_status == "denied":
+            if data.get("citations") and len(data.get("citations")) > 0:
+                raise ContractValidationError("Security Invariant Violated: L7 Denied result envelope must not contain citations.")
+            if data.get("evidence_found") and len(data.get("evidence_found")) > 0:
+                raise ContractValidationError("Security Invariant Violated: L7 Denied result envelope must not expose evidence_found.")
+
     # Validate citations provenance coordinates
     citations = data.get("citations", [])
     for idx, cit in enumerate(citations):
@@ -155,6 +261,9 @@ def validate_canonical_envelope(data: Dict[str, Any]) -> Dict[str, Any]:
 
     if not data.get("decision_id"):
         data["decision_id"] = f"dec-{uuid.uuid4().hex[:8]}"
+
+    if "reason_codes" not in data:
+        data["reason_codes"] = [GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value]
 
     return data
 
@@ -194,6 +303,7 @@ def fail_closed_envelope(
         "exceptions_applied": [],
         "citations": [],
         "notes": [f"Fail-closed governance invoked: {error_category}"],
+        "reason_codes": [GovernanceReasonCode.FAIL_CLOSED_GATE_INVOKED.value],
         "decision_id": did,
         "trace_id": tid,
         "token_count": 0,

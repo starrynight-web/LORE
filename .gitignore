@@ -38,6 +38,7 @@ __pycache__/
 backend/media/
 backend/staticfiles/
 backend/qdrant_storage/
+backend/backups/
 .pytest_cache/
 .coverage
 htmlcov/

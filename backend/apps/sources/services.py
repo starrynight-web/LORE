@@ -31,13 +31,17 @@ class StorageSecurityService:
     @staticmethod
     def inspect_and_validate(file_obj) -> Dict[str, Any]:
         size = file_obj.size
+        if size == 0:
+            raise ValidationError("File is empty (0 bytes). Cannot ingest empty content.")
         if size > MAX_FILE_SIZE_BYTES:
             raise ValidationError(f"File exceeds maximum allowed size of {MAX_FILE_SIZE_BYTES // (1024*1024)} MB.")
 
         name = file_obj.name.lower()
         ext = os.path.splitext(name)[1]
         if ext not in ALLOWED_EXTENSIONS:
-            raise ValidationError(f"Unsupported file extension '{ext}'. Allowed extensions: {', '.join(ALLOWED_EXTENSIONS.keys())}")
+            raise ValidationError(
+                f"Unsupported file extension '{ext}'. Only formats with verified functioning parsers are accepted: {', '.join(sorted(ALLOWED_EXTENSIONS.keys()))}"
+            )
 
         doc_type = ALLOWED_EXTENSIONS[ext]
 

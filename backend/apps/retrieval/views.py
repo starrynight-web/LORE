@@ -52,7 +52,8 @@ def search_view(request):
         'query': query,
         'workspace': str(workspace.id),
         'results_count': len(results),
-        'results': results
+        'results': results,
+        'diagnostics': retrieval_service.last_diagnostics
     })
 
 @api_view(['POST'])
@@ -135,6 +136,17 @@ def governed_query_view(request):
     )
 
     # 2. Evaluate via Complete 9-Layer Enterprise Governance Engine (L7 -> L0)
+    execution_mode = (
+        request.data.get('execution_mode') or
+        request.headers.get('X-Execution-Mode') or
+        None
+    )
+    synthesis_mode = (
+        request.data.get('synthesis_mode') or
+        request.headers.get('X-Synthesis-Mode') or
+        None
+    )
+
     schema_version = (
         request.data.get('schema_version') or 
         request.headers.get('X-Schema-Version') or 
@@ -149,7 +161,9 @@ def governed_query_view(request):
         as_of=as_of,
         schema_version=schema_version,
         groq_api_key=groq_api_key,
-        llm_model=llm_model
+        llm_model=llm_model,
+        execution_mode=execution_mode,
+        synthesis_mode=synthesis_mode
     )
 
     if not bypass_cache and not document_id:

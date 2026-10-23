@@ -1,10 +1,17 @@
 import uuid
 import re
+import time
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Union
 from django.conf import settings
 from apps.governance.models import EvidenceRequirement, ConflictRecord
 from apps.sources.models import SourceDocument
+from apps.governance.modes import (
+    ExecutionMode, ModelExecutionMetric, ModelTaskPurpose,
+    get_active_execution_mode, is_remote_model_allowed,
+    sanitize_sensitive_data, acquire_remote_concurrency_slot,
+    release_remote_concurrency_slot
+)
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +19,10 @@ class GroundedGenerationService:
     """
     Synthesizes evidence-grounded answers strictly from authorized passages.
     Never hallucinates ungrounded facts or invents citations.
-    Supports pluggable external LLM (OpenAI, Anthropic, Ollama) with fallback
-    to deterministic grounded passage synthesis.
+    Supports deterministic-first execution strategy, strict local-only execution,
+    and approved remote model invocations with telemetry and zero silent cloud fallback.
     """
+    last_metrics: Optional[Dict[str, Any]] = None
 
     @classmethod
     def synthesize_answer(
@@ -24,41 +32,282 @@ class GroundedGenerationService:
         conflicts: List[Dict[str, Any]],
         state: str,
         groq_api_key: Optional[str] = None,
-        llm_model: Optional[str] = None
-    ) -> str:
-        if state == 'no_knowledge':
-            return f"No authoritative knowledge found matching '{query}'. Retrieval returned zero relevant passages."
+        llm_model: Optional[str] = None,
+        execution_mode: Optional[str] = None,
+        synthesis_mode: Optional[str] = None,
+        policy_context: Optional[Dict[str, Any]] = None,
+        workspace: Optional[Any] = None,
+        return_metrics: bool = False
+    ) -> Union[str, Tuple[str, Dict[str, Any]]]:
+        # ----------------------------------------------------------------------
+        # Strict Invariant 1: Non-supported outcomes must NEVER invoke an LLM
+        # ----------------------------------------------------------------------
+        if state in ('denied', 'violation', 'conflicting', 'insufficient', 'abstain', 'human_review', 'no_knowledge'):
+            if state == 'denied':
+                ans = f"Access Denied: You do not have sufficient permissions to view the authoritative records for '{query}'."
+            elif state == 'violation':
+                ans = f"Governance Policy Violation: The proposal or action requested in '{query}' breaches mandatory rules."
+            elif state == 'conflicting':
+                ans = (
+                    f"Governance Warning: Contradictory authoritative sources detected for '{query}'. "
+                    "LORE will not guess between equal-authority policies. Please request human adjudication."
+                )
+            elif state == 'insufficient':
+                ans = (
+                    f"Evaluation for query '{query}' determined that available evidence is insufficient. "
+                    "Mandatory compliance and security criteria remain unverified or incomplete in published records."
+                )
+            elif state == 'abstain':
+                ans = f"Abstain: Confidence for '{query}' falls within the uncertainty band. Cannot conclude safely."
+            elif state == 'human_review':
+                ans = f"Human Review Required: High-risk decision for '{query}' requires designated sign-off."
+            else:  # no_knowledge
+                ans = f"No authoritative knowledge found matching '{query}'. Retrieval returned zero relevant passages."
 
-        if state == 'insufficient':
-            return (
-                f"Evaluation for query '{query}' determined that available evidence is insufficient. "
-                "Mandatory compliance and security criteria remain unverified or incomplete in published records."
+            metric = ModelExecutionMetric(
+                provider="deterministic_governance_engine",
+                model_name="rules_precedence_ladder",
+                purpose=ModelTaskPurpose.CLASSIFICATION.value,
+                latency_ms=0.1,
+                tokens_prompt=0,
+                tokens_completion=0,
+                tokens_total=0,
+                cost_usd=0.0,
+                was_deterministic=True,
+                reason=f"governance_terminal_state_{state}"
             )
+            cls.last_metrics = metric.to_dict()
+            return (ans, cls.last_metrics) if return_metrics else ans
 
-        # 1. Prioritize User-Supplied Groq API Key or Settings Groq Key
+        # ----------------------------------------------------------------------
+        # Resolve active execution mode
+        # ----------------------------------------------------------------------
+        mode = get_active_execution_mode(
+            workspace=workspace,
+            policy_context=policy_context,
+            requested_mode=execution_mode
+        )
+
+        # ----------------------------------------------------------------------
+        # Strategy Execution: Local-Only Mode
+        # ----------------------------------------------------------------------
+        if mode == ExecutionMode.LOCAL_ONLY:
+            t0 = time.time()
+            ans = cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+            elapsed_ms = (time.time() - t0) * 1000
+            metric = ModelExecutionMetric(
+                provider="deterministic_code",
+                model_name="lore-extractive-synthesizer",
+                purpose=ModelTaskPurpose.GENERATION.value,
+                latency_ms=elapsed_ms,
+                tokens_prompt=0,
+                tokens_completion=0,
+                tokens_total=0,
+                cost_usd=0.0,
+                was_deterministic=True,
+                reason="execution_mode_local_only"
+            )
+            cls.last_metrics = metric.to_dict()
+            return (ans, cls.last_metrics) if return_metrics else ans
+
+        # ----------------------------------------------------------------------
+        # Strategy Execution: Deterministic-First Mode
+        # ----------------------------------------------------------------------
+        if mode == ExecutionMode.DETERMINISTIC_FIRST:
+            is_generative_requested = (synthesis_mode == 'generative')
+            if not is_generative_requested:
+                # Core efficiency: routine factual lookups and policy answers are generated deterministically
+                t0 = time.time()
+                ans = cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+                elapsed_ms = (time.time() - t0) * 1000
+                metric = ModelExecutionMetric(
+                    provider="deterministic_code",
+                    model_name="lore-extractive-synthesizer",
+                    purpose=ModelTaskPurpose.GENERATION.value,
+                    latency_ms=elapsed_ms,
+                    tokens_prompt=0,
+                    tokens_completion=0,
+                    tokens_total=0,
+                    cost_usd=0.0,
+                    was_deterministic=True,
+                    reason="deterministic_first_extractive_preference"
+                )
+                cls.last_metrics = metric.to_dict()
+                return (ans, cls.last_metrics) if return_metrics else ans
+
+            # Unresolved semantic generation task requested: verify tenant authorization
+            is_allowed, auth_reason = is_remote_model_allowed(
+                workspace=workspace,
+                organization=getattr(workspace, 'organization', None),
+                policy_context=policy_context,
+                mode=mode,
+                purpose=ModelTaskPurpose.GENERATION
+            )
+            if not is_allowed:
+                t0 = time.time()
+                ans = cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+                elapsed_ms = (time.time() - t0) * 1000
+                metric = ModelExecutionMetric(
+                    provider="deterministic_code",
+                    model_name="lore-extractive-synthesizer",
+                    purpose=ModelTaskPurpose.GENERATION.value,
+                    latency_ms=elapsed_ms,
+                    tokens_prompt=0,
+                    tokens_completion=0,
+                    tokens_total=0,
+                    cost_usd=0.0,
+                    was_deterministic=True,
+                    reason=f"remote_blocked_{auth_reason}"
+                )
+                cls.last_metrics = metric.to_dict()
+                return (ans, cls.last_metrics) if return_metrics else ans
+
+        # ----------------------------------------------------------------------
+        # Strategy Execution: Approved Remote Mode
+        # ----------------------------------------------------------------------
+        if mode == ExecutionMode.APPROVED_REMOTE:
+            is_allowed, auth_reason = is_remote_model_allowed(
+                workspace=workspace,
+                organization=getattr(workspace, 'organization', None),
+                policy_context=policy_context,
+                mode=mode,
+                purpose=ModelTaskPurpose.GENERATION
+            )
+            if not is_allowed:
+                logger.info(f"Approved remote execution blocked: {sanitize_sensitive_data(auth_reason)}")
+                t0 = time.time()
+                ans = cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+                elapsed_ms = (time.time() - t0) * 1000
+                metric = ModelExecutionMetric(
+                    provider="deterministic_code",
+                    model_name="lore-extractive-synthesizer",
+                    purpose=ModelTaskPurpose.GENERATION.value,
+                    latency_ms=elapsed_ms,
+                    tokens_prompt=0,
+                    tokens_completion=0,
+                    tokens_total=0,
+                    cost_usd=0.0,
+                    was_deterministic=True,
+                    reason=f"remote_unauthorized_{auth_reason}"
+                )
+                cls.last_metrics = metric.to_dict()
+                return (ans, cls.last_metrics) if return_metrics else ans
+
+        # ----------------------------------------------------------------------
+        # Approved Model Invocation with Safety, Concurrency, and Sanitization
+        # ----------------------------------------------------------------------
         active_groq_key = groq_api_key or getattr(settings, 'GROQ_API_KEY', '')
         active_model = llm_model or getattr(settings, 'GROQ_MODEL', 'gpt-oss-120B')
 
         if active_groq_key:
+            slot_acquired = acquire_remote_concurrency_slot(timeout=5.0)
+            t_call = time.time()
             try:
-                answer = cls._generate_with_groq_llm(query, retrieved_chunks, conflicts, active_groq_key, active_model)
-                if answer and len(answer.strip()) > 10:
-                    return answer
+                ans, call_meta = cls._generate_with_groq_llm(
+                    query, retrieved_chunks, conflicts, active_groq_key, active_model
+                )
+                elapsed_ms = (time.time() - t_call) * 1000
+                if ans and len(ans.strip()) > 10:
+                    metric = ModelExecutionMetric(
+                        provider="groq",
+                        model_name=call_meta.get("model", active_model),
+                        purpose=ModelTaskPurpose.GENERATION.value,
+                        latency_ms=elapsed_ms,
+                        tokens_prompt=call_meta.get("tokens_prompt", 0),
+                        tokens_completion=call_meta.get("tokens_completion", 0),
+                        tokens_total=call_meta.get("tokens_total", 0),
+                        cost_usd=call_meta.get("cost_usd", 0.0),
+                        was_deterministic=False,
+                        reason="approved_remote_groq_inference"
+                    )
+                    cls.last_metrics = metric.to_dict()
+                    return (ans, cls.last_metrics) if return_metrics else ans
             except Exception as e:
-                logger.warning(f"Groq LLM generation failed ({active_model}): {e}. Falling back to deterministic synthesis.")
+                # Strict External-Call Safety: Scrub secrets before logging
+                sanitized_err = sanitize_sensitive_data(str(e))
+                logger.warning(
+                    f"Groq LLM generation failed ({active_model}): {sanitized_err}. "
+                    "Refusing silent cloud fallback; safely falling back to deterministic synthesis."
+                )
+            finally:
+                if slot_acquired:
+                    release_remote_concurrency_slot()
 
-        # 2. Check general external LLM provider
+            # Deterministic fallback after Groq failure (NO silent cloud cascade)
+            t0 = time.time()
+            ans = cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+            elapsed_ms = (time.time() - t0) * 1000
+            metric = ModelExecutionMetric(
+                provider="deterministic_code",
+                model_name="lore-extractive-synthesizer",
+                purpose=ModelTaskPurpose.GENERATION.value,
+                latency_ms=elapsed_ms,
+                tokens_prompt=0,
+                tokens_completion=0,
+                tokens_total=0,
+                cost_usd=0.0,
+                was_deterministic=True,
+                reason="groq_failure_safe_deterministic_fallback"
+            )
+            cls.last_metrics = metric.to_dict()
+            return (ans, cls.last_metrics) if return_metrics else ans
+
+        # Check configured general external LLM provider
         llm_provider = getattr(settings, 'LLM_PROVIDER', 'none').lower()
         api_key = getattr(settings, 'LLM_API_KEY', '')
 
         if llm_provider in ('openai', 'anthropic') and api_key:
+            slot_acquired = acquire_remote_concurrency_slot(timeout=5.0)
+            t_call = time.time()
             try:
-                return cls._generate_with_external_llm(query, retrieved_chunks, conflicts, llm_provider, api_key)
+                ans, call_meta = cls._generate_with_external_llm(
+                    query, retrieved_chunks, conflicts, llm_provider, api_key
+                )
+                elapsed_ms = (time.time() - t_call) * 1000
+                if ans and len(ans.strip()) > 10:
+                    metric = ModelExecutionMetric(
+                        provider=llm_provider,
+                        model_name=call_meta.get("model", "default"),
+                        purpose=ModelTaskPurpose.GENERATION.value,
+                        latency_ms=elapsed_ms,
+                        tokens_prompt=call_meta.get("tokens_prompt", 0),
+                        tokens_completion=call_meta.get("tokens_completion", 0),
+                        tokens_total=call_meta.get("tokens_total", 0),
+                        cost_usd=call_meta.get("cost_usd", 0.0),
+                        was_deterministic=False,
+                        reason=f"approved_remote_{llm_provider}_inference"
+                    )
+                    cls.last_metrics = metric.to_dict()
+                    return (ans, cls.last_metrics) if return_metrics else ans
             except Exception as e:
-                logger.warning(f"External LLM generation failed: {e}. Falling back to deterministic synthesis.")
+                sanitized_err = sanitize_sensitive_data(str(e))
+                logger.warning(
+                    f"External LLM generation failed: {sanitized_err}. "
+                    "Refusing silent cloud fallback; safely falling back to deterministic synthesis."
+                )
+            finally:
+                if slot_acquired:
+                    release_remote_concurrency_slot()
 
-        # 3. Grounded Deterministic Synthesizer (Zero Hallucination Guaranteed)
-        return cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+        # Deterministic Grounded Synthesizer (Zero Hallucination Guaranteed)
+        t0 = time.time()
+        ans = cls._generate_deterministic_synthesis(query, retrieved_chunks, conflicts, state)
+        elapsed_ms = (time.time() - t0) * 1000
+        metric = ModelExecutionMetric(
+            provider="deterministic_code",
+            model_name="lore-extractive-synthesizer",
+            purpose=ModelTaskPurpose.GENERATION.value,
+            latency_ms=elapsed_ms,
+            tokens_prompt=0,
+            tokens_completion=0,
+            tokens_total=0,
+            cost_usd=0.0,
+            was_deterministic=True,
+            reason="deterministic_grounded_synthesis"
+        )
+        cls.last_metrics = metric.to_dict()
+        return (ans, cls.last_metrics) if return_metrics else ans
+
 
     @classmethod
     def _generate_with_groq_llm(
@@ -118,35 +367,58 @@ class GroundedGenerationService:
         if model_name != 'llama-3.3-70b-versatile':
             models_to_try.append('llama-3.3-70b-versatile')
 
+        timeout_secs = int(getattr(settings, 'REMOTE_CALL_TIMEOUT_SECONDS', 15))
+        max_retries = int(getattr(settings, 'REMOTE_CALL_MAX_RETRIES', 2))
+
         for candidate_model in models_to_try:
-            try:
-                payload = {
-                    "model": candidate_model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                    ],
-                    "temperature": 0.0,
-                    "max_tokens": 1024,
-                    "stream": False
-                }
+            for attempt in range(max_retries):
+                try:
+                    payload = {
+                        "model": candidate_model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content}
+                        ],
+                        "temperature": 0.0,
+                        "max_tokens": 1024,
+                        "stream": False
+                    }
 
-                req = urllib.request.Request(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {api_key.strip()}",
-                        "User-Agent": "LORE-Enterprise/2.0"
-                    },
-                    data=json.dumps(payload).encode('utf-8')
-                )
+                    clean_key = api_key.strip()
+                    req = urllib.request.Request(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {clean_key}",
+                            "User-Agent": "LORE-Enterprise/2.0"
+                        },
+                        data=json.dumps(payload).encode('utf-8')
+                    )
 
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    resp_data = json.loads(resp.read().decode('utf-8'))
-                    return resp_data['choices'][0]['message']['content'].strip()
-            except Exception as ex:
-                logger.warning(f"Failed Groq attempt with model {candidate_model}: {ex}")
-                continue
+                    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
+                        resp_data = json.loads(resp.read().decode('utf-8'))
+                        content = resp_data['choices'][0]['message']['content'].strip()
+                        usage = resp_data.get('usage', {})
+                        p_toks = usage.get('prompt_tokens', len(user_content.split()))
+                        c_toks = usage.get('completion_tokens', len(content.split()))
+                        t_toks = usage.get('total_tokens', p_toks + c_toks)
+                        # Groq pricing approx ~$0.00059 per 1k tokens
+                        cost_usd = (t_toks / 1000.0) * 0.00059
+
+                        call_meta = {
+                            "model": candidate_model,
+                            "tokens_prompt": p_toks,
+                            "tokens_completion": c_toks,
+                            "tokens_total": t_toks,
+                            "cost_usd": cost_usd
+                        }
+                        return content, call_meta
+                except Exception as ex:
+                    sanitized_msg = sanitize_sensitive_data(str(ex))
+                    logger.warning(f"Groq attempt {attempt + 1}/{max_retries} failed ({candidate_model}): {sanitized_msg}")
+                    if attempt < max_retries - 1:
+                        time.sleep(0.5 * (attempt + 1))
+                    continue
 
         raise RuntimeError(f"All Groq model attempts failed for {models_to_try}")
 
@@ -174,6 +446,7 @@ class GroundedGenerationService:
             ]
             synthesis_paragraphs.append("\n".join(conflict_notes))
 
+        seen_passages = set()
         for idx, chk in enumerate(top_chunks, 1):
             title = chk.get('document_title', 'Document')
             ver = chk.get('document_version', 1)
@@ -184,6 +457,11 @@ class GroundedGenerationService:
             # Extract substantive sentences
             sentences = [s.strip() for s in re.split(r'(?<=[.!?\n])\s+', text) if len(s.strip()) > 15]
             lead_content = " ".join(sentences[:2]) if sentences else text[:250]
+
+            passage_key = (str(chk.get('document_id', title)), page, lead_content[:80])
+            if passage_key in seen_passages:
+                continue
+            seen_passages.add(passage_key)
 
             synthesis_paragraphs.append(
                 f"According to **{title}** (Rev {ver}, Page {page}, Authority Rank {auth}):\n"
@@ -206,7 +484,7 @@ class GroundedGenerationService:
         conflicts: List[Dict[str, Any]],
         provider: str,
         api_key: str
-    ) -> str:
+    ) -> Tuple[str, Dict[str, Any]]:
         # Prompt engineered for strict citation grounding and anti-hallucination
         context_blocks = []
         for i, c in enumerate(retrieved_chunks[:6], 1):
@@ -225,6 +503,9 @@ class GroundedGenerationService:
             "Answer:"
         )
 
+        timeout_secs = int(getattr(settings, 'REMOTE_CALL_TIMEOUT_SECONDS', 15))
+        model_name = getattr(settings, 'LLM_MODEL_NAME', 'gpt-4o-mini')
+
         if provider == 'openai':
             import urllib.request
             import json
@@ -232,19 +513,34 @@ class GroundedGenerationService:
                 "https://api.openai.com/v1/chat/completions",
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}"
+                    "Authorization": f"Bearer {api_key.strip()}"
                 },
                 data=json.dumps({
-                    "model": getattr(settings, 'LLM_MODEL_NAME', 'gpt-4o-mini'),
+                    "model": model_name,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.0
                 }).encode('utf-8')
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
-                return data['choices'][0]['message']['content'].strip()
+                content = data['choices'][0]['message']['content'].strip()
+                usage = data.get('usage', {})
+                p_toks = usage.get('prompt_tokens', len(prompt.split()))
+                c_toks = usage.get('completion_tokens', len(content.split()))
+                t_toks = usage.get('total_tokens', p_toks + c_toks)
+                # OpenAI gpt-4o-mini approx $0.00015 / 1k input, $0.0006 / 1k output
+                cost_usd = (p_toks / 1000.0) * 0.00015 + (c_toks / 1000.0) * 0.00060
 
-        return ""
+                return content, {
+                    "model": model_name,
+                    "tokens_prompt": p_toks,
+                    "tokens_completion": c_toks,
+                    "tokens_total": t_toks,
+                    "cost_usd": cost_usd
+                }
+
+        return "", {"model": "unsupported", "tokens_prompt": 0, "tokens_completion": 0, "tokens_total": 0, "cost_usd": 0.0}
+
 
 
 class AnswerStateMachine:

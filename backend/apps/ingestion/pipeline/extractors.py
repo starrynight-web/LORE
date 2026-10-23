@@ -1,6 +1,9 @@
 import io
 import csv
 import os
+import re
+import zipfile
+import xml.etree.ElementTree as ET
 from typing import Dict, Any, List
 from .ocr import OCRRouter, BaseOCRProvider
 
@@ -114,6 +117,54 @@ class SpreadsheetExtractor:
             })
         return pages
 
+class PresentationExtractor:
+    """Extracts slide text and structure from PPTX presentation files using standard library zipfile."""
+    @staticmethod
+    def extract(file_path_or_bytes) -> List[Dict[str, Any]]:
+        if isinstance(file_path_or_bytes, (bytes, bytearray)):
+            zf = zipfile.ZipFile(io.BytesIO(file_path_or_bytes))
+        else:
+            zf = zipfile.ZipFile(file_path_or_bytes)
+
+        slide_names = [name for name in zf.namelist() if re.match(r'ppt/slides/slide\d+\.xml', name)]
+        slide_names.sort(key=lambda x: int(re.search(r'\d+', x).group(0)) if re.search(r'\d+', x) else 0)
+
+        if not slide_names:
+            return [{
+                'page_number': 1,
+                'text': '',
+                'confidence': 1.0,
+                'words_count': 0,
+                'width': 960.0,
+                'height': 540.0,
+                'extraction_type': 'pptx_extract',
+                'engine': 'zipfile_xml',
+                'engine_version': '1.0',
+                'is_repaired': False,
+                'bounding_boxes': []
+            }]
+
+        pages = []
+        for idx, sname in enumerate(slide_names, 1):
+            xml_data = zf.read(sname)
+            root = ET.fromstring(xml_data)
+            texts = [node.text for node in root.iter() if node.tag.endswith('}t') and node.text]
+            slide_text = "\n".join(texts).strip()
+            pages.append({
+                'page_number': idx,
+                'text': f"## Slide {idx}\n\n{slide_text}" if slide_text else f"## Slide {idx}\n\n[Empty slide]",
+                'confidence': 1.0,
+                'words_count': len(slide_text.split()),
+                'width': 960.0,
+                'height': 540.0,
+                'extraction_type': 'pptx_extract',
+                'engine': 'zipfile_xml',
+                'engine_version': '1.0',
+                'is_repaired': False,
+                'bounding_boxes': []
+            })
+        return pages
+
 class TextExtractor:
     """Extracts plain text and markdown files."""
     @staticmethod
@@ -156,5 +207,7 @@ class UnifiedDocumentExtractor:
             return SpreadsheetExtractor.extract_csv(file_path_or_bytes)
         elif doc_type == 'spreadsheet' or ext in ('.xlsx', '.xls'):
             return SpreadsheetExtractor.extract_xlsx(file_path_or_bytes)
+        elif doc_type == 'presentation' or ext in ('.pptx', '.ppt'):
+            return PresentationExtractor.extract(file_path_or_bytes)
         else:
             return TextExtractor.extract(file_path_or_bytes)

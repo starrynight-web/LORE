@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'corsheaders',
     
     # LORE Enterprise domain apps
+    'lore_enterprise.apps.LoreEnterpriseConfig',
     'apps.identity',
     'apps.workspaces',
     'apps.sources',
@@ -108,15 +109,25 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# REST Framework
-GUEST_MODE_ENABLED = os.environ.get('GUEST_MODE_ENABLED', 'True').lower() in ('true', '1', 'yes')
+# REST Framework & Authentication Boundaries (Requirement 10)
+# In development (DEBUG=True), GUEST_MODE defaults to True for sandbox exploration.
+# In production (DEBUG=False), GUEST_MODE defaults strictly to False to eliminate unauthorized admin elevation.
+if DEBUG:
+    GUEST_MODE_ENABLED = os.environ.get('GUEST_MODE_ENABLED', 'True').lower() in ('true', '1', 'yes')
+else:
+    GUEST_MODE_ENABLED = os.environ.get('GUEST_MODE_ENABLED', 'False').lower() in ('true', '1', 'yes')
+    if GUEST_MODE_ENABLED:
+        raise ImproperlyConfigured("GUEST_MODE_ENABLED cannot be True in production (DEBUG=False). Authentication shortcut is prohibited.")
+
+DEFAULT_AUTH_CLASSES = [
+    'rest_framework.authentication.TokenAuthentication',
+    'rest_framework.authentication.SessionAuthentication',
+]
+if GUEST_MODE_ENABLED:
+    DEFAULT_AUTH_CLASSES.append('apps.identity.authentication.GuestModeAuthentication')
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
-        'apps.identity.authentication.GuestModeAuthentication',
-    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': DEFAULT_AUTH_CLASSES,
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
@@ -138,13 +149,26 @@ if raw_cors:
     CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors.split(',') if o.strip()]
     CORS_ALLOW_ALL_ORIGINS = False
 else:
-    CORS_ALLOW_ALL_ORIGINS = True  # Safe dev fallback; override with CORS_ALLOWED_ORIGINS in prod
+    if DEBUG:
+        CORS_ALLOW_ALL_ORIGINS = True  # Safe dev fallback
+    else:
+        CORS_ALLOW_ALL_ORIGINS = False
+        raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS must be explicitly configured when running in production (DEBUG=False).")
 CORS_ALLOW_CREDENTIALS = True
+
+# Production Security Headers & Cookies (Requirement 10)
+if not DEBUG:
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
 
 # Embedding & Retrieval Engine Configuration
 # Providers: 'sentence-transformers' (default local semantic), 'openai', 'test-projection'
 EMBEDDING_PROVIDER = os.environ.get('EMBEDDING_PROVIDER', 'sentence-transformers')
 EMBEDDING_MODEL_NAME = os.environ.get('EMBEDDING_MODEL_NAME', 'all-MiniLM-L6-v2')
+ALLOW_HASH_PROJECTION_FALLBACK = os.environ.get('ALLOW_HASH_PROJECTION_FALLBACK', 'False').lower() in ('true', '1', 'yes')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
 OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
@@ -183,3 +207,12 @@ if not TESSERACT_CMD:
         if os.path.exists(p):
             TESSERACT_CMD = p
             break
+
+# Execution Strategy & Model-Minimal Operation
+# Modes: 'local_only', 'deterministic_first', 'approved_remote'
+EXECUTION_MODE = os.environ.get('EXECUTION_MODE', 'deterministic_first').lower()
+ALLOW_REMOTE_MODELS = os.environ.get('ALLOW_REMOTE_MODELS', 'False').lower() in ('true', '1', 'yes')
+REMOTE_CALL_TIMEOUT_SECONDS = int(os.environ.get('REMOTE_CALL_TIMEOUT_SECONDS', '15'))
+REMOTE_CALL_MAX_RETRIES = int(os.environ.get('REMOTE_CALL_MAX_RETRIES', '2'))
+REMOTE_CALL_MAX_CONCURRENCY = int(os.environ.get('REMOTE_CALL_MAX_CONCURRENCY', '5'))
+

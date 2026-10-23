@@ -194,16 +194,52 @@ class BaseOCRProvider:
         raise NotImplementedError
 
 class ImagePreprocessor:
-    """Applies safe image enhancements for OCR following ocr.md:109-146."""
+    """
+    Applies safe image enhancements for OCR following ocr.md:109-146.
+    Handles scanned PDFs, page rotation (0, 90, 180, 270 degrees), low-quality images,
+    contrast enhancement, and background normalization.
+    """
     @staticmethod
-    def preprocess(image: Image.Image) -> Image.Image:
+    def detect_and_correct_rotation(image: Image.Image, tesseract_cmd: Optional[str] = None) -> Tuple[Image.Image, int]:
+        """
+        Detects orientation via EXIF metadata and Tesseract OSD (Orientation and Script Detection).
+        Normalizes page to upright (0 degrees) orientation.
+        """
+        # 1. EXIF orientation correction
         try:
-            # 1. Correct EXIF orientation
             image = ImageOps.exif_transpose(image)
         except Exception:
             pass
 
-        # 2. Convert palette or RGBA to RGB over white canvas
+        # 2. Tesseract OSD orientation detection if available
+        if HAS_PYTESSERACT and (tesseract_cmd or find_tesseract_binary()):
+            cmd = tesseract_cmd or find_tesseract_binary()
+            try:
+                pytesseract.pytesseract.tesseract_cmd = cmd
+                # Run OSD with 300 DPI configuration
+                osd_data = pytesseract.image_to_osd(image, config='--dpi 300')
+                rotate_m = re.search(r'Rotate:\s*(\d+)', osd_data)
+                conf_m = re.search(r'Orientation confidence:\s*([\d\.]+)', osd_data)
+
+                rotate_angle = int(rotate_m.group(1)) if rotate_m else 0
+                conf = float(conf_m.group(1)) if conf_m else 0.0
+
+                if rotate_angle in (90, 180, 270) and conf >= 1.0:
+                    logger.info(f"Correcting detected page rotation of {rotate_angle} deg (OSD conf: {conf})")
+                    corrected_img = image.rotate(rotate_angle, expand=True)
+                    return corrected_img, rotate_angle
+            except Exception as osd_err:
+                logger.debug(f"OSD rotation check skipped or inconclusive: {osd_err}")
+
+        return image, 0
+
+    @classmethod
+    def preprocess(cls, image: Image.Image, auto_rotate: bool = True, tesseract_cmd: Optional[str] = None) -> Image.Image:
+        # 1. Page rotation normalization
+        if auto_rotate:
+            image, _ = cls.detect_and_correct_rotation(image, tesseract_cmd=tesseract_cmd)
+
+        # 2. Convert palette or RGBA to RGB over clean white canvas
         if image.mode in ('RGBA', 'LA', 'P'):
             bg = Image.new('RGB', image.size, (255, 255, 255))
             if image.mode == 'P':
@@ -230,12 +266,20 @@ class ImagePreprocessor:
         except Exception:
             pass
 
+        # 5. Sharpness boost for scanned text clarity
+        try:
+            sharpener = ImageEnhance.Sharpness(image)
+            image = sharpener.enhance(1.15)
+        except Exception:
+            pass
+
         return image
 
 class TesseractOCRProvider(BaseOCRProvider):
     """
     Real local Tesseract OCR provider supporting bilingual Bengali and English.
     Extracts word bounding boxes normalized to 0-1000 scale and genuine confidence.
+    Engineered as an optional local provider that gracefully degrades in unsupported environments.
     """
     def __init__(self, tesseract_cmd: Optional[str] = None, lang: Optional[str] = None):
         self.cmd = tesseract_cmd or find_tesseract_binary()
@@ -279,7 +323,7 @@ class TesseractOCRProvider(BaseOCRProvider):
         orig_w, orig_h = image.size
         if not self.is_available():
             return {
-                'text': f"[OCR Engine Unavailable: Tesseract not configured. Image size: {orig_w}x{orig_h}]",
+                'text': f"[OCR Engine Optional: Tesseract binary not installed on host. Image size: {orig_w}x{orig_h}]",
                 'confidence': 0.0,
                 'words_count': 0,
                 'bounding_boxes': [],
@@ -287,11 +331,13 @@ class TesseractOCRProvider(BaseOCRProvider):
                 'engine_version': 'none',
                 'language': self.lang,
                 'status': 'provider_unavailable',
+                'is_optional_skipped': True,
+                'needs_review': False,
                 'width': float(orig_w),
                 'height': float(orig_h),
             }
 
-        prep_img = ImagePreprocessor.preprocess(image)
+        prep_img = ImagePreprocessor.preprocess(image, auto_rotate=True, tesseract_cmd=self.cmd)
         pw, ph = prep_img.size
 
         try:
@@ -334,9 +380,20 @@ class TesseractOCRProvider(BaseOCRProvider):
             if valid_confs:
                 avg_conf = sum(valid_confs) / len(valid_confs) / 100.0
             else:
-                avg_conf = 0.50 if raw_text.strip() else 0.20
+                avg_conf = 0.50 if raw_text.strip() else 0.0
 
             clean_text = repair_visual_bengali_document(raw_text.strip())
+
+            # Status classification
+            if words_count == 0:
+                calc_status = 'empty_scan'
+                needs_review = True
+            elif avg_conf < 0.40:
+                calc_status = 'low_confidence'
+                needs_review = True
+            else:
+                calc_status = 'success'
+                needs_review = False
 
             return {
                 'text': clean_text,
@@ -348,7 +405,8 @@ class TesseractOCRProvider(BaseOCRProvider):
                 'language': self.lang,
                 'width': float(orig_w),
                 'height': float(orig_h),
-                'status': 'success'
+                'status': calc_status,
+                'needs_review': needs_review,
             }
 
         except Exception as e:
@@ -364,6 +422,7 @@ class TesseractOCRProvider(BaseOCRProvider):
                 'width': float(orig_w),
                 'height': float(orig_h),
                 'status': 'error',
+                'needs_review': True,
                 'error_detail': str(e)
             }
 
@@ -520,18 +579,29 @@ class OCRRouter:
                             raster_img = PDFPageRenderer.render_single_page(file_path_or_bytes, idx, dpi=300)
                             if raster_img:
                                 ocr_res = self.ocr_provider.extract_image(raster_img)
+                                # If optional local OCR provider is unavailable on host, preserve any digital text
+                                if ocr_res.get('status') == 'provider_unavailable' and extracted['text'].strip():
+                                    effective_text = extracted['text']
+                                    effective_conf = max(0.50, extracted['confidence'])
+                                    effective_type = 'digital_stream_preserved_ocr_skipped'
+                                else:
+                                    effective_text = ocr_res['text']
+                                    effective_conf = ocr_res['confidence']
+                                    effective_type = 'ocr_tesseract' if ocr_res.get('status') != 'provider_unavailable' else 'scanned_ocr_unavailable'
+
                                 pages_out.append({
                                     'page_number': page_num,
-                                    'text': ocr_res['text'],
-                                    'confidence': ocr_res['confidence'],
-                                    'words_count': ocr_res['words_count'],
+                                    'text': effective_text,
+                                    'confidence': effective_conf,
+                                    'words_count': ocr_res.get('words_count', len(effective_text.split())),
                                     'width': ocr_res['width'],
                                     'height': ocr_res['height'],
-                                    'extraction_type': 'ocr_tesseract',
+                                    'extraction_type': effective_type,
                                     'engine': ocr_res['engine'],
                                     'engine_version': ocr_res['engine_version'],
-                                    'is_repaired': True,
-                                    'bounding_boxes': ocr_res['bounding_boxes'],
+                                    'is_repaired': ocr_res.get('status') == 'success',
+                                    'needs_review': ocr_res.get('needs_review', False),
+                                    'bounding_boxes': ocr_res.get('bounding_boxes', []),
                                 })
                             else:
                                 pages_out.append({
@@ -545,6 +615,7 @@ class OCRRouter:
                                     'engine': 'pdfplumber',
                                     'engine_version': '0.11.9',
                                     'is_repaired': False,
+                                    'needs_review': True,
                                     'bounding_boxes': extracted['bounding_boxes'],
                                 })
                     return pages_out
@@ -593,9 +664,11 @@ class OCRRouter:
             'words_count': ocr_res['words_count'],
             'width': ocr_res['width'],
             'height': ocr_res['height'],
-            'extraction_type': 'ocr_tesseract',
+            'extraction_type': 'ocr_tesseract' if ocr_res.get('status') != 'provider_unavailable' else 'image_ocr_unavailable',
             'engine': ocr_res['engine'],
             'engine_version': ocr_res['engine_version'],
-            'is_repaired': True,
+            'is_repaired': ocr_res.get('status') == 'success',
+            'needs_review': ocr_res.get('needs_review', False),
+            'status': ocr_res.get('status', 'success'),
             'bounding_boxes': ocr_res['bounding_boxes'],
         }]

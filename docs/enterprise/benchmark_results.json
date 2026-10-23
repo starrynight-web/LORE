@@ -1,0 +1,183 @@
+{
+  "evaluation_suite": "LORE Enterprise Evidence-Based Evaluation",
+  "dataset_version": "2.0.0",
+  "dataset_checksum": "sha256:d8b2e1f4091a4b7f8c0e29b13c72d5e89a01f4c7b8e21d34f5a9b0c1e2f3a4b5",
+  "timestamp": "2026-10-23T17:25:06.290270+00:00",
+  "execution_duration_sec": 26.84,
+  "environment": {
+    "python_version": "3.14.2",
+    "os": "win32",
+    "django_version": "4.2.16",
+    "embedding_provider": "sentence-transformers",
+    "embedding_model": "all-MiniLM-L6-v2",
+    "execution_mode": "deterministic_first"
+  },
+  "retrieval_quality": {
+    "evaluated_queries_count": 10,
+    "recall_at_3": 1.0,
+    "recall_at_5": 1.0,
+    "precision_at_3": 0.3333,
+    "precision_at_5": 0.2,
+    "mrr": 0.8833,
+    "ndcg_at_5": 0.9131
+  },
+  "groundedness_and_citations": {
+    "groundedness_mean": 1.0,
+    "total_citations_evaluated": 20,
+    "valid_citations_count": 20,
+    "citation_locator_accuracy": 1.0
+  },
+  "governance_correctness": {
+    "total_cases_evaluated": 15,
+    "state_accuracy": 1.0,
+    "directive_accuracy": 1.0,
+    "layer_enforcement_counts": {
+      "l7": 15,
+      "l6": 15,
+      "l5": 15,
+      "l4": 15,
+      "l3": 13,
+      "l2": 15
+    }
+  },
+  "graphrag_contribution": {
+    "multi_hop_query": "What key ceremony is required for tenant master cryptographic key rotation during cloud procurement?",
+    "without_graph": {
+      "retrieved_count": 2,
+      "hsm_dependency_retrieved": true,
+      "latency_ms": 25.3
+    },
+    "with_graph": {
+      "retrieved_count": 2,
+      "hsm_dependency_retrieved": true,
+      "latency_ms": 122.34,
+      "graph_expanded_nodes": 0
+    },
+    "dependency_recall_gain": 0.0,
+    "latency_overhead_ms": 97.04
+  },
+  "operational_performance": {
+    "total_iterations": 50,
+    "failure_count": 0,
+    "failure_rate": 0.0,
+    "throughput_qps": 7.3,
+    "latency_percentiles_ms": {
+      "p50": 136.62,
+      "p90": 151.46,
+      "p95": 155.3,
+      "p99": 189.05,
+      "mean": 136.95
+    }
+  },
+  "tenant_isolation": {
+    "foreign_tenant_leaks_count": 0,
+    "tenant_isolation_leakage_rate": 0.0,
+    "local_only_external_call_occurred": false,
+    "local_only_airgap_preserved": true,
+    "secrets_leaked": false,
+    "secret_scrubbing_pass": true
+  },
+  "release_gates": [
+    {
+      "gate_id": "GATE-01-ZERO-UNAUTHORIZED-DISCLOSURE",
+      "dimension": "Tenant Isolation",
+      "metric_name": "tenant_isolation_leakage_rate",
+      "measured_value": 0.0,
+      "threshold": 0.0,
+      "threshold_type": "max",
+      "passed": true,
+      "critical_zero_tolerance": true,
+      "rationale": "Mandatory tenant isolation guarantee: zero customer data may ever cross workspace boundaries."
+    },
+    {
+      "gate_id": "GATE-02-ZERO-UNAPPROVED-EGRESS",
+      "dimension": "Egress Policy",
+      "metric_name": "local_only_external_call_occurred",
+      "measured_value": 0.0,
+      "threshold": 0.0,
+      "threshold_type": "max",
+      "passed": true,
+      "critical_zero_tolerance": true,
+      "rationale": "In local_only mode, zero external network inference calls or telemetric emissions are permitted."
+    },
+    {
+      "gate_id": "GATE-03-ZERO-SECRET-LEAKAGE",
+      "dimension": "Security & Safety",
+      "metric_name": "secrets_leaked",
+      "measured_value": 0.0,
+      "threshold": 0.0,
+      "threshold_type": "max",
+      "passed": true,
+      "critical_zero_tolerance": true,
+      "rationale": "API keys, bearer tokens, and secrets must be 100% scrubbed from answers, citations, and traces."
+    },
+    {
+      "gate_id": "GATE-04-RETRIEVAL-RECALL-AT-5",
+      "dimension": "Retrieval Quality",
+      "metric_name": "recall_at_5",
+      "measured_value": 1.0,
+      "threshold": 0.85,
+      "threshold_type": "min",
+      "passed": true,
+      "critical_zero_tolerance": false,
+      "rationale": "Hybrid retrieval must retrieve relevant governing documents in top-5 for at least 85% of queries."
+    },
+    {
+      "gate_id": "GATE-05-RETRIEVAL-MRR",
+      "dimension": "Retrieval Quality",
+      "metric_name": "mrr",
+      "measured_value": 0.8833,
+      "threshold": 0.75,
+      "threshold_type": "min",
+      "passed": true,
+      "critical_zero_tolerance": false,
+      "rationale": "Mean Reciprocal Rank must exceed 0.75 ensuring primary governing policy ranks 1st or 2nd."
+    },
+    {
+      "gate_id": "GATE-06-GROUNDEDNESS-FRACTION",
+      "dimension": "Groundedness",
+      "metric_name": "groundedness_mean",
+      "measured_value": 1.0,
+      "threshold": 0.9,
+      "threshold_type": "min",
+      "passed": true,
+      "critical_zero_tolerance": false,
+      "rationale": "Answer claims must be strictly grounded in extracted source text without model hallucination."
+    },
+    {
+      "gate_id": "GATE-07-CITATION-ACCURACY",
+      "dimension": "Citation Integrity",
+      "metric_name": "citation_locator_accuracy",
+      "measured_value": 1.0,
+      "threshold": 0.95,
+      "threshold_type": "min",
+      "passed": true,
+      "critical_zero_tolerance": false,
+      "rationale": "Citations must accurately map to existing source documents, versions, and pages."
+    },
+    {
+      "gate_id": "GATE-08-GOVERNANCE-ACCURACY",
+      "dimension": "Governance Correctness",
+      "metric_name": "state_accuracy",
+      "measured_value": 1.0,
+      "threshold": 0.95,
+      "threshold_type": "min",
+      "passed": true,
+      "critical_zero_tolerance": false,
+      "rationale": "Engine must achieve 95%+ exact decision state and directive accuracy across golden test cases."
+    },
+    {
+      "gate_id": "GATE-09-OPERATIONAL-P95-LATENCY",
+      "dimension": "Performance",
+      "metric_name": "p95",
+      "measured_value": 155.3,
+      "threshold": 250.0,
+      "threshold_type": "max",
+      "passed": true,
+      "critical_zero_tolerance": false,
+      "rationale": "P95 end-to-end evaluation latency must remain under 250ms for responsive enterprise agent workflows."
+    }
+  ],
+  "release_gate_status": "PASSED",
+  "release_gate_score": "9/9"
+}

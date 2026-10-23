@@ -145,29 +145,41 @@ def resilient_vector_search(
         )
 
     def _execute_fallback():
-        """Fallback: Query PostgreSQL DocumentChunk lexically with qualification."""
+        """Fallback: Query database lexically via LexicalSearchService with strict publication filtering."""
         from apps.knowledge.models import DocumentChunk
-        logger.warning(f"Executing lexical fallback for workspace={workspace_id}, query='{query_text}'")
-        
-        qs = DocumentChunk.objects.filter(document__status='ready')
-        if workspace_id:
-            qs = qs.filter(workspace_id=workspace_id)
-        if query_text:
-            # Simple keyword search tokens
-            keywords = [k.strip() for k in query_text.split() if len(k.strip()) > 3]
-            for kw in keywords[:3]:
-                qs = qs.filter(text__icontains=kw)
+        from apps.retrieval.lexical import LexicalSearchService
 
-        chunks = list(qs.order_by('-document__authority_level')[:limit])
+        logger.warning(
+            f"[Qdrant Outage Fallback] Executing structured lexical fallback for workspace={workspace_id}, query='{query_text}'"
+        )
+
+        org_id = filter_dict.get('organization_id') if filter_dict else ""
+        ws_id = workspace_id or (filter_dict.get('workspace_id') if filter_dict else "")
+        col_id = filter_dict.get('collection_id') if filter_dict else None
+        doc_id = filter_dict.get('document_id') if filter_dict else None
+
+        lex_pairs = LexicalSearchService.search_chunks(
+            query=query_text or "",
+            workspace_id=str(ws_id) if ws_id else "",
+            organization_id=str(org_id) if org_id else "",
+            collection_id=col_id,
+            document_id=doc_id,
+            limit=limit
+        )
+
         fallback_results = []
-        for c in chunks:
+        for rank, (score, c) in enumerate(lex_pairs):
+            # Guard against superseded versions
+            if c.document_version and c.document_version.version_number < c.document.current_version_number:
+                continue
+
             fallback_results.append({
                 'id': str(c.id),
-                'score': 0.50,
+                'score': score,
                 'payload': {
                     'chunk_id': str(c.id),
                     'document_id': str(c.document_id),
-                    'document_version': c.document_version.version_number if c.document_version else 1,
+                    'document_version': c.document_version.version_number if c.document_version else c.document.current_version_number,
                     'document_title': c.document.title,
                     'organization_id': str(c.organization_id),
                     'workspace_id': str(c.workspace_id),
@@ -177,7 +189,8 @@ def resilient_vector_search(
                     'authority_level': c.document.authority_level,
                     'text': c.text[:300],
                     'fallback_mode': 'lexical_only',
-                    'circuit_breaker_active': True
+                    'circuit_breaker_active': True,
+                    'retrieval_status': 'degraded_lexical_only'
                 }
             })
         return fallback_results
