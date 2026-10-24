@@ -54,6 +54,14 @@ class EvidencePresentationEngine:
             cit = cls._build_citation_entry(chk, query, answer, ref_time, conflicts_resolved)
             candidate_citations.append(cit)
 
+        # Sort candidate citations: approved governing policy comes first, then by relevance score
+        def _sort_key(c):
+            st = c.get('document_status', 'unknown')
+            is_gov = 2 if st == 'approved' else (1 if st not in ['draft', 'superseded', 'future-effective'] else 0)
+            return (is_gov, float(c.get('score', 0.0) or 0.0), int(c.get('authority_level', 0) or 0))
+
+        candidate_citations.sort(key=_sort_key, reverse=True)
+
         # Step 3: Select only necessary sources
         # Primary source is always included; other sources included only if they add
         # necessary multi-part facts or establish genuine conflicts/supersessions.
@@ -169,6 +177,7 @@ class EvidencePresentationEngine:
             'effective_date': effective_date_str,
             'supersession_details': supersession_details,
             'applicability_explanation': applicability,
+            'explanation': applicability,
             'evidence_type': evidence_type,
             'limitation': limitation,
             'score': round(float(chk.get('score', 0.0) or 0.0), 4)
@@ -236,7 +245,7 @@ class EvidencePresentationEngine:
         Resolves document status strictly from stored metadata:
         'approved' | 'draft' | 'archived' | 'superseded' | 'future-effective' | 'unknown'
         """
-        raw_status = (chk.get('status') or '').lower()
+        raw_status = (chk.get('document_status') or chk.get('status') or '').lower()
         title_lower = (chk.get('document_title') or '').lower()
         text_lower = (chk.get('text') or '').lower()
 
@@ -244,7 +253,7 @@ class EvidencePresentationEngine:
         if chk.get('is_superseded') or raw_status == 'superseded':
             return 'superseded'
         for cr in conflicts_resolved:
-            if cr.get('resolution') == 'version_supersession':
+            if cr.get('resolution') in ['version_supersession', 'supersession']:
                 if chk.get('document_title') in cr.get('informal_claim', ''):
                     return 'superseded'
 
@@ -266,22 +275,35 @@ class EvidencePresentationEngine:
         if chk.get('is_future_effective'):
             return 'future-effective'
 
-        # Check draft status
+        # Check expiration date (past expiration date means archived/expired)
+        exp = chk.get('expiration_date')
+        if exp:
+            try:
+                if isinstance(exp, str):
+                    exp_dt = datetime.fromisoformat(exp.replace('Z', '+00:00'))
+                else:
+                    exp_dt = exp
+                if timezone.is_naive(exp_dt):
+                    exp_dt = timezone.make_aware(exp_dt, timezone.utc)
+                if exp_dt < ref_time:
+                    return 'archived'
+            except Exception:
+                pass
+
+        # Check draft status (never present draft as approved)
         if chk.get('is_draft') or raw_status == 'draft' or 'draft' in title_lower or 'status: draft' in text_lower:
             return 'draft'
 
         # Check archived
-        if raw_status == 'archived':
+        if raw_status == 'archived' or chk.get('is_archived'):
             return 'archived'
 
-        # Check approved / ready
+        # Check approved / ready (only when explicitly approved or active ready)
         if raw_status in ['ready', 'approved', 'active']:
             return 'approved'
 
-        # If authority level is high and no negative indicators
-        if chk.get('authority_level', 0) >= 6 and raw_status not in ['draft', 'quarantined']:
-            return 'approved'
-
+        # Requirement 2 & 10: Missing or uncertain approval metadata must remain unknown.
+        # DO NOT infer that a document is approved merely because it has Authority Rank 1 or any rank.
         return 'unknown'
 
     @classmethod
@@ -310,6 +332,8 @@ class EvidencePresentationEngine:
 
         if chk.get('superseded_by'):
             return f"Superseded by {chk.get('superseded_by')}"
+        if chk.get('supersedes'):
+            return f"Supersedes {chk.get('supersedes')}"
 
         return None
 
@@ -339,17 +363,16 @@ class EvidencePresentationEngine:
 
     @classmethod
     def _explain_applicability(cls, title: str, auth: int, status: str, chk: Dict[str, Any]) -> str:
-        status_text = {
-            'approved': 'Approved policy',
-            'draft': 'Draft policy (unapproved)',
-            'superseded': 'Superseded policy',
-            'future-effective': 'Future-effective rule',
-            'archived': 'Archived record',
-            'unknown': 'Recorded document'
-        }.get(status, 'Document')
-
+        if status == 'unknown':
+            return f"Rank {auth} record from '{title}' with unverified approval status (non-binding until approved)."
+        if status == 'draft':
+            return f"Rank {auth} draft document from '{title}' (unapproved proposal, non-binding)."
+        if status == 'superseded':
+            return f"Rank {auth} superseded historical record from '{title}' (superseded by newer version)."
+        if status == 'future-effective':
+            return f"Rank {auth} future-effective rule from '{title}' (takes effect on future effective date)."
         if auth >= 6:
-            return f"Authoritative Rank {auth} {status_text.lower()} establishing binding operational compliance for '{title}'."
+            return f"Authoritative Rank {auth} approved policy establishing binding operational compliance for '{title}'."
         elif auth >= 4:
             return f"Rank {auth} procedural baseline governing standard operational practices in '{title}'."
         else:
@@ -361,6 +384,8 @@ class EvidencePresentationEngine:
         States limitations if the source cannot fully prove a claim or has conditions.
         """
         t_lower = text.lower()
+        if status == 'unknown':
+            return "Unverified approval: Approval status is unknown or uncertain; cannot serve as binding approved policy."
         if status == 'draft':
             return "Non-binding: Document is an unapproved draft; cannot authorize production operations."
         if status == 'future-effective':
@@ -395,10 +420,12 @@ class EvidencePresentationEngine:
 
         # Check multi-part query requirements
         q_lower = query.lower()
+        ans_lower = answer.lower()
         is_multipart = any(w in q_lower for w in ['breakfast', 'lunch', 'dinner', 'total', 'compare', 'difference'])
 
         for cit in citations[1:]:
             title = cit['document_title']
+            doc_id = str(cit.get('document_id', ''))
             p_text = cit['shortest_passage'].lower()
 
             # Condition A: Involved in genuine conflict or supersession
@@ -410,7 +437,12 @@ class EvidencePresentationEngine:
                 necessary.append(cit)
                 continue
 
-            # Condition B: Multi-part question where this source adds new necessary facts
+            # Condition B: Explicitly cited in answer text (e.g. material draft caveat or future amendment)
+            if title.lower() in ans_lower or (doc_id and doc_id.lower() in ans_lower):
+                necessary.append(cit)
+                continue
+
+            # Condition C: Multi-part question where this source adds new necessary facts
             if is_multipart:
                 cit_tokens = set(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
                 new_tokens = cit_tokens - covered_facts

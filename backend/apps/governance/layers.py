@@ -15,8 +15,8 @@ Adheres strictly to docs/enterprise/docs/lore.md:
 import re
 import uuid
 import logging
-from datetime import datetime, timedelta, timezone as dt_timezone
-from typing import List, Dict, Any, Optional, Tuple, Union
+from datetime import datetime, date, timedelta, timezone as dt_timezone
+from typing import List, Dict, Any, Optional, Tuple, Union, Set
 from django.utils import timezone
 from django.db import models
 
@@ -57,6 +57,7 @@ class DecisionIntelligenceTuple(tuple):
     def __init__(self, info_dict, reason_codes=None):
         self.info = info_dict
         self.decision_type = info_dict.get('decision_type', 'general_inquiry')
+        self.query_intent = info_dict.get('query_intent', 'informational')
         self.label = info_dict.get('label', '')
         self.mandatory_evidence = info_dict.get('mandatory_evidence', [])
         self.escalation_target = info_dict.get('escalation_target', '')
@@ -96,14 +97,15 @@ class ExceptionEvaluationTuple(tuple):
 
 
 class AuthorityConflictTuple(tuple):
-    def __new__(cls, conflicts_resolved, has_unresolved_tie, notes, reason_codes=None):
+    def __new__(cls, conflicts_resolved, has_unresolved_tie, notes, reason_codes=None, unresolved_conflicts=None):
         return super().__new__(cls, (conflicts_resolved, has_unresolved_tie, notes))
 
-    def __init__(self, conflicts_resolved, has_unresolved_tie, notes, reason_codes=None):
+    def __init__(self, conflicts_resolved, has_unresolved_tie, notes, reason_codes=None, unresolved_conflicts=None):
         self.conflicts_resolved = conflicts_resolved
         self.has_unresolved_tie = has_unresolved_tie
         self.notes = notes
         self.reason_codes = reason_codes or []
+        self.unresolved_conflicts = unresolved_conflicts or []
 
 
 class SufficiencyEvaluationTuple(tuple):
@@ -237,6 +239,12 @@ class DecisionIntelligenceLayer:
             'escalation_target': 'security_team',
             'risk_level': 'high'
         },
+        'procurement_governance': {
+            'label': 'Procurement Threshold & Expenditure Governance',
+            'mandatory_evidence': ['approved_policy'],
+            'escalation_target': 'procurement_officer',
+            'risk_level': 'medium'
+        },
         'data_processing': {
             'label': 'Data Processing & Customer PII Compliance',
             'mandatory_evidence': ['policy_condition', 'data_classification', 'retention_rule', 'sovereignty_proof'],
@@ -282,24 +290,51 @@ class DecisionIntelligenceLayer:
         explicit_decision_type: Optional[str] = None
     ) -> DecisionIntelligenceTuple:
         reason_codes = []
+        q_lower = query.lower()
 
+        # Step 1: Classify Query Intent (Requirement 1 & 7)
+        # Distinguish informational questions, comparisons, policy interpretation, recommendations, and action/approval requests
+        is_comparison = any(w in q_lower for w in ['compare', 'difference between', 'versus', ' vs ', 'better', 'fastest', 'cheapest', 'lowest price', 'delivery time', 'trade-off'])
+        is_recommendation = any(w in q_lower for w in ['which should we', 'which vendor is', 'what do you recommend', 'which supplier', 'recommendation', 'which is best', 'best supplier', 'best vendor'])
+        is_threshold_or_amount = bool(re.search(r'\$\s*\d+|(?:threshold|limit|tier|boundary|ceiling|maximum amount|micro-purchase|small procurement|major contract|emergency procurement)', q_lower))
+        is_policy_query = any(w in q_lower for w in [
+            'what does the policy say', 'is it allowed', 'policy regarding', 'policy on',
+            'under the policy', 'according to policy', 'rules for', 'guidelines for', 'procedure for',
+            'annual leave', 'leave allowance', 'security access', 'access level', 'access without', 'deploy without',
+            'what is the', 'what are the'
+        ])
+        is_explicit_action = (
+            any(w in q_lower for w in ['approve ', 'authorize ', 'onboard ', 'deploy ', 'release to ', 'execute ', 'grant access', 'perform ', 'bypass ', 'enable ', 'disable ', 'skip ', 'override ', 'connect ']) or
+            (any(w in q_lower for w in ['can we approve', 'can i approve', 'approve this', 'grant approval', 'can we onboard', 'can we deploy', 'can i deploy', 'should we approve', 'can i bypass', 'can we bypass', 'can i enable', 'can we enable', 'can i disable', 'can we disable', 'can i skip', 'can we skip']) and not any(w in q_lower for w in ['what is', 'what are', 'threshold', 'policy say', 'allowance', 'days', 'hours']))
+        )
+
+        if is_comparison:
+            query_intent = 'comparison'
+        elif is_recommendation:
+            query_intent = 'recommendation'
+        elif is_explicit_action and not any(w in q_lower for w in ['what is', 'what are', 'threshold', 'policy say', 'tell me', 'explain', 'how many']):
+            query_intent = 'action_request'
+        elif is_threshold_or_amount or is_policy_query:
+            query_intent = 'policy_interpretation'
+        else:
+            query_intent = 'informational'
+
+        # Step 2: Classify Decision Type
         if explicit_decision_type and explicit_decision_type in cls.DECISION_CATALOG:
             dt = explicit_decision_type
             reason_codes.append(GovernanceReasonCode.L1_EXPLICIT_DECISION_TYPE.value)
         else:
-            q_lower = query.lower()
-            is_procurement_action = any(w in q_lower for w in ['approve', 'purchase', 'procure', 'buy', 'license', 'adopt', 'contract', 'onboard', 'can we use', 'can i use'])
-            is_vendor_entity = any(w in q_lower for w in ['vendor', 'cloudbox', 'third-party', 'supplier'])
-
             if any(w in q_lower for w in ['দলিল', 'খতিয়ান', 'খতিয়ান', 'মৌজা', 'সাফ কবলা', 'deed', 'khatian', 'schedule of property', 'statutory']):
                 dt = 'statutory_compliance'
-            elif (is_vendor_entity and is_procurement_action) or ('cloudbox' in q_lower) or (is_procurement_action and any(w in q_lower for w in ['tool', 'software'])):
+            elif any(w in q_lower for w in ['procurement', 'purchase', 'rfp', 'competitive quote', 'micro-purchase', 'supplier', 'emergency procurement']) and (is_threshold_or_amount or is_policy_query or 'emergency' in q_lower or is_comparison or is_recommendation):
+                dt = 'procurement_governance'
+            elif (is_explicit_action and any(w in q_lower for w in ['vendor', 'supplier', 'third-party', 'cloudbox', 'tool', 'software', 'app'])):
                 dt = 'vendor_approval'
             elif any(w in q_lower for w in ['privacy', 'gdpr', 'customer data', 'pii', 'retention', 'residency', 'sovereignty']):
                 dt = 'data_processing'
-            elif any(w in q_lower for w in ['deploy', 'production', 'release', 'launch', 'staging']):
+            elif any(w in q_lower for w in ['deploy', 'production', 'release', 'launch', 'staging']) and is_explicit_action:
                 dt = 'deployment_approval'
-            elif any(w in q_lower for w in ['security', 'password', 'jwt', 'auth', 'token', 'policy', 'compliance']):
+            elif any(w in q_lower for w in ['security', 'password', 'jwt', 'auth', 'token', 'policy', 'compliance', 'annual leave', 'leave', 'access level']):
                 dt = 'policy_compliance'
             elif any(w in q_lower for w in ['refactor', 'function', 'class', 'test', 'api', 'architecture', 'convention']):
                 dt = 'code_change'
@@ -313,6 +348,7 @@ class DecisionIntelligenceLayer:
 
         info = {
             'decision_type': dt,
+            'query_intent': query_intent,
             'label': meta['label'],
             'mandatory_evidence': meta['mandatory_evidence'],
             'escalation_target': meta['escalation_target'],
@@ -342,12 +378,120 @@ class AuthorityLayer:
     }
 
     @classmethod
+    def _detect_genuine_contradiction(
+        cls,
+        c1: Dict[str, Any],
+        c2: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Distinguishes genuine contradictions from compatible rules or internal clauses (Requirement 8).
+        """
+        # 1. Chunks from the same document are internal conditions/clauses, not cross-source contradictions
+        id1 = str(c1.get('document_id') or c1.get('document_title') or '')
+        id2 = str(c2.get('document_id') or c2.get('document_title') or '')
+        if id1 and id2 and id1 == id2:
+            return None
+
+        # 2. Check explicit scope compatibility: different scopes do not contradict each other
+        scope1 = (c1.get('scope') or '').lower()
+        scope2 = (c2.get('scope') or '').lower()
+        if scope1 and scope2 and scope1 != scope2:
+            return None
+
+        t1 = c1.get('text', '')
+        t2 = c2.get('text', '')
+        t1_lower = t1.lower()
+        t2_lower = t2.lower()
+
+        # 3. Direct rule contradiction: unconditional permit vs unconditional prohibit
+        pos1 = any(w in t1_lower for w in ['approved', 'permitted', 'allowed', 'authorized'])
+        neg1 = any(w in t1_lower for w in ['prohibit', 'forbidden', 'denied', 'must not', 'strictly prohibited'])
+        pos2 = any(w in t2_lower for w in ['approved', 'permitted', 'allowed', 'authorized'])
+        neg2 = any(w in t2_lower for w in ['prohibit', 'forbidden', 'denied', 'must not', 'strictly prohibited'])
+
+        # Precondition / receipt requirement clauses are compatible conditions, not contradictions
+        is_condition1 = any(w in t1_lower for w in ['provided that', 'subject to', 'receipt required', 'receipts required', 'itemized receipt', 'prior approval'])
+        is_condition2 = any(w in t2_lower for w in ['provided that', 'subject to', 'receipt required', 'receipts required', 'itemized receipt', 'prior approval'])
+
+        if (pos1 and not neg1 and neg2 and not is_condition2) or (pos2 and not neg2 and neg1 and not is_condition1):
+            return {
+                'type': 'directive_contradiction',
+                'claim_a': t1[:140].strip(),
+                'claim_b': t2[:140].strip()
+            }
+
+        # 4. Numerical contradiction on the same subject (e.g. meal allowance $200 vs $250)
+        # Compatible verification conditions (e.g. receipt requirement over $25) are not contradictions against rate definitions
+        is_threshold_or_condition = (
+            (is_condition1 or any(w in t1_lower for w in ['receipt', 'exceeding', 'threshold', 'audit'])) !=
+            (is_condition2 or any(w in t2_lower for w in ['receipt', 'exceeding', 'threshold', 'audit']))
+        )
+        if is_threshold_or_condition:
+            return None
+
+        amounts1 = set(re.findall(r'\$\s*(\d+(?:\.\d{2})?)', t1))
+        amounts2 = set(re.findall(r'\$\s*(\d+(?:\.\d{2})?)', t2))
+        if amounts1 and amounts2 and amounts1 != amounts2:
+            subjects = ['meal', 'allowance', 'per diem', 'daily', 'expense', 'travel', 'reimbursement']
+            common_subjects = [s for s in subjects if s in t1_lower and s in t2_lower]
+            if common_subjects:
+                # Ensure it is not a breakdown (e.g. breakfast vs lunch vs dinner) or category difference (meal vs lodging)
+                is_breakdown = any(w in t1_lower or w in t2_lower for w in ['breakfast', 'lunch', 'dinner', 'lodging', 'hotel', 'flight'])
+                if not is_breakdown:
+                    val1 = sorted(list(amounts1))[0]
+                    val2 = sorted(list(amounts2))[0]
+                    if val1 != val2:
+                        return {
+                            'type': 'numerical_contradiction',
+                            'claim_a': f"${val1} ({c1.get('document_title')})",
+                            'claim_b': f"${val2} ({c2.get('document_title')})"
+                        }
+
+        # Check if chunks describe distinct commercial entities or suppliers (e.g. Supplier Alpha vs Supplier Beta)
+        ent_pattern = r'\b(?:supplier|vendor|provider|contractor)\s+([a-z0-9_-]+)\b|\b(cloudbox|aws|azure|gcp|alpha|beta|gamma|delta)\b'
+        raw_ent1 = re.findall(ent_pattern, t1_lower + " " + c1.get('document_title', '').lower())
+        raw_ent2 = re.findall(ent_pattern, t2_lower + " " + c2.get('document_title', '').lower())
+        ent1 = {g for tup in raw_ent1 for g in tup if g}
+        ent2 = {g for tup in raw_ent2 for g in tup if g}
+        if ent1 and ent2 and ent1 != ent2 and not (ent1 & ent2):
+            return None  # Distinct commercial entities / proposals are compatible
+
+        # Check if chunks describe different threshold tiers (e.g. Tier 1 up to $5,000 vs Tier 2 up to $25,000 vs Tier 3 >$25,000)
+        tier_terms = ['tier 1', 'tier 2', 'tier 3', 'micro-purchase', 'small procurement', 'major contract', 'between', 'up to', 'exceeding', 'greater than', 'less than', 'under $', 'over $']
+        is_tier1 = any(w in t1_lower for w in tier_terms)
+        is_tier2 = any(w in t2_lower for w in tier_terms)
+        if is_tier1 and is_tier2:
+            return None  # Distinct threshold tiers are complementary
+
+        # Check if one is an emergency exception / outage procedure vs peacetime rule
+        is_emerg1 = any(w in t1_lower for w in ['emergency', 'outage', 'disaster recovery', 'critical incident'])
+        is_emerg2 = any(w in t2_lower for w in ['emergency', 'outage', 'disaster recovery', 'critical incident'])
+        if is_emerg1 != is_emerg2:
+            return None  # Emergency procedures are conditional exceptions
+
+        # Check if chunks describe distinct leave types (annual leave vs sick leave)
+        leave_terms = ['annual leave', 'sick leave', 'parental leave', 'maternity leave', 'bereavement']
+        lt1 = [w for w in leave_terms if w in t1_lower]
+        lt2 = [w for w in leave_terms if w in t2_lower]
+        if lt1 and lt2 and set(lt1) != set(lt2):
+            return None
+
+        # Check if chunks describe distinct security access levels (Level 1 vs Level 2 vs Level 4)
+        lvl1 = set(re.findall(r'\blevel\s+([1-4])\b', t1_lower))
+        lvl2 = set(re.findall(r'\blevel\s+([1-4])\b', t2_lower))
+        if lvl1 and lvl2 and lvl1 != lvl2:
+            return None
+
+        return None
+
+    @classmethod
     def evaluate_conflicts(
         cls,
         chunks: List[Dict[str, Any]],
         workspace_id: Optional[str] = None
     ) -> AuthorityConflictTuple:
         conflicts_resolved = []
+        unresolved_conflicts = []
         has_unresolved_tie = False
         notes = []
         reason_codes = []
@@ -355,7 +499,7 @@ class AuthorityLayer:
         if len(chunks) < 2:
             if chunks:
                 reason_codes.append(GovernanceReasonCode.L6_SINGLE_SOURCE_AUTHORITATIVE.value)
-            return AuthorityConflictTuple(conflicts_resolved, has_unresolved_tie, notes, reason_codes)
+            return AuthorityConflictTuple(conflicts_resolved, has_unresolved_tie, notes, reason_codes, unresolved_conflicts)
 
         # 1. Database ConflictRecord check between candidate documents
         doc_ids = list({c.get('document_id') for c in chunks if c.get('document_id')})
@@ -375,6 +519,13 @@ class AuthorityLayer:
             for cr in db_conflicts:
                 if cr.resolution_status == 'unresolved':
                     has_unresolved_tie = True
+                    unresolved_conflicts.append({
+                        'source_a': cr.source_a.title,
+                        'source_b': cr.source_b.title,
+                        'claim_a': cr.claim_a,
+                        'claim_b': cr.claim_b,
+                        'rank': cr.source_a.authority_level
+                    })
                     notes.append(
                         f"Database Conflict Detected (L6): Unresolved conflict between '{cr.source_a.title}' "
                         f"and '{cr.source_b.title}'. Notes: {cr.resolution_notes or cr.claim_a}"
@@ -390,7 +541,7 @@ class AuthorityLayer:
                     })
                     reason_codes.append(GovernanceReasonCode.L6_AUTHORITY_DOMINANCE.value)
 
-        # 2. Check for informal claim overriding formal preconditions
+        # 2. Check for informal claim overriding formal preconditions (Rank <= 2 vs Rank >= 6)
         informal_approval_chunks = [
             c for c in chunks 
             if c.get('authority_level', 3) <= 2 and any(w in c.get('text', '').lower() for w in ['approved', 'permitted', 'allowed', 'yes'])
@@ -412,47 +563,74 @@ class AuthorityLayer:
             notes.append(f"Authority Dominance (L6): {formal.get('document_title')} outranks informal claims.")
             reason_codes.append(GovernanceReasonCode.L6_AUTHORITY_DOMINANCE.value)
 
-        # 3. Check for same-rank direct contradictions
+        # 3. Check for same-rank cross-source contradictions
+        # Requirement 3: Draft documents must not create false equal-rank contradictions against approved policies.
+        applicable_chunks = [
+            c for c in chunks
+            if (c.get('document_status') or c.get('status') or '').lower() != 'draft'
+            and not c.get('is_draft')
+        ]
+
         rank_groups: Dict[int, List[Dict[str, Any]]] = {}
-        for c in chunks:
+        for c in applicable_chunks:
             r = c.get('authority_level', 3)
             rank_groups.setdefault(r, []).append(c)
 
         for rank, group in rank_groups.items():
             if len(group) >= 2 and rank >= 3:
-                positive_chunks = [c for c in group if any(w in c.get('text', '').lower() for w in ['approved', 'permitted', 'allowed'])]
-                negative_chunks = [c for c in group if any(w in c.get('text', '').lower() for w in ['prohibit', 'forbidden', 'denied', 'must not'])]
-                if positive_chunks and negative_chunks:
-                    pos_c = positive_chunks[0]
-                    neg_c = negative_chunks[0]
-                    # Chunks from the same document are internal conditions/clauses, not cross-source contradictions
-                    if pos_c.get('document_id') and neg_c.get('document_id') and str(pos_c.get('document_id')) == str(neg_c.get('document_id')):
-                        continue
-                    pos_ver = pos_c.get('document_version', 1)
-                    neg_ver = neg_c.get('document_version', 1)
-                    if pos_ver > neg_ver:
-                        conflicts_resolved.append({
-                            'informal_claim': neg_c.get('text', '')[:120].strip(),
-                            'authoritative_source': f"{pos_c.get('document_title')} (v{pos_ver})",
-                            'resolution': 'version_supersession',
-                            'note': f"Version {pos_ver} supersedes earlier version {neg_ver} at Rank {rank}."
-                        })
-                        notes.append(f"Supersession Resolution (L6): {pos_c.get('document_title')} v{pos_ver} supersedes v{neg_ver}.")
-                        reason_codes.append(GovernanceReasonCode.L6_VERSION_SUPERSESSION.value)
-                    elif neg_ver > pos_ver:
-                        conflicts_resolved.append({
-                            'informal_claim': pos_c.get('text', '')[:120].strip(),
-                            'authoritative_source': f"{neg_c.get('document_title')} (v{neg_ver})",
-                            'resolution': 'version_supersession',
-                            'note': f"Version {neg_ver} supersedes earlier version {pos_ver} at Rank {rank}."
-                        })
-                        notes.append(f"Supersession Resolution (L6): {neg_c.get('document_title')} v{neg_ver} supersedes v{pos_ver}.")
-                        reason_codes.append(GovernanceReasonCode.L6_VERSION_SUPERSESSION.value)
-                    else:
-                        # Contradiction at equal rank and equal version -> unresolved tie!
-                        has_unresolved_tie = True
-                        notes.append(f"Unresolved Contradiction (L6): Two authoritative sources at Rank {rank} disagree without dominance or supersession.")
-                        reason_codes.append(GovernanceReasonCode.L6_UNRESOLVED_CONTRADICTION.value)
+                # Compare each pair in group
+                for i in range(len(group)):
+                    for j in range(i + 1, len(group)):
+                        c1 = group[i]
+                        c2 = group[j]
+
+                        # Skip if chunks belong to the same document
+                        if c1.get('document_id') and c2.get('document_id') and str(c1.get('document_id')) == str(c2.get('document_id')):
+                            continue
+                        if c1.get('document_title') and c2.get('document_title') and c1.get('document_title') == c2.get('document_title'):
+                            continue
+
+                        # Check version supersession within same rank
+                        v1 = c1.get('document_version', 1)
+                        v2 = c2.get('document_version', 1)
+                        if v1 > v2:
+                            conflicts_resolved.append({
+                                'informal_claim': c2.get('text', '')[:120].strip(),
+                                'authoritative_source': f"{c1.get('document_title')} (v{v1})",
+                                'resolution': 'version_supersession',
+                                'note': f"Version {v1} supersedes earlier version {v2} at Rank {rank}."
+                            })
+                            notes.append(f"Supersession Resolution (L6): {c1.get('document_title')} v{v1} supersedes v{v2}.")
+                            reason_codes.append(GovernanceReasonCode.L6_VERSION_SUPERSESSION.value)
+                            continue
+                        elif v2 > v1:
+                            conflicts_resolved.append({
+                                'informal_claim': c1.get('text', '')[:120].strip(),
+                                'authoritative_source': f"{c2.get('document_title')} (v{v2})",
+                                'resolution': 'version_supersession',
+                                'note': f"Version {v2} supersedes earlier version {v1} at Rank {rank}."
+                            })
+                            notes.append(f"Supersession Resolution (L6): {c2.get('document_title')} v{v2} supersedes v{v1}.")
+                            reason_codes.append(GovernanceReasonCode.L6_VERSION_SUPERSESSION.value)
+                            continue
+
+                        # Equal versions or different documents: check genuine contradiction (Requirements 8 & 9)
+                        contra = cls._detect_genuine_contradiction(c1, c2)
+                        if contra:
+                            has_unresolved_tie = True
+                            unresolved_conflicts.append({
+                                'source_a': c1.get('document_title', 'Source A'),
+                                'source_b': c2.get('document_title', 'Source B'),
+                                'claim_a': contra['claim_a'],
+                                'claim_b': contra['claim_b'],
+                                'rank': rank
+                            })
+                            notes.append(
+                                f"Unresolved Contradiction (L6): Two authoritative sources at Rank {rank} "
+                                f"('{c1.get('document_title')}' and '{c2.get('document_title')}') genuinely disagree on {contra['type']}. "
+                                "Precedence cannot be established."
+                            )
+                            reason_codes.append(GovernanceReasonCode.L6_UNRESOLVED_CONTRADICTION.value)
 
         # Deduplicate reason codes
         deduped = []
@@ -460,7 +638,7 @@ class AuthorityLayer:
             if r not in deduped:
                 deduped.append(r)
 
-        return AuthorityConflictTuple(conflicts_resolved, has_unresolved_tie, notes, deduped)
+        return AuthorityConflictTuple(conflicts_resolved, has_unresolved_tie, notes, deduped, unresolved_conflicts)
 
 
 # ==============================================================================
@@ -473,35 +651,125 @@ class TemporalValidityLayer:
     Enforces stable-only serving (only 'ready' documents may serve as evidence).
     """
     @classmethod
+    def _parse_date(cls, val: Any) -> Optional[datetime]:
+        """Parses various date and datetime formats into an aware UTC datetime."""
+        if not val:
+            return None
+        if isinstance(val, datetime):
+            return val if not timezone.is_naive(val) else timezone.make_aware(val, dt_timezone.utc)
+        if isinstance(val, date):
+            return timezone.make_aware(datetime(val.year, val.month, val.day, 0, 0, 0), dt_timezone.utc)
+        if isinstance(val, str):
+            from django.utils.dateparse import parse_datetime, parse_date
+            dt = parse_datetime(val)
+            if dt:
+                return dt if not timezone.is_naive(dt) else timezone.make_aware(dt, dt_timezone.utc)
+            d = parse_date(val)
+            if d:
+                return timezone.make_aware(datetime(d.year, d.month, d.day, 0, 0, 0), dt_timezone.utc)
+            clean_val = val.strip()
+            for fmt in ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y", "%B %Y", "%b %Y", "%Y-%m-%d"):
+                try:
+                    parsed = datetime.strptime(clean_val, fmt)
+                    return timezone.make_aware(parsed, dt_timezone.utc)
+                except ValueError:
+                    continue
+        return None
+
+    @classmethod
+    def _extract_query_event_date(
+        cls,
+        query: str,
+        chunks: Optional[List[Dict[str, Any]]] = None
+    ) -> Optional[datetime]:
+        """
+        Extracts historical event or reference dates embedded in the natural language query.
+        Examples: 'March 2026', 'July 1, 2026', 'predates DOC-002', 'in 2024'.
+        """
+        if not query:
+            return None
+        q_lower = query.lower()
+
+        # 1. Explicit Month and Year: e.g. 'March 2026', 'July 1, 2026', 'January 2027'
+        m_month = re.search(r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2},?\s+)?(20\d\d)\b', q_lower)
+        if m_month:
+            return cls._parse_date(m_month.group(0))
+
+        # 2. ISO Date: YYYY-MM-DD
+        m_iso = re.search(r'\b(20\d\d)-(\d{2})-(\d{2})\b', query)
+        if m_iso:
+            return cls._parse_date(m_iso.group(0))
+
+        # 3. Relative inquiry: 'predates DOC-002', 'prior to DOC-002', 'before DOC-002'
+        m_predates = re.search(r'\b(?:predates?|prior to|before)\s+([a-z0-9_-]+)', q_lower)
+        if m_predates:
+            target_code = m_predates.group(1).upper()
+            if chunks:
+                for c in chunks:
+                    c_title = (c.get('document_title') or '').upper()
+                    c_code = (c.get('document_code') or '').upper()
+                    if target_code in c_title or target_code in c_code:
+                        eff = cls._parse_date(c.get('effective_date'))
+                        if eff:
+                            # 1 day before target effective date represents the predating historical era
+                            return eff - timedelta(days=1)
+
+        # 4. Explicit Year: e.g. 'in 2024', 'for 2024', 'during 2024'
+        m_year = re.search(r'\b(?:in|for|during|fy|year)\s+(20\d\d)\b', q_lower)
+        if m_year:
+            year_val = int(m_year.group(1))
+            return timezone.make_aware(datetime(year_val, 1, 1, 0, 0, 0), dt_timezone.utc)
+
+        return None
+
+    @classmethod
     def evaluate(
         cls,
         chunks: List[Dict[str, Any]],
-        as_of: Optional[Any] = None
+        as_of: Optional[Any] = None,
+        query: Optional[str] = None,
+        policy_context: Optional[Dict[str, Any]] = None
     ) -> TemporalEvaluationTuple:
         valid_chunks = []
         temporal_notes = []
         has_stale_data = False
         reason_codes = []
+        policy_context = policy_context or {}
 
-        # Parse and normalize as_of reference timestamp
-        if isinstance(as_of, str):
-            from django.utils.dateparse import parse_datetime, parse_date
-            parsed = parse_datetime(as_of)
-            if not parsed:
-                d = parse_date(as_of)
-                if d:
-                    parsed = datetime(d.year, d.month, d.day, 0, 0, 0)
-            ref_time = parsed or timezone.now()
+        # 1. Determine point-in-time reference timestamp (as_of / event date)
+        if as_of:
+            ref_time = cls._parse_date(as_of) or timezone.now()
             reason_codes.append(GovernanceReasonCode.L5_HISTORICAL_AS_OF_APPLIED.value)
-        elif isinstance(as_of, datetime):
-            ref_time = as_of
+        elif policy_context.get('as_of') or policy_context.get('event_date'):
+            ref_time = cls._parse_date(policy_context.get('as_of') or policy_context.get('event_date')) or timezone.now()
             reason_codes.append(GovernanceReasonCode.L5_HISTORICAL_AS_OF_APPLIED.value)
+        elif query:
+            extracted_date = cls._extract_query_event_date(query, chunks)
+            if extracted_date:
+                ref_time = extracted_date
+                reason_codes.append(GovernanceReasonCode.L5_HISTORICAL_AS_OF_APPLIED.value)
+            else:
+                ref_time = timezone.now()
         else:
             ref_time = timezone.now()
 
         if timezone.is_naive(ref_time):
             ref_time = timezone.make_aware(ref_time, dt_timezone.utc)
 
+        # 2. Check if the user is explicitly inquiring what the draft says or its approval status (Requirement 3)
+        user_asking_draft = False
+        if policy_context.get('is_draft'):
+            user_asking_draft = True
+        elif query:
+            q_lower = query.lower()
+            if any(p in q_lower for p in ['what does the draft say', 'draft policy', 'in draft', 'proposed policy', 'draft allowance', 'draft says', 'draft specifies', 'policy approved', 'is it approved', 'approval status']):
+                user_asking_draft = True
+            elif 'draft' in q_lower and any(w in q_lower for w in ['what', 'show', 'tell', 'says', 'quote', 'value', 'is', 'status']):
+                user_asking_draft = True
+            elif re.search(r'\b(?:is|are)\s+.*approved\b', q_lower):
+                user_asking_draft = True
+
+        # 3. Load DB records for candidate chunks if available
         doc_ids = list({c.get('document_id') for c in chunks if c.get('document_id')})
         valid_uuids = []
         for did in doc_ids:
@@ -516,8 +784,11 @@ class TemporalValidityLayer:
             for d in SourceDocument.objects.filter(id__in=valid_uuids)
         } if valid_uuids else {}
 
-        # Check canonical supersession via approved KnowledgeRelationship(SUPERSEDES)
-        superseded_doc_ids = set()
+        # 4. Canonical supersession analysis (Requirement 4)
+        # Track which target documents/codes are superseded as of ref_time
+        superseded_identifiers: Set[str] = set()
+
+        # 4a. DB KnowledgeRelationship supersession
         if valid_uuids:
             try:
                 from apps.knowledge.models import KnowledgeRelationship, RelationshipType, RelationshipApprovalStatus
@@ -530,14 +801,12 @@ class TemporalValidityLayer:
                 for s_rel in super_rels:
                     if s_rel.is_temporally_valid(ref_time):
                         s_doc = s_rel.source_document
-                        if s_doc and s_doc.status == 'ready':
-                            s_eff = s_doc.effective_date
-                            if s_eff:
-                                if timezone.is_naive(s_eff):
-                                    s_eff = timezone.make_aware(s_eff, dt_timezone.utc)
-                                if s_eff > ref_time:
-                                    continue  # Superseding doc not yet effective as of query time
-                            superseded_doc_ids.add(str(s_rel.target_document_id))
+                        if s_doc and s_doc.status in ('ready', 'approved'):
+                            s_eff = cls._parse_date(s_doc.effective_date)
+                            # Requirement 5: A superseding amendment cannot supersede prior policy BEFORE its effective date!
+                            if s_eff and s_eff > ref_time:
+                                continue
+                            superseded_identifiers.add(str(s_rel.target_document_id))
                             t_title = s_rel.target_document.title if s_rel.target_document else str(s_rel.target_document_id)
                             temporal_notes.append(
                                 f"Supersession Exclusion: Document '{t_title}' is superseded by '{s_doc.title}' "
@@ -547,63 +816,134 @@ class TemporalValidityLayer:
             except Exception as e:
                 logger.warning(f"Error checking supersession in TemporalValidityLayer: {e}")
 
+        # 4b. In-memory / chunk metadata supersession
+        for c in chunks:
+            c_supersedes = c.get('supersedes') or []
+            if isinstance(c_supersedes, str):
+                c_supersedes = [c_supersedes]
+            c_eff = cls._parse_date(c.get('effective_date'))
+            # Only active supersessions apply
+            if c_eff and c_eff > ref_time:
+                continue
+            for target in c_supersedes:
+                if target:
+                    superseded_identifiers.add(str(target).upper())
+                    superseded_identifiers.add(str(target))
+
+        # 5. Evaluate each chunk against all separate governance attributes (Requirements 1-10)
         for chk in chunks:
-            doc = docs_map.get(str(chk.get('document_id', '')))
-            if not doc:
-                valid_chunks.append(chk)
-                continue
+            doc_id = str(chk.get('document_id', ''))
+            doc = docs_map.get(doc_id)
+            doc_title = chk.get('document_title') or (doc.title if doc else 'Policy Document')
+            doc_code = str(chk.get('document_code') or '').upper()
 
-            # Check if document is superseded by an active, effective policy
-            if str(doc.id) in superseded_doc_ids:
-                continue
+            # Separate attributes (Requirement 1)
+            raw_status = (chk.get('document_status') or chk.get('status') or (doc.status if doc else '') or '').lower()
+            auth_rank = chk.get('authority_level') if chk.get('authority_level') is not None else (doc.authority_level if doc else 3)
+            eff_date = cls._parse_date(chk.get('effective_date') or (doc.effective_date if doc else None))
+            exp_date = cls._parse_date(chk.get('expiration_date') or (doc.expiration_date if doc else None))
+            scope = (chk.get('scope') or '').lower()
 
-            # 0. Stable-Only Serving Check (P1 §6): Only 'ready' documents may serve as authoritative evidence
-            if doc.status != 'ready':
+            # Lifecycle check (P1 §6): Quarantined, failed, or processing records cannot serve as evidence
+            if raw_status in ['quarantined', 'failed', 'needs_review'] or (doc and doc.status in ['quarantined', 'failed', 'needs_review']):
                 temporal_notes.append(
-                    f"Lifecycle Exclusion (P1 §6): Document '{doc.title}' has status '{doc.status}' (not 'ready'). "
-                    "Draft, quarantined, or processing records cannot serve as authoritative evidence."
+                    f"Lifecycle Exclusion (P1 §6): Document '{doc_title}' has status '{raw_status or (doc.status if doc else '')}'. "
+                    "Quarantined, unverified, or processing records cannot serve as authoritative evidence."
                 )
                 reason_codes.append(GovernanceReasonCode.L5_LIFECYCLE_EXCLUSION.value)
                 continue
 
-            # 1. Not yet effective check
-            eff = doc.effective_date
-            if eff:
-                if timezone.is_naive(eff):
-                    eff = timezone.make_aware(eff, dt_timezone.utc)
-                if eff > ref_time:
+            # Check if document is superseded as of ref_time (Requirements 4 & 7)
+            is_superseded_now = (
+                doc_id in superseded_identifiers or
+                doc_code in superseded_identifiers or
+                any(t in doc_title.upper() for t in superseded_identifiers if len(t) >= 4) or
+                chk.get('is_superseded') or
+                raw_status == 'superseded'
+            )
+
+            # Resolve document status strictly from stored metadata (Requirements 2 & 10)
+            if chk.get('is_draft') or raw_status == 'draft' or ('draft' in doc_title.lower() and raw_status not in ['approved', 'archived', 'superseded']):
+                resolved_status = 'draft'
+            elif is_superseded_now:
+                resolved_status = 'superseded'
+            elif chk.get('is_archived') or raw_status == 'archived':
+                resolved_status = 'archived'
+            elif chk.get('is_future_effective') or raw_status == 'future-effective' or (eff_date and eff_date > ref_time):
+                resolved_status = 'future-effective'
+            elif raw_status in ['ready', 'approved', 'active']:
+                resolved_status = 'approved'
+            else:
+                # Requirement 2 & 10: Missing or uncertain approval metadata must remain unknown.
+                # DO NOT infer that a document is approved merely because it has Authority Rank 1 or any rank.
+                resolved_status = 'unknown'
+
+            # Attach resolved separate attributes to chunk
+            chk['document_status'] = resolved_status
+            chk['authority_level'] = auth_rank
+            if eff_date:
+                chk['effective_date'] = eff_date
+            if exp_date:
+                chk['expiration_date'] = exp_date
+
+            # --- APPLICABILITY EVALUATION ---
+            # Step A: Draft check (Requirement 3)
+            if resolved_status == 'draft':
+                if user_asking_draft:
+                    valid_chunks.append(chk)
                     temporal_notes.append(
-                        f"Document '{doc.title}' is not yet effective (effective {eff.strftime('%Y-%m-%d')}). Excluded from active context."
+                        f"Document '{doc_title}' is an unapproved draft. Draft terms remain non-binding."
                     )
-                    reason_codes.append(GovernanceReasonCode.L5_FUTURE_EFFECTIVE_EXCLUSION.value)
+                    continue
+                else:
+                    temporal_notes.append(
+                        f"Lifecycle Exclusion (P1 §6): Document '{doc_title}' is in draft status and cannot serve as governing policy."
+                    )
+                    reason_codes.append(GovernanceReasonCode.L5_LIFECYCLE_EXCLUSION.value)
                     continue
 
-            # 2. Expiration check
-            exp = doc.expiration_date
-            if exp:
-                if timezone.is_naive(exp):
-                    exp = timezone.make_aware(exp, dt_timezone.utc)
-                if exp < ref_time:
-                    temporal_notes.append(
-                        f"Document '{doc.title}' expired on {exp.strftime('%Y-%m-%d')}. Excluded."
-                    )
-                    reason_codes.append(GovernanceReasonCode.L5_EXPIRATION_EXCLUSION.value)
-                    continue
+            # Step B: Future-Effective check (Requirement 5)
+            if eff_date and eff_date > ref_time:
+                val_m = re.search(r'\$\s*(\d+(?:\.\d{2})?)', chk.get('text', ''))
+                rate_str = f" proposing ${val_m.group(1)}" if val_m else ""
+                temporal_notes.append(
+                    f"Document '{doc_title}' is not yet effective (effective {eff_date.strftime('%Y-%m-%d')}{rate_str}). Excluded from active context."
+                )
+                reason_codes.append(GovernanceReasonCode.L5_FUTURE_EFFECTIVE_EXCLUSION.value)
+                continue
 
-            # 3. Staleness aging check
-            stale_days = doc.stale_after_days or 365
-            stale_threshold = timedelta(days=stale_days)
-            upd = doc.updated_at
-            if upd:
-                if timezone.is_naive(upd):
-                    upd = timezone.make_aware(upd, dt_timezone.utc)
-                if (ref_time - upd) > stale_threshold:
-                    has_stale_data = True
-                    temporal_notes.append(
-                        f"Notice: Source '{doc.title}' is past its stale threshold ({stale_days} days). Caveat applied."
-                    )
-                    reason_codes.append(GovernanceReasonCode.L5_STALE_RECORD_CAVEAT.value)
+            # Step C: Supersession check (Requirements 4, 6, 7)
+            if is_superseded_now:
+                temporal_notes.append(
+                    f"Supersession Exclusion: Document '{doc_title}' is superseded as of {ref_time.strftime('%Y-%m-%d')}. Excluded."
+                )
+                reason_codes.append(GovernanceReasonCode.L5_SUPERSEDED_DOCUMENT_EXCLUSION.value)
+                continue
 
+            # Step D: Expiration check (Requirements 6 & 7)
+            if exp_date and exp_date < ref_time:
+                temporal_notes.append(
+                    f"Document '{doc_title}' expired on {exp_date.strftime('%Y-%m-%d')}. Excluded."
+                )
+                reason_codes.append(GovernanceReasonCode.L5_EXPIRATION_EXCLUSION.value)
+                continue
+
+            # Step E: Staleness aging check
+            if doc:
+                stale_days = doc.stale_after_days or 365
+                stale_threshold = timedelta(days=stale_days)
+                upd = doc.updated_at
+                if upd:
+                    if timezone.is_naive(upd):
+                        upd = timezone.make_aware(upd, dt_timezone.utc)
+                    if (ref_time - upd) > stale_threshold:
+                        has_stale_data = True
+                        temporal_notes.append(
+                            f"Notice: Source '{doc.title}' is past its stale threshold ({stale_days} days). Caveat applied."
+                        )
+                        reason_codes.append(GovernanceReasonCode.L5_STALE_RECORD_CAVEAT.value)
+
+            # Chunk is active and applicable to the requested date and scope!
             valid_chunks.append(chk)
             reason_codes.append(GovernanceReasonCode.L5_DOCUMENT_ACTIVE.value)
 
@@ -720,6 +1060,11 @@ class EvidenceSufficiencyLayer:
         q_lower = query.lower()
         reason_codes = []
 
+        intent = getattr(decision_info, 'query_intent', None)
+        if intent is None and isinstance(decision_info, dict):
+            intent = decision_info.get('query_intent')
+        is_action_gate = (intent == 'action_request') or (intent is None)
+
         evidence_found = []
         for chk in retrieved_chunks:
             evidence_found.append({
@@ -735,8 +1080,8 @@ class EvidenceSufficiencyLayer:
         evidence_missing = []
         all_text = " ".join(c.get('text', '').lower() for c in retrieved_chunks)
 
-        # 1. Vendor Approval Sufficiency Checks
-        if dt == 'vendor_approval':
+        # 1. Vendor Approval Sufficiency Checks (Action Gates Only - Requirements 2 & 3)
+        if dt == 'vendor_approval' and is_action_gate:
             if any(w in q_lower for w in ['customer data', 'pii', 'sensitive', 'residency']):
                 has_residency = (
                     ('data residency' in all_text or 'schedule d' in all_text) and
@@ -782,8 +1127,8 @@ class EvidenceSufficiencyLayer:
                 })
                 reason_codes.append(GovernanceReasonCode.L3_MANDATORY_EVIDENCE_MISSING.value)
 
-        # 3. Data Processing Sufficiency Checks
-        elif dt == 'data_processing':
+        # 3. Data Processing Sufficiency Checks (Action Gates Only - Requirements 2 & 3)
+        elif dt == 'data_processing' and is_action_gate:
             has_retention = any(w in all_text for w in ['retention', 'deletion', 'erasure', 'consent', 'gdpr'])
             if not has_retention:
                 evidence_missing.append({
@@ -794,8 +1139,8 @@ class EvidenceSufficiencyLayer:
                 })
                 reason_codes.append(GovernanceReasonCode.L3_MANDATORY_EVIDENCE_MISSING.value)
 
-        # 4. Database-Configured Workspace Evidence Requirements
-        if workspace_id:
+        # 4. Database-Configured Workspace Evidence Requirements (Action Gates Only)
+        if workspace_id and is_action_gate:
             try:
                 db_reqs = EvidenceRequirement.objects.filter(
                     models.Q(workspace_id=workspace_id) | models.Q(workspace__isnull=True),
@@ -816,8 +1161,8 @@ class EvidenceSufficiencyLayer:
             except Exception as dberr:
                 logger.warning(f"Error querying custom database evidence requirements: {dberr}")
 
-        # 5. Authority Threshold Check: Top evidence must have sufficient authority for high-risk governance
-        if dt in ('vendor_approval', 'data_processing', 'statutory_compliance', 'deployment_approval'):
+        # 5. Authority Threshold Check: Top evidence must have sufficient authority for high-risk action gates
+        if is_action_gate and dt in ('vendor_approval', 'data_processing', 'statutory_compliance', 'deployment_approval'):
             max_auth = max([c.get('authority_level', 1) for c in retrieved_chunks], default=0)
             if max_auth > 0 and max_auth <= 2 and not has_exception:
                 evidence_missing.append({
@@ -827,6 +1172,19 @@ class EvidenceSufficiencyLayer:
                     'description': f'Top evidence has informal authority rank {max_auth}; decisions of type {dt} require verified policy or contract rank >= 4.'
                 })
                 reason_codes.append(GovernanceReasonCode.L3_INSUFFICIENT_AUTHORITY_RANK.value)
+
+        # 6. Informational / Comparative Sufficiency Check (Requirement 8)
+        # Ensure fact-bearing sources exist for informational, comparison, or policy interpretation questions
+        if not is_action_gate and not evidence_missing:
+            has_factual_content = len(retrieved_chunks) > 0 and any(len(c.get('text', '').strip()) > 10 for c in retrieved_chunks)
+            if not has_factual_content:
+                evidence_missing.append({
+                    'requirement': 'relevant_fact',
+                    'mandatory': True,
+                    'status': EvidenceStatus.MISSING.value,
+                    'description': f"No authoritative governing source found answering '{query}'."
+                })
+                reason_codes.append(GovernanceReasonCode.L3_MANDATORY_EVIDENCE_MISSING.value)
 
         # Evaluate sufficiency
         unsatisfied_mandatory = [
@@ -1117,7 +1475,7 @@ class EnterpriseGovernanceEngine:
         # -------------------------------------------------------------
         t2 = timezone.now()
         temp_res = TemporalValidityLayer.evaluate(
-            cleared_chunks, as_of=req.as_of
+            cleared_chunks, as_of=req.as_of, query=req.query, policy_context=req.policy_context
         )
         active_chunks = temp_res.valid_chunks
         temporal_notes = temp_res.temporal_notes
@@ -1173,8 +1531,11 @@ class EnterpriseGovernanceEngine:
             is_violation = True
         elif not has_exception and active_chunks:
             q_lower = req.query.lower()
+            intent = getattr(decision_info, 'query_intent', 'informational')
+            is_policy_inquiry = (intent in ('policy_interpretation', 'informational')) and any(w in q_lower for w in ['what does', 'what is', 'policy say', 'tell me', 'explain', 'summarize'])
             has_proposing_bypass = any(w in q_lower for w in ['without', 'bypass', 'skip', 'disable', 'disregard'])
-            if has_proposing_bypass:
+            # Only trigger violation if the user is attempting an unauthorized action bypass, NOT when merely asking what the policy says
+            if has_proposing_bypass and not is_policy_inquiry:
                 for chk in active_chunks:
                     txt = chk.get('text', '').lower()
                     if any(p in txt for p in ['must never', 'must maintain', 'must not', 'strictly prohibited', 'strictly forbidden', 'bypassing requires active exception']):
@@ -1218,11 +1579,22 @@ class EnterpriseGovernanceEngine:
                 answer += f"\n\n**Escalation Recommendation**: Route to {escalation_target.replace('_', ' ').title()}."
             citations = []
         elif state == 'conflicting':
+            conflict_sources_text = ""
+            if getattr(auth_res, 'unresolved_conflicts', None):
+                u = auth_res.unresolved_conflicts[0]
+                conflict_sources_text = f" Specifically, '{u.get('source_a')}' ({u.get('claim_a')}) contradicts '{u.get('source_b')}' ({u.get('claim_b')})."
             answer = (
-                f"Governance Warning: Contradictory authoritative sources detected for '{req.query}'. "
+                f"Governance Warning: Contradictory authoritative sources detected for '{req.query}'.{conflict_sources_text} "
                 "LORE will not guess between equal-authority policies. Please request human adjudication."
             )
-            citations = []
+            from apps.governance.evidence import EvidencePresentationEngine
+            citations = EvidencePresentationEngine.curate_citations(
+                query=req.query,
+                answer=answer,
+                active_chunks=active_chunks,
+                conflicts_resolved=conflicts_resolved,
+                as_of=req.as_of
+            )
         elif state == 'no_knowledge':
             answer = f"No governed knowledge found in active workspace matching '{req.query}'."
             citations = []
@@ -1232,6 +1604,7 @@ class EnterpriseGovernanceEngine:
             ctx_with_notes = {
                 'temporal_notes': temporal_notes,
                 'exceptions_applied': matched_exceptions,
+                'unresolved_conflicts': getattr(auth_res, 'unresolved_conflicts', []),
                 **(req.policy_context or {})
             }
             answer_res = GroundedGenerationService.synthesize_answer(
