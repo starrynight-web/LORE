@@ -138,7 +138,7 @@ class ContextReranker:
                 'rrf_score': round(rrf_score, 4),
                 'norm_rrf': round(norm_rrf, 4),
                 'token_coverage': round(token_coverage, 2),
-                'phrase_match': bool(phrase_bonus > 0),
+                'phrase_match': phrase_bonus > 0,
                 'phrase_bonus': round(phrase_bonus, 2),
                 'header_bonus': round(header_bonus, 2),
                 'authority_level': auth_rank
@@ -225,13 +225,13 @@ class HybridRetrievalService:
         t_vec_start = time.time()
         query_vec = self.embedder.embed_text(query_clean)
         qdrant_filter = {
-            "workspace_id": str(workspace_id),
-            "organization_id": str(organization_id)
+            "workspace_id": workspace_id,
+            "organization_id": organization_id
         }
         if collection_id:
-            qdrant_filter["collection_id"] = str(collection_id)
+            qdrant_filter["collection_id"] = collection_id
         if document_id:
-            qdrant_filter["document_id"] = str(document_id)
+            qdrant_filter["document_id"] = document_id
 
         vector_hits = resilient_vector_search(
             vector_store=self.vector_store,
@@ -239,7 +239,7 @@ class HybridRetrievalService:
             query_vector=query_vec,
             filter_dict=qdrant_filter,
             limit=30,
-            workspace_id=str(workspace_id) if workspace_id else None,
+            workspace_id=workspace_id if workspace_id else None,
             query_text=query_clean
         )
         t_vec_end = time.time()
@@ -260,8 +260,8 @@ class HybridRetrievalService:
         t_lex_start = time.time()
         lexical_pairs = self.lexical_service.search_chunks(
             query=query_clean,
-            workspace_id=str(workspace_id),
-            organization_id=str(organization_id),
+            workspace_id=workspace_id,
+            organization_id=organization_id,
             collection_id=collection_id,
             document_id=document_id,
             limit=30
@@ -376,8 +376,8 @@ class HybridRetrievalService:
                 from apps.knowledge.graph import BoundedGraphTraversalService
                 graph_res = BoundedGraphTraversalService.expand(
                     seed_chunks=seed_dicts,
-                    workspace_id=str(workspace_id),
-                    organization_id=str(organization_id),
+                    workspace_id=workspace_id,
+                    organization_id=organization_id,
                     user=user,
                     user_role=user_role,
                     as_of=as_of,
@@ -638,7 +638,7 @@ class HybridRetrievalService:
                 'degraded': graph_degraded,
                 'max_depth_configured': graph_max_depth,
                 'nodes_expanded_count': len(expanded_chunks_list),
-                'traversal_paths_count': len(graph_res.get('traversal_paths', [])) if graph_res else 0,
+                'traversal_paths_count': len(graph_res['traversal_paths']) if (graph_res and isinstance(graph_res.get('traversal_paths'), list)) else 0,
                 'elapsed_ms': graph_res.get('elapsed_ms', 0) if graph_res else 0,
             },
             'surfaced_entities': {

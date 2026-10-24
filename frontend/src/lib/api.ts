@@ -333,7 +333,35 @@ class ApiClient {
   }
 
   async uploadDocument(formData: FormData) {
-    return this.request<{ document: SourceDocument; job_id: string; status: string }>('/sources/documents/', {
+    return this.request<{
+      document?: SourceDocument;
+      job_id?: string;
+      status?: string;
+      documents?: SourceDocument[];
+      job_ids?: string[];
+      jobs?: Array<{ document_id: string; job_id: string; status: string }>;
+      count?: number;
+      errors?: Array<{ filename: string; error: string }>;
+    }>('/sources/documents/', {
+      method: 'POST',
+      body: formData
+    });
+  }
+
+  async bulkUploadDocuments(formData: FormData) {
+    return this.request<{
+      status: string;
+      total_count: number;
+      success_count: number;
+      failed_count: number;
+      successful: Array<{ document: SourceDocument; job_id: string; status: string }>;
+      failed: Array<{ filename: string; error: string }>;
+      documents: SourceDocument[];
+      job_ids: string[];
+      document?: SourceDocument;
+      job_id?: string;
+      doc_status?: string;
+    }>('/sources/documents/bulk-upload/', {
       method: 'POST',
       body: formData
     });

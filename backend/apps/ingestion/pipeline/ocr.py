@@ -212,8 +212,8 @@ class ImagePreprocessor:
             pass
 
         # 2. Tesseract OSD orientation detection if available
-        if HAS_PYTESSERACT and (tesseract_cmd or find_tesseract_binary()):
-            cmd = tesseract_cmd or find_tesseract_binary()
+        cmd = tesseract_cmd or find_tesseract_binary()
+        if HAS_PYTESSERACT and cmd:
             try:
                 pytesseract.pytesseract.tesseract_cmd = cmd
                 # Run OSD with 300 DPI configuration
@@ -361,10 +361,10 @@ class TesseractOCRProvider(BaseOCRProvider):
                     height = int(data['height'][i])
 
                     # Compute normalized 0-1000 coordinates [ymin, xmin, ymax, xmax]
-                    ymin = int(round((top / ph) * 1000))
-                    xmin = int(round((left / pw) * 1000))
-                    ymax = int(round(((top + height) / ph) * 1000))
-                    xmax = int(round(((left + width) / pw) * 1000))
+                    ymin = round((top / ph) * 1000)
+                    xmin = round((left / pw) * 1000)
+                    ymax = round(((top + height) / ph) * 1000)
+                    xmax = round(((left + width) / pw) * 1000)
 
                     bboxes.append({
                         'word': w_text,
@@ -492,10 +492,10 @@ class DigitalPDFExtractor:
             x1 = float(w.get('x1', 0))
             bottom = float(w.get('bottom', 0))
 
-            ymin = int(round((top / ph) * 1000))
-            xmin = int(round((x0 / pw) * 1000))
-            ymax = int(round((bottom / ph) * 1000))
-            xmax = int(round((x1 / pw) * 1000))
+            ymin = round((top / ph) * 1000)
+            xmin = round((x0 / pw) * 1000)
+            ymax = round((bottom / ph) * 1000)
+            xmax = round((x1 / pw) * 1000)
 
             bboxes.append({
                 'word': w_text,

@@ -147,7 +147,7 @@ class KnowledgeRelationship(models.Model):
     def is_temporally_valid(self, as_of=None) -> bool:
         """Evaluates whether the edge is active as of a given point-in-time."""
         from django.utils import timezone as tz
-        from datetime import datetime
+        from datetime import datetime, timezone
         if isinstance(as_of, str):
             from django.utils.dateparse import parse_datetime, parse_date
             parsed = parse_datetime(as_of)
@@ -162,15 +162,15 @@ class KnowledgeRelationship(models.Model):
             now = tz.now()
 
         if tz.is_naive(now):
-            now = tz.make_aware(now, tz.utc)
+            now = tz.make_aware(now, timezone.utc)
 
         if self.valid_from:
-            vf = self.valid_from if not tz.is_naive(self.valid_from) else tz.make_aware(self.valid_from, tz.utc)
+            vf = self.valid_from if not tz.is_naive(self.valid_from) else tz.make_aware(self.valid_from, timezone.utc)
             if now < vf:
                 return False
 
         if self.valid_until:
-            vu = self.valid_until if not tz.is_naive(self.valid_until) else tz.make_aware(self.valid_until, tz.utc)
+            vu = self.valid_until if not tz.is_naive(self.valid_until) else tz.make_aware(self.valid_until, timezone.utc)
             if now > vu:
                 return False
 

@@ -76,11 +76,13 @@ TEMPLATES = [
 WSGI_APPLICATION = 'lore_enterprise.wsgi.application'
 ASGI_APPLICATION = 'lore_enterprise.asgi.application'
 
+from typing import Any
+
 # Database: PostgreSQL with fallback to SQLite for local standalone development
-DATABASES = {
+DATABASES: dict[str, Any] = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': str(BASE_DIR / 'db.sqlite3'),
     }
 }
 

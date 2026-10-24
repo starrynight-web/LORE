@@ -1,4 +1,5 @@
 import os
+from typing import Any, List, Dict
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
@@ -120,7 +121,7 @@ class Command(BaseCommand):
         col_contracts, _ = Collection.objects.get_or_create(workspace=ws, name='Executed Contracts', defaults={'color': 'emerald', 'icon': 'file-text'})
 
         # 5. Northstar Documents from knowledge_grid_enterprise.md
-        docs_to_seed = [
+        docs_to_seed: List[Dict[str, Any]] = [
             {
                 'title': 'POL-SEC-041: Cloud Security Policy v3.0',
                 'filename': 'cloud-security-policy-v3.0.md',
@@ -198,21 +199,28 @@ class Command(BaseCommand):
         ]
 
         for item in docs_to_seed:
-            content_bytes = item['content'].encode('utf-8')
+            title = str(item['title'])
+            filename = str(item['filename'])
+            content_str = str(item['content'])
+            content_bytes = content_str.encode('utf-8')
+            collection = item['collection']
+            auth_val: Any = item['authority']
+            authority = int(auth_val)
+
             doc, created = SourceDocument.objects.get_or_create(
                 organization=org,
                 workspace=ws,
-                title=item['title'],
+                title=title,
                 defaults={
-                    'collection': item['collection'],
+                    'collection': collection,
                     'owner': admin_user,
-                    'original_filename': item['filename'],
-                    'mime_type': 'text/markdown' if item['filename'].endswith('.md') else 'text/plain',
+                    'original_filename': filename,
+                    'mime_type': 'text/markdown' if filename.endswith('.md') else 'text/plain',
                     'file_size': len(content_bytes),
-                    'file_hash': 'sha256-' + item['filename'][:16],
-                    'file_obj': ContentFile(content_bytes, name=item['filename']),
+                    'file_hash': 'sha256-' + filename[:16],
+                    'file_obj': ContentFile(content_bytes, name=filename),
                     'document_type': 'txt',
-                    'authority_level': item['authority'],
+                    'authority_level': authority,
                     'status': 'queued'
                 }
             )

@@ -1,3 +1,4 @@
+from typing import Any
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from django.utils.text import slugify
@@ -11,8 +12,9 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        org_id = self.request.query_params.get('organization_id')
+        req: Any = self.request
+        user = req.user
+        org_id = req.query_params.get('organization_id')
         qs = Workspace.objects.filter(memberships__user=user)
         if org_id:
             qs = qs.filter(organization_id=org_id)
@@ -38,8 +40,9 @@ class CollectionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        ws_id = self.request.query_params.get('workspace_id')
+        req: Any = self.request
+        user = req.user
+        ws_id = req.query_params.get('workspace_id')
         qs = Collection.objects.filter(workspace__memberships__user=user)
         if ws_id:
             qs = qs.filter(workspace_id=ws_id)

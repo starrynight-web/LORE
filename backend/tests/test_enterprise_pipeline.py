@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from apps.identity.models import Organization, OrganizationMembership
 from apps.workspaces.models import Workspace, WorkspaceMembership, Collection
 from apps.sources.models import SourceDocument, DocumentPage
+from apps.knowledge.models import DocumentChunk
 from apps.ingestion.models import IngestionJob
 from apps.ingestion.pipeline.ocr import (
     repair_visual_bengali_document,
@@ -115,7 +116,7 @@ class TestLOREEnterprisePipeline:
         assert "Vendor Approvals" in pages[0].text
 
         # Verify chunks were created with contextual headers
-        chunks = doc.chunks.all()
+        chunks = list(DocumentChunk.objects.filter(document=doc))
         assert len(chunks) >= 1
         assert "CloudBox" in chunks[0].text
         assert "Cloud Security Policy v3.0" in chunks[0].contextual_header
@@ -218,6 +219,7 @@ class TestLOREEnterprisePipeline:
         assert doc.pages.count() == 1
 
         page = doc.pages.first()
+        assert page is not None
         assert page.extraction_type == 'ocr_tesseract'
         assert page.confidence > 0.0
         assert len(page.text) > 0
@@ -297,6 +299,134 @@ Part A: English | Part B:
         assert "ভেন্যু" in repaired
         assert "গুগল মিট" in repaired
         assert "চূড়ান্ত পর্ব নলেজ টাওয়ার লাইব্রেরি ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি" in repaired
+
+    def test_multi_file_upload_different_formats_without_hallucination(self):
+        """
+        Tests simultaneous upload of multiple files of diverse supported formats:
+        - Markdown (.md)
+        - Plaintext (.txt)
+        - CSV Spreadsheet (.csv)
+        - HTML (.html)
+        Verifies that:
+        1. All files are ingested simultaneously into the knowledge grid.
+        2. Each file is isolated with its own distinct identity, pages, and chunks.
+        3. No cross-document pollution or contextual hallucination occurs.
+        """
+        # File 1: Markdown
+        md_bytes = (
+            "# Engineering Security Architecture\n\n"
+            "All cloud APIs must use mTLS and JWT RS256 token verification."
+        ).encode('utf-8')
+        md_file = SimpleUploadedFile("security-architecture.md", md_bytes, content_type="text/markdown")
+
+        # File 2: Plain text
+        txt_bytes = (
+            "Disaster Recovery Runbook 2026\n"
+            "Secondary region failover RTO is under 15 minutes."
+        ).encode('utf-8')
+        txt_file = SimpleUploadedFile("dr-runbook.txt", txt_bytes, content_type="text/plain")
+
+        # File 3: CSV Spreadsheet
+        csv_bytes = (
+            "Service,Owner,Tier\n"
+            "AuthGateway,SecurityTeam,Tier-1\n"
+            "BillingEngine,FinanceTeam,Tier-1"
+        ).encode('utf-8')
+        csv_file = SimpleUploadedFile("services-inventory.csv", csv_bytes, content_type="text/csv")
+
+        # File 4: HTML Document
+        html_bytes = (
+            "<!DOCTYPE html><html><body>"
+            "<h1>Compliance Directive 2026</h1>"
+            "<p>Annual SOC2 Type II audit must be published to board before Q4.</p>"
+            "<script>alert('bad');</script>"
+            "</body></html>"
+        ).encode('utf-8')
+        html_file = SimpleUploadedFile("compliance-directive.html", html_bytes, content_type="text/html")
+
+        # Submit all 4 files simultaneously via multipart/form-data
+        res = self.client.post('/api/v1/sources/documents/', {
+            'files': [md_file, txt_file, csv_file, html_file],
+            'workspace': str(self.ws.id),
+            'collection': str(self.collection.id),
+            'authority_level': 5
+        }, format='multipart')
+
+        assert res.status_code == 201
+        data = res.json()
+        assert data['count'] == 4
+        assert len(data['documents']) == 4
+        assert len(data['job_ids']) == 4
+
+        # Retrieve each document from DB and verify integrity and zero-hallucination
+        doc_ids = [d['id'] for d in data['documents']]
+        docs = list(SourceDocument.objects.filter(id__in=doc_ids))
+        assert len(docs) == 4
+
+        # Verify Markdown document
+        doc_md = next(d for d in docs if "security-architecture" in d.original_filename)
+        assert doc_md.status == 'ready'
+        assert doc_md.document_type == 'txt'
+        chunks_md = DocumentChunk.objects.filter(document=doc_md)
+        assert len(chunks_md) >= 1
+        assert "mTLS" in chunks_md[0].text
+        # Anti-hallucination check: must NOT contain DR or CSV text
+        assert "Disaster Recovery" not in chunks_md[0].text
+        assert "AuthGateway" not in chunks_md[0].text
+
+        # Verify Plaintext document
+        doc_txt = next(d for d in docs if "dr-runbook" in d.original_filename)
+        assert doc_txt.status == 'ready'
+        chunks_txt = DocumentChunk.objects.filter(document=doc_txt)
+        assert len(chunks_txt) >= 1
+        assert "failover RTO" in chunks_txt[0].text
+        assert "mTLS" not in chunks_txt[0].text
+
+        # Verify CSV document
+        doc_csv = next(d for d in docs if "services-inventory" in d.original_filename)
+        assert doc_csv.status == 'ready'
+        assert doc_csv.document_type == 'spreadsheet'
+        chunks_csv = DocumentChunk.objects.filter(document=doc_csv)
+        assert len(chunks_csv) >= 1
+        assert "AuthGateway" in chunks_csv[0].text
+
+        # Verify HTML document
+        doc_html = next(d for d in docs if "compliance-directive" in d.original_filename)
+        assert doc_html.status == 'ready'
+        chunks_html = DocumentChunk.objects.filter(document=doc_html)
+        assert len(chunks_html) >= 1
+        assert "SOC2 Type II" in chunks_html[0].text
+        # Script tags must be stripped to prevent prompt injection / hallucination
+        assert "<script>" not in chunks_html[0].text
+        assert "alert(" not in chunks_html[0].text
+
+    def test_bulk_upload_endpoint_with_partial_failure_resilience(self):
+        """
+        Tests POST /api/v1/sources/documents/bulk-upload/ endpoint:
+        - Ingests valid files successfully
+        - Accurately rejects invalid files without crashing or rolling back valid documents
+        """
+        valid_bytes = b"# Valid Policy\n\nMust encrypt at rest."
+        valid_file = SimpleUploadedFile("valid-policy.md", valid_bytes, content_type="text/markdown")
+
+        # Corrupted / invalid file (empty 0 bytes)
+        empty_file = SimpleUploadedFile("corrupted-empty.md", b"", content_type="text/markdown")
+
+        res = self.client.post('/api/v1/sources/documents/bulk-upload/', {
+            'files': [valid_file, empty_file],
+            'workspace': str(self.ws.id),
+            'authority_level': 4
+        }, format='multipart')
+
+        assert res.status_code == 201
+        data = res.json()
+        assert data['status'] == 'partial_success'
+        assert data['total_count'] == 2
+        assert data['success_count'] == 1
+        assert data['failed_count'] == 1
+        assert len(data['successful']) == 1
+        assert len(data['failed']) == 1
+        assert data['failed'][0]['filename'] == 'corrupted-empty.md'
 
 
 

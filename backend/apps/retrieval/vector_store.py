@@ -156,7 +156,7 @@ class QdrantVectorStore(BaseVectorStore):
             self.client.delete(
                 collection_name=collection_name,
                 points_selector=rest_models.Filter(
-                    must=[rest_models.FieldCondition(key="document_id", match=rest_models.MatchValue(value=str(document_id)))]
+                    must=[rest_models.FieldCondition(key="document_id", match=rest_models.MatchValue(value=document_id))]
                 )
             )
         except Exception as e:
@@ -171,7 +171,7 @@ class QdrantVectorStore(BaseVectorStore):
             res = self.client.count(
                 collection_name=collection_name,
                 count_filter=rest_models.Filter(
-                    must=[rest_models.FieldCondition(key="document_id", match=rest_models.MatchValue(value=str(document_id)))]
+                    must=[rest_models.FieldCondition(key="document_id", match=rest_models.MatchValue(value=document_id))]
                 )
             )
             return getattr(res, 'count', 0)

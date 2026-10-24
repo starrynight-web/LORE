@@ -14,8 +14,9 @@ Covers:
 """
 
 import uuid
+from typing import Any, cast
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from apps.identity.models import Organization, OrganizationMembership
@@ -40,7 +41,7 @@ User = get_user_model()
 def enterprise_fixture(db):
     org = Organization.objects.create(name="Enterprise Test Org", slug="ent-test-org")
     ws = Workspace.objects.create(organization=org, name="Compliance Workspace", slug="compliance-ws")
-    user = User.objects.create_user(username="auditor@ent.test", password="Password123!", email="auditor@ent.test")
+    user = cast(Any, User.objects).create_user(username="auditor@ent.test", password="Password123!", email="auditor@ent.test")
     OrganizationMembership.objects.create(organization=org, user=user, role="owner")
     WorkspaceMembership.objects.create(workspace=ws, user=user, role="workspace_admin")
     return {"org": org, "ws": ws, "user": user}
@@ -251,7 +252,7 @@ class TestAuthorityAndTemporalReasoning:
     def test_historical_as_of_point_in_time_query(self, enterprise_fixture):
         ws = enterprise_fixture["ws"]
         org = enterprise_fixture["org"]
-        base_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=dt_timezone.utc)
 
         doc = SourceDocument.objects.create(
             organization=org,
@@ -262,18 +263,18 @@ class TestAuthorityAndTemporalReasoning:
             file_size=1024,
             file_hash="hash-arch-1",
             status="ready",
-            effective_date=datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            expiration_date=datetime(2025, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
+            effective_date=datetime(2024, 1, 1, 0, 0, 0, tzinfo=dt_timezone.utc),
+            expiration_date=datetime(2025, 6, 1, 0, 0, 0, tzinfo=dt_timezone.utc)
         )
 
         chunk = {"document_id": str(doc.id), "text": "Valid rules during early 2025."}
 
         # Query as of 2025-03-01 -> Valid
-        valid_early, _, _ = TemporalValidityLayer.evaluate([chunk], as_of=datetime(2025, 3, 1, tzinfo=timezone.utc))
+        valid_early, _, _ = TemporalValidityLayer.evaluate([chunk], as_of=datetime(2025, 3, 1, tzinfo=dt_timezone.utc))
         assert len(valid_early) == 1
 
         # Query as of 2025-10-01 -> Expired
-        valid_late, notes, _ = TemporalValidityLayer.evaluate([chunk], as_of=datetime(2025, 10, 1, tzinfo=timezone.utc))
+        valid_late, notes, _ = TemporalValidityLayer.evaluate([chunk], as_of=datetime(2025, 10, 1, tzinfo=dt_timezone.utc))
         assert len(valid_late) == 0
         assert any("expired" in n for n in notes)
 

@@ -1,3 +1,4 @@
+from typing import Any
 from rest_framework import serializers, viewsets, permissions, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -52,7 +53,8 @@ class ReviewQueueViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        ws_id = self.request.query_params.get('workspace_id')
+        req: Any = self.request
+        ws_id = req.query_params.get('workspace_id')
         qs = SourceDocument.objects.filter(status__in=['needs_review', 'quarantined'])
         if ws_id:
             qs = qs.filter(workspace_id=ws_id)
@@ -114,7 +116,8 @@ class ConflictViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        ws_id = self.request.query_params.get('workspace_id')
+        req: Any = self.request
+        ws_id = req.query_params.get('workspace_id')
         qs = ConflictRecord.objects.all()
         if ws_id:
             qs = qs.filter(workspace_id=ws_id)
@@ -130,7 +133,8 @@ class ScopedExceptionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        ws_id = self.request.query_params.get('workspace_id')
+        req: Any = self.request
+        ws_id = req.query_params.get('workspace_id')
         qs = ScopedException.objects.all()
         if ws_id:
             qs = qs.filter(workspace_id=ws_id)
@@ -146,7 +150,8 @@ class EvidenceRequirementViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        ws_id = self.request.query_params.get('workspace_id')
+        req: Any = self.request
+        ws_id = req.query_params.get('workspace_id')
         qs = EvidenceRequirement.objects.all()
         if ws_id:
             qs = qs.filter(workspace_id=ws_id)

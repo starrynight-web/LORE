@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Any
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,7 +10,7 @@ from django.conf import settings
 from .models import SourceDocument, DocumentVersion, DocumentPage
 from .serializers import SourceDocumentSerializer, DocumentPageSerializer, DocumentVersionSerializer
 from .services import StorageSecurityService
-from apps.workspaces.models import Workspace, WorkspaceMembership
+from apps.workspaces.models import Workspace, WorkspaceMembership, Collection
 from apps.ingestion.models import IngestionJob
 from apps.ingestion.tasks import process_ingestion_pipeline, process_document_job
 from apps.ingestion.pipeline.extractors import UnifiedDocumentExtractor
@@ -20,12 +21,13 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
     serializer_class = SourceDocumentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        user = self.request.user
-        ws_id = self.request.query_params.get('workspace_id')
-        collection_id = self.request.query_params.get('collection_id')
-        status_filter = self.request.query_params.get('status')
-        doc_type = self.request.query_params.get('document_type')
+    def get_queryset(self) -> Any:
+        req: Any = self.request
+        user = req.user
+        ws_id = req.query_params.get('workspace_id')
+        collection_id = req.query_params.get('collection_id')
+        status_filter = req.query_params.get('status')
+        doc_type = req.query_params.get('document_type')
 
         qs = SourceDocument.objects.filter(workspace__memberships__user=user)
         if ws_id:
@@ -39,45 +41,21 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
 
         return qs.distinct()
 
-    def create(self, request, *args, **kwargs):
-        file_obj = request.FILES.get('file')
-        workspace_id = request.data.get('workspace')
-        collection_id = request.data.get('collection')
-        title = request.data.get('title')
-        description = request.data.get('description', '')
-        authority_level = int(request.data.get('authority_level', 3))
-
-        if not file_obj:
-            return Response({'error': 'No file provided.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not workspace_id:
-            return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        workspace = get_object_or_404(Workspace, id=workspace_id, memberships__user=request.user)
-
-        # 1. Validate file size and magic bytes
-        try:
-            sec_meta = StorageSecurityService.inspect_and_validate(file_obj)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    def _ingest_single_file(self, file_obj, workspace, collection, user, title=None, description='', authority_level=3):
+        """Validates, stores, registers, and triggers pipeline ingestion for a single document."""
+        # 1. Validate file size, magic bytes, and format support
+        sec_meta = StorageSecurityService.inspect_and_validate(file_obj)
 
         # 2. Check SaaS Storage & Document Quotas
         from apps.subscriptions.services import QuotaEnforcementService
-        try:
-            QuotaEnforcementService.check_upload_quota(workspace.organization, sec_meta['file_size'])
-        except Exception as e:
-            return Response({'error': str(e), 'quota_exceeded': True}, status=status.HTTP_402_PAYMENT_REQUIRED)
+        QuotaEnforcementService.check_upload_quota(workspace.organization, sec_meta['file_size'])
 
-        # 3. Check collection if provided
-        collection = None
-        if collection_id:
-            collection = workspace.collections.filter(id=collection_id).first()
-
-        # 4. Create SourceDocument
+        # 3. Create SourceDocument anchored strictly to this file's identity
         doc = SourceDocument.objects.create(
             organization=workspace.organization,
             workspace=workspace,
             collection=collection,
-            owner=request.user,
+            owner=user,
             title=title or file_obj.name,
             description=description,
             original_filename=file_obj.name,
@@ -93,7 +71,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
         # Record usage
         QuotaEnforcementService.record_upload(workspace.organization, workspace, sec_meta['file_size'])
 
-        # 5. Create initial DocumentVersion
+        # 4. Create initial DocumentVersion
         DocumentVersion.objects.create(
             document=doc,
             version_number=1,
@@ -103,7 +81,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             is_current=True
         )
 
-        # 6. Create IngestionJob
+        # 5. Create IngestionJob
         job = IngestionJob.objects.create(
             document=doc,
             organization=workspace.organization,
@@ -112,31 +90,234 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             current_stage='inspection'
         )
 
-        # 7. Log Audit Event
+        # 6. Log Audit Event
         AuditEvent.objects.create(
             organization=workspace.organization,
             workspace=workspace,
-            user=request.user,
+            user=user,
             event_type='document_uploaded',
             target_type='document',
             target_id=str(doc.id),
             details={'filename': file_obj.name, 'size': sec_meta['file_size'], 'sha256': sec_meta['file_hash']}
         )
 
-        # 8. Dispatch background ingestion task
+        # 7. Dispatch background ingestion task
         if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', True):
-            # Run synchronously for instant dev/test feedback
             process_ingestion_pipeline(str(job.id))
             doc.refresh_from_db()
             job.refresh_from_db()
         else:
-            process_document_job.delay(str(job.id))
+            task: Any = process_document_job
+            task.delay(str(job.id))
+
+        return doc, job
+
+    def create(self, request, *args, **kwargs):
+        uploaded_files = []
+        if 'files' in request.FILES:
+            uploaded_files = request.FILES.getlist('files')
+        elif 'file' in request.FILES:
+            uploaded_files = request.FILES.getlist('file')
+
+        if not uploaded_files:
+            return Response({'error': 'No file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        workspace_id = request.data.get('workspace')
+        if not workspace_id:
+            return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        workspace = get_object_or_404(Workspace, id=workspace_id, memberships__user=request.user)
+
+        collection_id = request.data.get('collection')
+        collection = None
+        if collection_id:
+            collection = Collection.objects.filter(workspace=workspace, id=collection_id).first()
+
+        authority_level = int(request.data.get('authority_level', 3))
+        description = request.data.get('description', '')
+
+        # Single file upload path (backward compatible contract)
+        if len(uploaded_files) == 1:
+            file_obj = uploaded_files[0]
+            title = request.data.get('title')
+            try:
+                doc, job = self._ingest_single_file(
+                    file_obj=file_obj,
+                    workspace=workspace,
+                    collection=collection,
+                    user=request.user,
+                    title=title,
+                    description=description,
+                    authority_level=authority_level
+                )
+                return Response({
+                    'document': SourceDocumentSerializer(doc).data,
+                    'job_id': str(job.id),
+                    'status': doc.status
+                }, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                is_quota = 'quota' in str(e).lower()
+                status_code = status.HTTP_402_PAYMENT_REQUIRED if is_quota else status.HTTP_400_BAD_REQUEST
+                resp_payload: dict[str, Any] = {'error': str(e)}
+                if is_quota:
+                    resp_payload['quota_exceeded'] = True
+                return Response(resp_payload, status=status_code)
+
+        # Multi-file upload path
+        created_docs = []
+        created_jobs = []
+        errors = []
+
+        import json
+        titles_map = {}
+        raw_titles = request.data.get('titles')
+        if raw_titles:
+            try:
+                titles_map = json.loads(raw_titles) if isinstance(raw_titles, str) else raw_titles
+            except Exception:
+                titles_map = {}
+
+        base_title = request.data.get('title')
+
+        for idx, file_obj in enumerate(uploaded_files):
+            file_title = None
+            if isinstance(titles_map, dict) and file_obj.name in titles_map:
+                file_title = titles_map[file_obj.name]
+            elif isinstance(titles_map, list) and idx < len(titles_map):
+                file_title = titles_map[idx]
+            elif base_title and len(uploaded_files) == 1:
+                file_title = base_title
+            elif base_title:
+                file_title = f"{base_title} - {file_obj.name}"
+            else:
+                file_title = os.path.splitext(file_obj.name)[0]
+
+            try:
+                doc, job = self._ingest_single_file(
+                    file_obj=file_obj,
+                    workspace=workspace,
+                    collection=collection,
+                    user=request.user,
+                    title=file_title,
+                    description=description,
+                    authority_level=authority_level
+                )
+                created_docs.append(doc)
+                created_jobs.append(job)
+            except Exception as e:
+                errors.append({'filename': file_obj.name, 'error': str(e)})
+
+        if not created_docs and errors:
+            first_err = errors[0]['error']
+            is_quota = 'quota' in first_err.lower()
+            status_code = status.HTTP_402_PAYMENT_REQUIRED if is_quota else status.HTTP_400_BAD_REQUEST
+            return Response({'error': 'All document uploads failed.', 'details': errors}, status=status_code)
 
         return Response({
-            'document': SourceDocumentSerializer(doc).data,
-            'job_id': str(job.id),
-            'status': doc.status
+            'documents': SourceDocumentSerializer(created_docs, many=True).data,
+            'job_ids': [str(j.id) for j in created_jobs],
+            'jobs': [{'document_id': str(d.id), 'job_id': str(j.id), 'status': d.status} for d, j in zip(created_docs, created_jobs)],
+            'count': len(created_docs),
+            'document': SourceDocumentSerializer(created_docs[0]).data if created_docs else None,
+            'job_id': str(created_jobs[0].id) if created_jobs else None,
+            'status': created_docs[0].status if created_docs else None,
+            'errors': errors
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='bulk-upload')
+    def bulk_upload(self, request):
+        """
+        Batch upload multiple documents of diverse supported formats.
+        Isolates each document's metadata and extraction to prevent cross-document hallucination.
+        Supports partial success: valid files are ingested even if one malformed file fails.
+        """
+        uploaded_files = []
+        if 'files' in request.FILES:
+            uploaded_files = request.FILES.getlist('files')
+        elif 'file' in request.FILES:
+            uploaded_files = request.FILES.getlist('file')
+
+        if not uploaded_files:
+            return Response({'error': 'No files provided for bulk upload.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        workspace_id = request.data.get('workspace')
+        if not workspace_id:
+            return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        workspace = get_object_or_404(Workspace, id=workspace_id, memberships__user=request.user)
+
+        collection_id = request.data.get('collection')
+        collection = None
+        if collection_id:
+            collection = Collection.objects.filter(workspace=workspace, id=collection_id).first()
+
+        authority_level = int(request.data.get('authority_level', 3))
+        description = request.data.get('description', '')
+
+        import json
+        titles_map = {}
+        raw_titles = request.data.get('titles')
+        if raw_titles:
+            try:
+                titles_map = json.loads(raw_titles) if isinstance(raw_titles, str) else raw_titles
+            except Exception:
+                titles_map = {}
+
+        base_title = request.data.get('title')
+
+        successful_docs = []
+        failed_files = []
+
+        for idx, file_obj in enumerate(uploaded_files):
+            file_title = None
+            if isinstance(titles_map, dict) and file_obj.name in titles_map:
+                file_title = titles_map[file_obj.name]
+            elif isinstance(titles_map, list) and idx < len(titles_map):
+                file_title = titles_map[idx]
+            elif base_title and len(uploaded_files) == 1:
+                file_title = base_title
+            elif base_title:
+                file_title = f"{base_title} - {file_obj.name}"
+            else:
+                file_title = os.path.splitext(file_obj.name)[0]
+
+            try:
+                doc, job = self._ingest_single_file(
+                    file_obj=file_obj,
+                    workspace=workspace,
+                    collection=collection,
+                    user=request.user,
+                    title=file_title,
+                    description=description,
+                    authority_level=authority_level
+                )
+                successful_docs.append({
+                    'document': SourceDocumentSerializer(doc).data,
+                    'job_id': str(job.id),
+                    'status': doc.status
+                })
+            except Exception as e:
+                failed_files.append({
+                    'filename': file_obj.name,
+                    'error': str(e)
+                })
+
+        overall_status = 'success' if not failed_files else ('partial_success' if successful_docs else 'failed')
+        http_status = status.HTTP_201_CREATED if successful_docs else status.HTTP_400_BAD_REQUEST
+
+        return Response({
+            'status': overall_status,
+            'total_count': len(uploaded_files),
+            'success_count': len(successful_docs),
+            'failed_count': len(failed_files),
+            'successful': successful_docs,
+            'failed': failed_files,
+            'documents': [item['document'] for item in successful_docs],
+            'job_ids': [item['job_id'] for item in successful_docs],
+            'document': successful_docs[0]['document'] if successful_docs else None,
+            'job_id': successful_docs[0]['job_id'] if successful_docs else None,
+            'doc_status': successful_docs[0]['status'] if successful_docs else None
+        }, status=http_status)
 
     def perform_destroy(self, instance):
         """Cascading cleanup of vectors, storage files, and relational data."""
@@ -188,7 +369,8 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             doc.refresh_from_db()
             job.refresh_from_db()
         else:
-            process_document_job.delay(str(job.id))
+            task: Any = process_document_job
+            task.delay(str(job.id))
 
         return Response({'message': 'Reprocessing triggered', 'job_id': str(job.id)})
 

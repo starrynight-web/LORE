@@ -53,10 +53,13 @@ class SentenceTransformerEmbeddingAdapter(BaseEmbeddingAdapter):
                 raise e
 
     @property
-    def model(self):
+    def model(self) -> Any:
         if SentenceTransformerEmbeddingAdapter._model_instance is None:
             self._load_model()
-        return SentenceTransformerEmbeddingAdapter._model_instance
+        instance = SentenceTransformerEmbeddingAdapter._model_instance
+        if instance is None:
+            raise RuntimeError("SentenceTransformer model could not be initialized")
+        return instance
 
     def embed_text(self, text: str) -> List[float]:
         if not text or not text.strip():

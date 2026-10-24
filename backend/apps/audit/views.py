@@ -1,3 +1,4 @@
+from typing import Any
 from rest_framework import serializers, viewsets, permissions
 from .models import AuditEvent
 
@@ -17,8 +18,9 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        ws_id = self.request.query_params.get('workspace_id')
+        req: Any = self.request
+        user = req.user
+        ws_id = req.query_params.get('workspace_id')
         qs = AuditEvent.objects.filter(workspace__memberships__user=user)
         if ws_id:
             qs = qs.filter(workspace_id=ws_id)

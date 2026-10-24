@@ -25,4 +25,5 @@ class CollectionSerializer(serializers.ModelSerializer):
         fields = ['id', 'workspace', 'name', 'description', 'color', 'icon', 'document_count', 'created_at', 'updated_at']
 
     def get_document_count(self, obj):
-        return getattr(obj, 'documents', None).count() if hasattr(obj, 'documents') else 0
+        docs = getattr(obj, 'documents', None)
+        return docs.count() if docs is not None else 0

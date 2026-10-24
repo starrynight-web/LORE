@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Hind_Siliguri } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme";
@@ -37,6 +37,13 @@ export const metadata: Metadata = {
   manifest: "/site.webmanifest",
 };
 
+export const viewport: Viewport = {
+  themeColor: "#FAF8F5",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -48,15 +55,10 @@ export default function RootLayout({
       className={`${inter.variable} ${hindSiliguri.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="manifest" href="/site.webmanifest" />
-        <meta name="theme-color" content="#FAF8F5" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      <head suppressHydrationWarning>
         <script
+          id="lore-theme-script"
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -77,7 +79,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col transition-colors duration-200">
+      <body className="min-h-full flex flex-col transition-colors duration-200" suppressHydrationWarning>
         <ThemeProvider>
           <LanguageProvider>
             {children}

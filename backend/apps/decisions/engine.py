@@ -317,7 +317,7 @@ class GroundedGenerationService:
         conflicts: List[Dict[str, Any]],
         api_key: str,
         model_name: str = 'gpt-oss-120B'
-    ) -> str:
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Invokes Groq API Cloud with gpt-oss-120B or specified model.
         Forces temperature: 0.0 for deterministic factual fidelity and zero hallucination.

@@ -4,7 +4,7 @@ import os
 import re
 import zipfile
 import xml.etree.ElementTree as ET
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .ocr import OCRRouter, BaseOCRProvider
 
 class DocxExtractor:
@@ -23,11 +23,12 @@ class DocxExtractor:
             text = p.text.strip()
             if not text:
                 continue
-            if p.style.name.startswith('Heading 1'):
+            style_name = getattr(p.style, 'name', '') or ''
+            if style_name.startswith('Heading 1'):
                 lines.append(f"# {text}")
-            elif p.style.name.startswith('Heading 2'):
+            elif style_name.startswith('Heading 2'):
                 lines.append(f"## {text}")
-            elif p.style.name.startswith('Heading 3'):
+            elif style_name.startswith('Heading 3'):
                 lines.append(f"### {text}")
             else:
                 lines.append(text)
@@ -63,12 +64,12 @@ class SpreadsheetExtractor:
         if isinstance(file_path_or_bytes, (bytes, bytearray)):
             text = file_path_or_bytes.decode('utf-8', errors='replace')
             reader = csv.reader(io.StringIO(text))
+            rows = list(reader)
         else:
             with open(file_path_or_bytes, 'r', encoding='utf-8', errors='replace') as f:
                 reader = csv.reader(f)
                 rows = list(reader)
 
-        rows = list(reader) if isinstance(file_path_or_bytes, (bytes, bytearray)) else rows
         formatted_rows = [" | ".join(r) for r in rows if any(r)]
         full_text = "\n".join(formatted_rows)
         return [{
@@ -88,82 +89,133 @@ class SpreadsheetExtractor:
     @staticmethod
     def extract_xlsx(file_path_or_bytes) -> List[Dict[str, Any]]:
         import openpyxl
-        if isinstance(file_path_or_bytes, (bytes, bytearray)):
-            wb = openpyxl.load_workbook(io.BytesIO(file_path_or_bytes), data_only=True)
-        else:
-            wb = openpyxl.load_workbook(file_path_or_bytes, data_only=True)
+        try:
+            if isinstance(file_path_or_bytes, (bytes, bytearray)):
+                wb = openpyxl.load_workbook(io.BytesIO(file_path_or_bytes), data_only=True)
+            else:
+                wb = openpyxl.load_workbook(file_path_or_bytes, data_only=True)
 
-        pages = []
-        for idx, sheet_name in enumerate(wb.sheetnames):
-            ws = wb[sheet_name]
-            rows_data = []
-            for row in ws.iter_rows(values_only=True):
-                if any(row):
-                    str_cells = [str(c) if c is not None else "" for c in row]
-                    rows_data.append(" | ".join(str_cells))
-            text = f"## Sheet: {sheet_name}\n\n" + "\n".join(rows_data)
-            pages.append({
-                'page_number': idx + 1,
-                'text': text,
-                'confidence': 1.0,
-                'words_count': len(text.split()),
-                'width': 800.0,
-                'height': 600.0,
-                'extraction_type': 'xlsx_extract',
-                'engine': 'openpyxl',
-                'engine_version': '3.1.5',
-                'is_repaired': False,
-                'bounding_boxes': [],
-            })
-        return pages
+            pages = []
+            for idx, sheet_name in enumerate(wb.sheetnames):
+                ws = wb[sheet_name]
+                rows_data = []
+                for row in ws.iter_rows(values_only=True):
+                    if any(row):
+                        str_cells = [str(c) if c is not None else "" for c in row]
+                        rows_data.append(" | ".join(str_cells))
+                text = f"## Sheet: {sheet_name}\n\n" + "\n".join(rows_data)
+                pages.append({
+                    'page_number': idx + 1,
+                    'text': text,
+                    'confidence': 1.0,
+                    'words_count': len(text.split()),
+                    'width': 800.0,
+                    'height': 600.0,
+                    'extraction_type': 'xlsx_extract',
+                    'engine': 'openpyxl',
+                    'engine_version': '3.1.5',
+                    'is_repaired': False,
+                    'bounding_boxes': [],
+                })
+            return pages if pages else TextExtractor.extract(file_path_or_bytes)
+        except Exception:
+            return TextExtractor.extract(file_path_or_bytes)
 
 class PresentationExtractor:
     """Extracts slide text and structure from PPTX presentation files using standard library zipfile."""
     @staticmethod
     def extract(file_path_or_bytes) -> List[Dict[str, Any]]:
+        try:
+            if isinstance(file_path_or_bytes, (bytes, bytearray)):
+                stream = io.BytesIO(file_path_or_bytes)
+            else:
+                stream = file_path_or_bytes
+
+            if not zipfile.is_zipfile(stream):
+                return TextExtractor.extract(file_path_or_bytes)
+
+            zf = zipfile.ZipFile(stream)
+            slide_names = [name for name in zf.namelist() if re.match(r'ppt/slides/slide\d+\.xml', name)]
+            def _get_slide_num(s: str) -> int:
+                match = re.search(r'\d+', s)
+                return int(match.group(0)) if match else 0
+            slide_names.sort(key=_get_slide_num)
+
+            if not slide_names:
+                return [{
+                    'page_number': 1,
+                    'text': '',
+                    'confidence': 1.0,
+                    'words_count': 0,
+                    'width': 960.0,
+                    'height': 540.0,
+                    'extraction_type': 'pptx_extract',
+                    'engine': 'zipfile_xml',
+                    'engine_version': '1.0',
+                    'is_repaired': False,
+                    'bounding_boxes': []
+                }]
+
+            pages = []
+            for idx, sname in enumerate(slide_names, 1):
+                xml_data = zf.read(sname)
+                root = ET.fromstring(xml_data)
+                texts = [node.text for node in root.iter() if node.tag.endswith('}t') and node.text]
+                slide_text = "\n".join(texts).strip()
+                pages.append({
+                    'page_number': idx,
+                    'text': f"## Slide {idx}\n\n{slide_text}" if slide_text else f"## Slide {idx}\n\n[Empty slide]",
+                    'confidence': 1.0,
+                    'words_count': len(slide_text.split()),
+                    'width': 960.0,
+                    'height': 540.0,
+                    'extraction_type': 'pptx_extract',
+                    'engine': 'zipfile_xml',
+                    'engine_version': '1.0',
+                    'is_repaired': False,
+                    'bounding_boxes': []
+                })
+            return pages
+        except Exception:
+            return TextExtractor.extract(file_path_or_bytes)
+
+class HTMLExtractor:
+    """Extracts clean, semantic Markdown/text from HTML files, eliminating script and styles to prevent hallucination."""
+    @staticmethod
+    def extract(file_path_or_bytes) -> List[Dict[str, Any]]:
         if isinstance(file_path_or_bytes, (bytes, bytearray)):
-            zf = zipfile.ZipFile(io.BytesIO(file_path_or_bytes))
+            raw_html = file_path_or_bytes.decode('utf-8', errors='replace')
         else:
-            zf = zipfile.ZipFile(file_path_or_bytes)
+            with open(file_path_or_bytes, 'r', encoding='utf-8', errors='replace') as f:
+                raw_html = f.read()
 
-        slide_names = [name for name in zf.namelist() if re.match(r'ppt/slides/slide\d+\.xml', name)]
-        slide_names.sort(key=lambda x: int(re.search(r'\d+', x).group(0)) if re.search(r'\d+', x) else 0)
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(raw_html, 'html.parser')
+            for tag in soup(['script', 'style', 'head', 'meta', 'link', 'svg', 'noscript']):
+                tag.decompose()
+            for h in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+                level = int(h.name[1])
+                h.replace_with(f"\n\n{'#' * level} {h.get_text().strip()}\n")
+            text = soup.get_text(separator="\n", strip=True)
+        except Exception:
+            text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', raw_html, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<[^>]+>', ' ', text)
+            text = re.sub(r'\s+', ' ', text).strip()
 
-        if not slide_names:
-            return [{
-                'page_number': 1,
-                'text': '',
-                'confidence': 1.0,
-                'words_count': 0,
-                'width': 960.0,
-                'height': 540.0,
-                'extraction_type': 'pptx_extract',
-                'engine': 'zipfile_xml',
-                'engine_version': '1.0',
-                'is_repaired': False,
-                'bounding_boxes': []
-            }]
-
-        pages = []
-        for idx, sname in enumerate(slide_names, 1):
-            xml_data = zf.read(sname)
-            root = ET.fromstring(xml_data)
-            texts = [node.text for node in root.iter() if node.tag.endswith('}t') and node.text]
-            slide_text = "\n".join(texts).strip()
-            pages.append({
-                'page_number': idx,
-                'text': f"## Slide {idx}\n\n{slide_text}" if slide_text else f"## Slide {idx}\n\n[Empty slide]",
-                'confidence': 1.0,
-                'words_count': len(slide_text.split()),
-                'width': 960.0,
-                'height': 540.0,
-                'extraction_type': 'pptx_extract',
-                'engine': 'zipfile_xml',
-                'engine_version': '1.0',
-                'is_repaired': False,
-                'bounding_boxes': []
-            })
-        return pages
+        return [{
+            'page_number': 1,
+            'text': text.strip(),
+            'confidence': 1.0,
+            'words_count': len(text.split()),
+            'width': 612.0,
+            'height': 792.0,
+            'extraction_type': 'html_semantic_extract',
+            'engine': 'bs4_semantic',
+            'engine_version': '1.0',
+            'is_repaired': False,
+            'bounding_boxes': [],
+        }]
 
 class TextExtractor:
     """Extracts plain text and markdown files."""
@@ -191,7 +243,7 @@ class TextExtractor:
 
 class UnifiedDocumentExtractor:
     """Dispatches extraction based on document type."""
-    def __init__(self, ocr_provider: BaseOCRProvider = None):
+    def __init__(self, ocr_provider: Optional[BaseOCRProvider] = None):
         self.router = OCRRouter(ocr_provider=ocr_provider)
 
     def extract_document(self, file_path_or_bytes, doc_type: str, filename: str = '') -> List[Dict[str, Any]]:
@@ -199,7 +251,7 @@ class UnifiedDocumentExtractor:
 
         if doc_type == 'pdf' or ext == '.pdf':
             return self.router.process_pdf(file_path_or_bytes)
-        elif doc_type == 'image' or ext in ('.png', '.jpg', '.jpeg'):
+        elif doc_type == 'image' or ext in ('.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'):
             return self.router.process_image(file_path_or_bytes)
         elif doc_type == 'docx' or ext == '.docx':
             return DocxExtractor.extract(file_path_or_bytes)
@@ -209,5 +261,7 @@ class UnifiedDocumentExtractor:
             return SpreadsheetExtractor.extract_xlsx(file_path_or_bytes)
         elif doc_type == 'presentation' or ext in ('.pptx', '.ppt'):
             return PresentationExtractor.extract(file_path_or_bytes)
+        elif ext in ('.html', '.htm'):
+            return HTMLExtractor.extract(file_path_or_bytes)
         else:
             return TextExtractor.extract(file_path_or_bytes)

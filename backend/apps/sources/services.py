@@ -17,7 +17,13 @@ ALLOWED_EXTENSIONS = {
     '.png': 'image',
     '.jpg': 'image',
     '.jpeg': 'image',
+    '.tiff': 'image',
+    '.tif': 'image',
+    '.webp': 'image',
     '.pptx': 'presentation',
+    '.ppt': 'presentation',
+    '.html': 'txt',
+    '.htm': 'txt',
 }
 
 class StorageSecurityService:
@@ -75,6 +81,16 @@ class StorageSecurityService:
                 raise ValidationError("Invalid JPEG file: Corrupted or missing JPEG header.")
             mime_type = 'image/jpeg'
 
+        elif ext in ('.tiff', '.tif'):
+            if not (header.startswith(b'II*\x00') or header.startswith(b'MM\x00*')):
+                raise ValidationError("Invalid TIFF file: Missing or corrupted TIFF header.")
+            mime_type = 'image/tiff'
+
+        elif ext == '.webp':
+            if not (header.startswith(b'RIFF') and len(header) >= 12 and header[8:12] == b'WEBP'):
+                raise ValidationError("Invalid WEBP file: Missing RIFF/WEBP header signature.")
+            mime_type = 'image/webp'
+
         elif ext in ('.docx', '.xlsx', '.pptx'):
             # Modern Office files are PK zip archives
             if not header.startswith(b'PK\x03\x04'):
@@ -86,15 +102,31 @@ class StorageSecurityService:
             elif ext == '.pptx':
                 mime_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
-        elif ext in ('.txt', '.md', '.markdown', '.csv'):
+        elif ext in ('.ppt', '.xls'):
+            # Compound File Binary Format or PK zip
+            if not (header.startswith(b'\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1') or header.startswith(b'PK\x03\x04')):
+                raise ValidationError(f"Invalid legacy Office file '{ext}': Missing binary OLE or PK signature.")
+            mime_type = 'application/vnd.ms-powerpoint' if ext == '.ppt' else 'application/vnd.ms-excel'
+
+        elif ext in ('.txt', '.md', '.markdown', '.csv', '.html', '.htm'):
             try:
                 header.decode('utf-8')
-                mime_type = 'text/plain' if ext != '.csv' else 'text/csv'
+                if ext in ('.html', '.htm'):
+                    mime_type = 'text/html'
+                elif ext == '.csv':
+                    mime_type = 'text/csv'
+                else:
+                    mime_type = 'text/plain'
             except UnicodeDecodeError:
                 # Check for latin-1 or ASCII fallback
                 try:
                     header.decode('latin-1')
-                    mime_type = 'text/plain'
+                    if ext in ('.html', '.htm'):
+                        mime_type = 'text/html'
+                    elif ext == '.csv':
+                        mime_type = 'text/csv'
+                    else:
+                        mime_type = 'text/plain'
                 except Exception:
                     raise ValidationError("Text document contains invalid non-text binary data.")
 

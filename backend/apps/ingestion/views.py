@@ -1,3 +1,4 @@
+from typing import Any
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -11,9 +12,10 @@ class IngestionJobViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        ws_id = self.request.query_params.get('workspace_id')
-        doc_id = self.request.query_params.get('document_id')
+        req: Any = self.request
+        user = req.user
+        ws_id = req.query_params.get('workspace_id')
+        doc_id = req.query_params.get('document_id')
 
         qs = IngestionJob.objects.filter(workspace__memberships__user=user)
         if ws_id:
