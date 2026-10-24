@@ -152,6 +152,111 @@ def write_skill(
     return doc
 
 
+def locate_skill(project: Path, skill_name: str) -> tuple[Path, Doc] | None:
+    """Find a skill file even when it is still a draft."""
+    needle = skill_name.removeprefix("skill:")
+    for path, doc in list_skill_files(project):
+        ident = doc.get("id").removeprefix("skill:")
+        tail = ident.split("/")[-1]
+        names = {
+            ident,
+            doc.get("id"),
+            path.stem,
+            path.stem.split("@", 1)[0],
+            doc.get("title"),
+            tail,
+            tail.split("@", 1)[0],
+            skill_name,
+        }
+        if needle in names or skill_name in names:
+            return path, doc
+    return None
+
+
+def update_persona(
+    project: Path,
+    name: str,
+    *,
+    title: str | None = None,
+    summary: str | None = None,
+    body: str | None = None,
+    status: str | None = None,
+) -> Doc:
+    doc = find_persona(project, name)
+    if doc is None or doc.path is None:
+        raise FileNotFoundError(name)
+    if title is not None:
+        text = title.strip()
+        if not text:
+            raise ValueError("A persona needs a title.")
+        doc.header["title"] = text
+    if summary is not None:
+        doc.header["summary"] = summary.strip()
+    if body is not None:
+        doc.body = body
+    if status is not None:
+        if status not in {"draft", "stable"}:
+            raise ValueError("Status must be draft or stable.")
+        doc.header["status"] = status
+    write_doc(doc.path, doc)
+    return doc
+
+
+def delete_persona(project: Path, name: str) -> None:
+    doc = find_persona(project, name)
+    if doc is None or doc.path is None:
+        raise FileNotFoundError(name)
+    doc.path.unlink()
+
+
+def update_skill(
+    project: Path,
+    skill_name: str,
+    *,
+    title: str | None = None,
+    summary: str | None = None,
+    body: str | None = None,
+    status: str | None = None,
+) -> Doc:
+    found = locate_skill(project, skill_name)
+    if found is None:
+        raise FileNotFoundError(skill_name)
+    path, doc = found
+    if title is not None:
+        text = title.strip()
+        if not text:
+            raise ValueError("A skill needs a title.")
+        doc.header["title"] = text
+    if summary is not None:
+        doc.header["summary"] = summary.strip()
+    if body is not None:
+        doc.body = body
+    if status is not None:
+        if status not in {"draft", "stable"}:
+            raise ValueError("Status must be draft or stable.")
+        doc.header["status"] = status
+    write_doc(path, doc)
+    doc.path = path
+    return doc
+
+
+def delete_skill(project: Path, skill_name: str) -> None:
+    found = locate_skill(project, skill_name)
+    if found is None:
+        raise FileNotFoundError(skill_name)
+    path, doc = found
+    ident = doc.get("id")
+    path.unlink()
+    for persona in list_personas(project):
+        current = persona.header.get("skill_ids")
+        if not isinstance(current, list) or persona.path is None:
+            continue
+        kept = [item for item in current if str(item) != ident]
+        if kept != current:
+            persona.header["skill_ids"] = kept
+            write_doc(persona.path, persona)
+
+
 def set_status(project: Path, item_id: str, status: str) -> Doc:
     doc = _find_any(project, item_id)
     if doc is None or doc.path is None:

@@ -79,10 +79,16 @@ def remove_inbox(project: Path, skill_id: str) -> None:
     path.unlink()
 
 
-def adopt_inbox(project: Path, persona: str) -> list[str]:
-    """File every waiting skill under the persona, then clear the inbox."""
+def adopt_inbox(project: Path, persona: str, only: list[str] | None = None) -> list[str]:
+    """File waiting skills under the persona, then remove them from the inbox.
+
+    `only` limits the move to those inbox ids. `None` files every waiting skill.
+    """
+    wanted = None if only is None else {file_slug(item) for item in only}
     saved: list[str] = []
     for row in list_inbox(project):
+        if wanted is not None and row["id"] not in wanted:
+            continue
         path = inbox_dir(project) / f"{row['id']}.md"
         doc = read_doc(path)
         written = write_skill(
@@ -99,11 +105,22 @@ def adopt_inbox(project: Path, persona: str) -> list[str]:
     return saved
 
 
-def search_registry(query: str, opener: Opener | None = None) -> list[dict[str, str | int]]:
+def featured_registry(opener: Opener | None = None) -> list[dict[str, str | int]]:
+    """A first screen of skills from skills.sh, ordered by installs."""
+    return search_registry("skill", opener, limit=24)
+
+
+def search_registry(
+    query: str,
+    opener: Opener | None = None,
+    *,
+    limit: int = 8,
+) -> list[dict[str, str | int]]:
     text = query.strip()
     if len(text) < 2:
         raise ValueError("Type at least two characters to search.")
-    url = "https://skills.sh/api/search?" + urllib.parse.urlencode({"q": text, "limit": "8"})
+    bounded = min(max(limit, 1), 24)
+    url = "https://skills.sh/api/search?" + urllib.parse.urlencode({"q": text, "limit": str(bounded)})
     loaded = _get_json(url, opener or urllib.request.urlopen)
     skills = loaded.get("skills")
     if not isinstance(skills, list):
@@ -125,6 +142,7 @@ def search_registry(query: str, opener: Opener | None = None) -> list[dict[str, 
                 "installs": int(installs) if isinstance(installs, int) else 0,
             }
         )
+    rows.sort(key=lambda row: int(row["installs"]), reverse=True)
     return rows
 
 

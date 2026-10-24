@@ -16,15 +16,18 @@ npm run dev
 
 ## Pages
 
+A new library opens a welcome dialog over the dashboard. Outside clicks and Escape do not dismiss it. Get started leads to skills, then a persona, then an optional codebase map. Each of those three steps can be skipped. Finishing or skipping the last step marks setup complete.
+
 | Route | File | What it does |
 | --- | --- | --- |
-| `/` | `web/app/page.tsx` | Four stat cards, then provider key, skills, persona, and the connect prompt |
-| `/personas` | `web/app/personas/page.tsx` | Starter personas and the library |
-| `/personas/[id]` | `web/app/personas/[id]/page.tsx` | One persona, its skills, approve, and add a skill |
-| `/codebase` | `web/app/codebase/page.tsx` | Map status, build button, link table, embedded `graph.html` |
-| `/replay` | `web/app/replay/page.tsx` | Decision files |
-| `/connect` | `web/app/connect/page.tsx` | Agent prompt, connect command, backup `.cursor/mcp.json` |
-| `/settings` | `web/app/settings/page.tsx` | Token budget, max items, and the draft model |
+| `/` | `web/app/page.tsx` | Call counts, top agents, personas, and skills, plus recent calls |
+| `/personas` | `web/app/personas/page.tsx` | Create, list, and delete personas |
+| `/personas/[id]` | `web/app/personas/[id]/page.tsx` | Edit one persona, open its skills, approve, and add a skill |
+| `/skills` | `web/app/skills/page.tsx` | Search skills.sh, add a file, create, list, and delete skills |
+| `/skills/[...id]` | `web/app/skills/[...id]/page.tsx` | Read and edit one skill |
+| `/codebase` | `web/app/codebase/page.tsx` | Add, list, and delete codebases |
+| `/codebase/[id]` | `web/app/codebase/[id]/page.tsx` | Rename a codebase, build its map, and read the links |
+| `/settings` | `web/app/settings/page.tsx` | Token budget, max items, provider key, and draft model |
 | `/locked` | `web/app/locked/page.tsx` | Shown when the setup key cookie is missing. No sidebar |
 
 The shell is `web/components/Shell.tsx`. The sidebar links are `web/components/app-sidebar.tsx`. The header and breadcrumb are `web/components/site-header.tsx`. `/locked` does not use the shell.

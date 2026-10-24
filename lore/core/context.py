@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -202,6 +203,7 @@ def _finish(
             "persona": persona,
             "included": included,
             "omitted": omitted,
+            "client": os.environ.get("LORE_CLIENT", "").strip() or "Unknown",
         },
         summary + "\n",
     )

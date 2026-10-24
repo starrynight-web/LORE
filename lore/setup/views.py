@@ -10,6 +10,14 @@ from typing import Any
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from lore.connect import agent_prompt, install_command, mcp_entry, register_agents
+from lore.core.codebases import (
+    add_codebase,
+    delete_codebase,
+    get_codebase,
+    list_codebases,
+    remove_map,
+    rename_codebase,
+)
 from lore.core.config import load_config, save_config
 from lore.core.decisions import list_decisions
 from lore.core.graph import summarize
@@ -17,19 +25,27 @@ from lore.core.inbox import (
     add_from_registry,
     add_text,
     adopt_inbox,
+    featured_registry,
     list_inbox,
     remove_inbox,
     search_registry,
 )
 from lore.core.okf import Doc
+from lore.core.onboarding import save as save_onboarding
+from lore.core.onboarding import state as onboarding_state
 from lore.core.paths import library_root, project_name, workspace_root
 from lore.core.personas import (
+    delete_persona,
+    delete_skill,
     file_slug,
     find_persona,
     list_personas,
     list_skill_files,
+    locate_skill,
     set_status,
     skill_belongs,
+    update_persona,
+    update_skill,
     write_persona,
     write_skill,
 )
@@ -42,6 +58,7 @@ from lore.core.provider import (
     save_provider,
     set_model,
 )
+from lore.core.usage import summary as usage_summary
 from lore.core.workspace import copy_example, copy_persona, init_workspace, ready_personas
 from lore.setup.graph_job import start_build
 
@@ -84,7 +101,7 @@ def _json(request: HttpRequest) -> dict[str, Any]:
 
 
 def _roots() -> list[Path]:
-    roots = [workspace_root().expanduser().resolve()]
+    roots = [workspace_root().expanduser().resolve(), Path.home().resolve()]
     library = library_root().expanduser().resolve()
     if library not in roots:
         roots.append(library)
@@ -127,6 +144,17 @@ def _project(request: HttpRequest) -> Path:
         raise ApiError(400, "That folder has no .lore directory.")
     _remember(project)
     return project
+
+
+def _skill_payload(doc: Doc) -> dict[str, Any]:
+    return {
+        "id": doc.get("id"),
+        "title": doc.get("title"),
+        "summary": doc.get("summary"),
+        "status": doc.get("status"),
+        "body": doc.body,
+        "persona": doc.get("persona"),
+    }
 
 
 def _persona_payload(doc: Doc) -> dict[str, Any]:
@@ -229,7 +257,13 @@ def personas(request: HttpRequest) -> JsonResponse:
             title=str(payload.get("title", "") or name),
             status="draft",
         )
-        if payload.get("adopt"):
+        chosen = payload.get("skill_ids")
+        if isinstance(chosen, list):
+            adopt_inbox(project, doc.get("id"), [str(item) for item in chosen])
+            saved = find_persona(project, doc.get("id"))
+            if saved is not None:
+                doc = saved
+        elif payload.get("adopt"):
             adopt_inbox(project, doc.get("id"))
             saved = find_persona(project, doc.get("id"))
             if saved is not None:
@@ -242,27 +276,37 @@ def personas(request: HttpRequest) -> JsonResponse:
 
 @_api
 def persona_detail(request: HttpRequest, persona_id: str) -> JsonResponse:
+    project = _project(request)
+    if request.method == "DELETE":
+        delete_persona(project, persona_id)
+        return JsonResponse({"removed": persona_id})
+    if request.method == "POST":
+        payload = _json(request)
+        doc = update_persona(
+            project,
+            persona_id,
+            title=str(payload["title"]) if "title" in payload else None,
+            summary=str(payload["summary"]) if "summary" in payload else None,
+            body=str(payload["body"]) if "body" in payload else None,
+            status=str(payload["status"]) if "status" in payload else None,
+        )
+        return JsonResponse(_persona_with_skills(project, doc))
     if request.method != "GET":
         raise ApiError(405, "Use GET to read a persona.")
-    project = _project(request)
-    doc = find_persona(project, persona_id)
-    if doc is None:
+    found = find_persona(project, persona_id)
+    if found is None:
         raise ApiError(404, f"No persona {persona_id}.")
+    return JsonResponse(_persona_with_skills(project, found))
+
+
+def _persona_with_skills(project: Path, doc: Doc) -> dict[str, Any]:
     skills = []
     for path, skill in list_skill_files(project):
         if skill_belongs(path, skill, doc.get("id")):
-            skills.append(
-                {
-                    "id": skill.get("id"),
-                    "title": skill.get("title"),
-                    "summary": skill.get("summary"),
-                    "status": skill.get("status"),
-                    "body": skill.body,
-                }
-            )
+            skills.append(_skill_payload(skill))
     payload = _persona_payload(doc)
     payload["skills"] = skills
-    return JsonResponse(payload)
+    return payload
 
 
 @_api
@@ -338,6 +382,10 @@ def provider_draft(request: HttpRequest) -> JsonResponse:
         raise ApiError(405, "Use POST to draft a persona.")
     payload = _json(request)
     skills = list_inbox(_project(request))
+    chosen = payload.get("skill_ids")
+    if isinstance(chosen, list):
+        wanted = {str(item) for item in chosen}
+        skills = [row for row in skills if row["id"] in wanted]
     drafted = draft_persona(library_root(), skills, str(payload.get("note", "")))
     return JsonResponse(drafted)
 
@@ -366,6 +414,12 @@ def inbox_remove(request: HttpRequest, skill_id: str) -> JsonResponse:
 
 
 @_api
+def skill_featured(request: HttpRequest) -> JsonResponse:
+    if request.method != "GET":
+        raise ApiError(405, "Use GET to list skills from skills.sh.")
+    return JsonResponse({"skills": featured_registry()})
+
+
 def skill_search(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         raise ApiError(405, "Use POST to search skills.")
@@ -473,6 +527,168 @@ def graph(request: HttpRequest) -> JsonResponse:
     if request.method != "GET":
         raise ApiError(405, "Use GET to read the map.")
     return JsonResponse(summarize(_project(request)))
+
+
+@_api
+def onboarding(request: HttpRequest) -> JsonResponse:
+    project = _project(request)
+    if request.method == "GET":
+        return JsonResponse(onboarding_state(project))
+    if request.method != "POST":
+        raise ApiError(405, "Use GET or POST for setup progress.")
+    payload = _json(request)
+    saved = save_onboarding(
+        project,
+        completed=bool(payload.get("completed")),
+        step=str(payload.get("step", "welcome")),
+    )
+    return JsonResponse(saved)
+
+
+@_api
+def stats(request: HttpRequest) -> JsonResponse:
+    if request.method != "GET":
+        raise ApiError(405, "Use GET to read call counts.")
+    return JsonResponse(usage_summary(_project(request)))
+
+
+@_api
+def skills(request: HttpRequest) -> JsonResponse:
+    project = _project(request)
+    if request.method == "POST":
+        payload = _json(request)
+        persona = str(payload.get("persona", "")).strip()
+        name = str(payload.get("name", "")).strip()
+        if find_persona(project, persona) is None:
+            raise ApiError(400, "Choose a persona for this skill.")
+        if not name:
+            raise ApiError(400, "A skill needs a name.")
+        doc = write_skill(
+            project,
+            make_persona_id(persona),
+            file_slug(name),
+            title=str(payload.get("title", "") or name),
+            summary=str(payload.get("summary", "")),
+            body=str(payload.get("steps", "") or payload.get("body", "")),
+            status="draft",
+        )
+        return JsonResponse(_skill_payload(doc), status=201)
+    if request.method != "GET":
+        raise ApiError(405, "Use GET or POST for skills.")
+    rows = [_skill_payload(doc) for _path, doc in list_skill_files(project)]
+    return JsonResponse({"skills": rows, "waiting": list_inbox(project)})
+
+
+@_api
+def skill_detail(request: HttpRequest, skill_id: str) -> JsonResponse:
+    project = _project(request)
+    if request.method == "DELETE":
+        delete_skill(project, skill_id)
+        return JsonResponse({"removed": skill_id})
+    if request.method == "POST":
+        payload = _json(request)
+        doc = update_skill(
+            project,
+            skill_id,
+            title=str(payload["title"]) if "title" in payload else None,
+            summary=str(payload["summary"]) if "summary" in payload else None,
+            body=str(payload["body"]) if "body" in payload else None,
+            status=str(payload["status"]) if "status" in payload else None,
+        )
+        return JsonResponse(_skill_payload(doc))
+    if request.method != "GET":
+        raise ApiError(405, "Use GET to read a skill.")
+    found = locate_skill(project, skill_id)
+    if found is None:
+        raise ApiError(404, f"No skill {skill_id}.")
+    return JsonResponse(_skill_payload(found[1]))
+
+
+@_api
+def inbox_adopt(request: HttpRequest, skill_id: str) -> JsonResponse:
+    if request.method != "POST":
+        raise ApiError(405, "Use POST to file a waiting skill.")
+    payload = _json(request)
+    persona = str(payload.get("persona", "")).strip()
+    project = _project(request)
+    if find_persona(project, persona) is None:
+        raise ApiError(400, "Choose a persona for this skill.")
+    saved = adopt_inbox(project, make_persona_id(persona), [skill_id])
+    if not saved:
+        raise ApiError(404, f"No waiting skill {skill_id}.")
+    return JsonResponse({"id": saved[0], "status": "draft"})
+
+
+def _codebase_payload(project: Path, row: dict[str, str]) -> dict[str, Any]:
+    folder = Path(row["path"])
+    mapped = summarize(folder) if folder.is_dir() else {"state": "missing", "links": []}
+    status_path = project / ".lore" / "maps" / f"{row['id']}.json"
+    if status_path.is_file():
+        try:
+            loaded = json.loads(status_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            loaded = {"state": "failed", "error": "The status file could not be read."}
+        if isinstance(loaded, dict):
+            links = mapped.get("links", [])
+            mapped = {**loaded, "links": links}
+    return {**row, "map": mapped}
+
+
+@_api
+def codebases(request: HttpRequest) -> JsonResponse:
+    project = _project(request)
+    if request.method == "POST":
+        payload = _json(request)
+        folder = _allowed(str(payload.get("path", "")))
+        if not folder.is_dir():
+            raise ApiError(400, "That path is not a folder.")
+        row = add_codebase(project, str(payload.get("name", "")), folder)
+        return JsonResponse(_codebase_payload(project, row), status=201)
+    if request.method != "GET":
+        raise ApiError(405, "Use GET or POST for codebases.")
+    rows = [_codebase_payload(project, row) for row in list_codebases(project)]
+    return JsonResponse({"codebases": rows})
+
+
+@_api
+def codebase_detail(request: HttpRequest, codebase_id: str) -> JsonResponse:
+    project = _project(request)
+    if request.method == "DELETE":
+        row = delete_codebase(project, codebase_id)
+        remove_map(Path(row["path"]))
+        status_path = project / ".lore" / "maps" / f"{codebase_id}.json"
+        if status_path.is_file():
+            status_path.unlink()
+        return JsonResponse({"removed": codebase_id})
+    if request.method == "POST":
+        payload = _json(request)
+        if payload.get("build"):
+            row = get_codebase(project, codebase_id)
+            folder = Path(row["path"])
+            if not folder.is_dir():
+                raise ApiError(400, "That codebase folder is gone.")
+            status_path = project / ".lore" / "maps" / f"{codebase_id}.json"
+            status = start_build(folder, status_path)
+            return JsonResponse({**row, "map": status})
+        row = rename_codebase(project, codebase_id, str(payload.get("name", "")))
+        return JsonResponse(_codebase_payload(project, row))
+    if request.method != "GET":
+        raise ApiError(405, "Use GET to read a codebase.")
+    return JsonResponse(_codebase_payload(project, get_codebase(project, codebase_id)))
+
+
+def codebase_graph(request: HttpRequest, codebase_id: str) -> HttpResponse:
+    try:
+        project = _project(request)
+        row = get_codebase(project, codebase_id)
+    except ApiError as exc:
+        return JsonResponse({"error": exc.message}, status=exc.status)
+    except FileNotFoundError:
+        return JsonResponse({"error": "That codebase is not in Lore."}, status=404)
+    html = Path(row["path"]) / "graphify-out" / "graph.html"
+    if not html.is_file():
+        return HttpResponse("Map this project.", status=404)
+    return HttpResponse(html.read_text(encoding="utf-8"), content_type="text/html")
 
 
 def graph_page(request: HttpRequest) -> HttpResponse:

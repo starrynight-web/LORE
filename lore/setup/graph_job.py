@@ -52,8 +52,8 @@ def run_graphify(project: Path) -> None:
         )
 
 
-def start_build(project: Path) -> dict[str, Any]:
-    status_path = project / ".lore" / "graph-status.json"
+def start_build(project: Path, status_path: Path | None = None) -> dict[str, Any]:
+    status_path = status_path or (project / ".lore" / "graph-status.json")
     current = _read(status_path)
     if current.get("state") == "running":
         return current
