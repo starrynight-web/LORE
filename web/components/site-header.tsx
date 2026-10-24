@@ -16,16 +16,17 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 
 const titles: { prefix: string; title: string }[] = [
   { prefix: "/personas", title: "Personas" },
+  { prefix: "/skills", title: "Skills" },
   { prefix: "/codebase", title: "Codebase" },
-  { prefix: "/replay", title: "Replay" },
-  { prefix: "/connect", title: "Connect" },
   { prefix: "/settings", title: "Settings" },
 ]
 
 export function pageTitle(pathname: string) {
   if (pathname.startsWith("/personas/")) return "Persona"
+  if (pathname.startsWith("/skills/")) return "Skill"
+  if (pathname.startsWith("/codebase/")) return "Codebase"
   const match = titles.find((item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`))
-  return match?.title ?? "Setup"
+  return match?.title ?? "Dashboard"
 }
 
 export function SiteHeader() {

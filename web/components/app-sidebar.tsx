@@ -3,11 +3,10 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  CableIcon,
   CommandIcon,
   FolderTreeIcon,
-  HistoryIcon,
   LayoutDashboardIcon,
+  LibraryIcon,
   SettingsIcon,
   UsersIcon,
 } from "lucide-react"
@@ -25,11 +24,10 @@ import {
 } from "@/components/ui/sidebar"
 
 const main = [
-  { href: "/", title: "Setup", icon: LayoutDashboardIcon },
+  { href: "/", title: "Dashboard", icon: LayoutDashboardIcon },
   { href: "/personas", title: "Personas", icon: UsersIcon },
+  { href: "/skills", title: "Skills", icon: LibraryIcon },
   { href: "/codebase", title: "Codebase", icon: FolderTreeIcon },
-  { href: "/replay", title: "Replay", icon: HistoryIcon },
-  { href: "/connect", title: "Connect", icon: CableIcon },
 ]
 
 function current(href: string, pathname: string) {

@@ -35,4 +35,28 @@ export type Skill = {
   summary: string;
   status: string;
   body: string;
+  persona?: string;
 };
+
+export type Onboarding = { completed: boolean; step: string }
+
+export type Rank = { id: string; name: string; count: number }
+
+export type Usage = {
+  calls: number
+  agents: Rank[]
+  personas: Rank[]
+  skills: Rank[]
+  recent: { id: string; time: string; client: string; persona: string; verdict: string; summary: string }[]
+}
+
+export type WaitingSkill = { id: string; title: string; summary: string; source: string }
+
+export type RegistrySkill = { name: string; skill_id: string; source: string; installs: number }
+
+export type Codebase = {
+  id: string
+  name: string
+  path: string
+  map: { state: string; time?: string; error?: string; links?: { node: string; to: string; relation: string; confidence: string }[] }
+}

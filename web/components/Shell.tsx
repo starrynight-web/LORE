@@ -1,10 +1,24 @@
 "use client"
 
+import { useEffect, useState } from "react"
+
 import { AppSidebar } from "@/components/app-sidebar"
+import { Onboarding } from "@/components/onboarding"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { api, type Onboarding as OnboardingState } from "@/lib/api"
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  const [setup, setSetup] = useState<OnboardingState | null>(null)
+
+  useEffect(() => {
+    api<OnboardingState>("/api/onboarding")
+      .then(setSetup)
+      .catch(() => setSetup({ completed: true, step: "done" }))
+  }, [])
+
+  const showWelcome = setup !== null && setup.completed === false
+
   return (
     <SidebarProvider
       style={
@@ -31,6 +45,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </SidebarInset>
+      {showWelcome && setup ? (
+        <Onboarding initial={setup} onDone={() => setSetup({ completed: true, step: "done" })} />
+      ) : null}
     </SidebarProvider>
   )
 }

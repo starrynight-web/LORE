@@ -42,10 +42,13 @@ def mcp_args() -> list[str]:
     return ["mcp"]
 
 
-def mcp_entry(kind: str, command: str | None = None) -> dict[str, object]:
+def mcp_entry(kind: str, command: str | None = None, client: str = "") -> dict[str, object]:
     entry: dict[str, object] = {"command": command or lore_command(), "args": mcp_args()}
     if kind == "vscode":
         entry["type"] = "stdio"
+    name = client.strip()
+    if name:
+        entry["env"] = {"LORE_CLIENT": name}
     return entry
 
 
@@ -126,7 +129,7 @@ def _strip_toml_section(text: str, heading: str) -> str:
     return "\n".join(kept).rstrip()
 
 
-def _write_codex(path: Path, command: str) -> None:
+def _write_codex(path: Path, command: str, client: str = "") -> None:
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
     if path.is_file():
         backup = path.with_name(path.name + ".lore.bak")
@@ -134,7 +137,10 @@ def _write_codex(path: Path, command: str) -> None:
             shutil.copyfile(path, backup)
     kept = _strip_toml_section(existing, "[mcp_servers.lore]")
     args = ", ".join(json.dumps(part) for part in mcp_args())
-    block = f'[mcp_servers.lore]\ncommand = {json.dumps(command)}\nargs = [{args}]\n'
+    env = ""
+    if client.strip():
+        env = f"env = {{ LORE_CLIENT = {json.dumps(client.strip())} }}\n"
+    block = f"[mcp_servers.lore]\ncommand = {json.dumps(command)}\nargs = [{args}]\n{env}"
     body = f"{kept}\n\n{block}" if kept else block
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body if body.endswith("\n") else body + "\n", encoding="utf-8")
@@ -185,9 +191,9 @@ def register_agents(
     for label, path, key, editor in _targets(home, host):
         try:
             if editor == "codex":
-                _write_codex(path, command)
+                _write_codex(path, command, client=label)
             else:
-                _write_json(path, key, mcp_entry(editor, command))
+                _write_json(path, key, mcp_entry(editor, command, client=label))
         except (OSError, ValueError, json.JSONDecodeError):
             skipped.append(f"{label}: {path}")
             continue

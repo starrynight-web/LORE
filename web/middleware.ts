@@ -12,8 +12,14 @@ export function middleware(request: NextRequest) {
     response.cookies.set("lore_key", key, { httpOnly: true, sameSite: "lax", path: "/" });
     return response;
   }
+  if (request.nextUrl.pathname === "/locked") {
+    return NextResponse.next();
+  }
   if (!request.cookies.get("lore_key")) {
-    return NextResponse.rewrite(new URL("/locked", request.url));
+    const url = request.nextUrl.clone();
+    url.pathname = "/locked";
+    url.search = "";
+    return NextResponse.rewrite(url);
   }
   return NextResponse.next();
 }

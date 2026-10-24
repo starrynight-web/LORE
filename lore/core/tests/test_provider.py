@@ -155,7 +155,7 @@ def test_refused_model_list_does_not_include_the_response(tmp_path: Path) -> Non
     def opener(request: object, timeout: int = 30) -> _Body:
         del timeout
         url = request.full_url  # type: ignore[attr-defined]
-        raise urllib.error.HTTPError(url, 401, "no", hdrs=None, fp=io.BytesIO(b"sk-openai-secret"))
+        raise urllib.error.HTTPError(url, 401, "no", hdrs=None, fp=io.BytesIO(b"sk-openai-secret"))  # type: ignore[arg-type]
 
     with pytest.raises(ValueError, match="refused the model list") as exc:
         list_models(tmp_path, opener=opener)
