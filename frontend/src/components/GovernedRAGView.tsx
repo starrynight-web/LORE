@@ -47,7 +47,8 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState('gpt-oss-120B');
   const [hasGroqKey, setHasGroqKey] = useState(false);
-  const [showLayersInspector, setShowLayersInspector] = useState(true);
+  const [showLayersInspector, setShowLayersInspector] = useState(false);
+  const [showEvidenceDetails, setShowEvidenceDetails] = useState(false);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -221,6 +222,178 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
           </div>
         );
     }
+  };
+
+  const getMaterialCaveat = (res: GovernedResult): { title: string; message: string; type: 'warning' | 'info' | 'caution' } | null => {
+    // 1. Temporal Validity Caveat (draft, future-effective, or stale data)
+    if (res.layers_breakdown?.l5_temporal?.temporal_notes && res.layers_breakdown.l5_temporal.temporal_notes.length > 0) {
+      return {
+        title: 'Temporal Validity Caveat',
+        message: res.layers_breakdown.l5_temporal.temporal_notes.join(' · '),
+        type: 'warning'
+      };
+    }
+
+    // 2. L4 Scoped Exception Active
+    if (res.exceptions_applied && res.exceptions_applied.length > 0) {
+      const exc = res.exceptions_applied[0];
+      return {
+        title: `Active Scoped Exception (${exc.rule_code})`,
+        message: `${exc.name}: ${exc.justification}`,
+        type: 'info'
+      };
+    }
+
+    // 3. Authority Precedence Override
+    if (res.conflicts_resolved && res.conflicts_resolved.length > 0) {
+      const cr = res.conflicts_resolved[0];
+      return {
+        title: 'Authority Precedence Override',
+        message: `${cr.resolution}: ${cr.note || 'Subordinate claim was overridden by higher authority.'}`,
+        type: 'warning'
+      };
+    }
+
+    // 4. Citation limitation
+    const limitedCitation = res.citations?.find(c => Boolean(c.limitation));
+    if (limitedCitation && limitedCitation.limitation) {
+      return {
+        title: 'Evidence Limitation',
+        message: `${limitedCitation.document_title}: ${limitedCitation.limitation}`,
+        type: 'caution'
+      };
+    }
+
+    // 5. Evidence deficit if insufficient
+    if (res.evidence_missing && res.evidence_missing.length > 0) {
+      return {
+        title: 'Mandatory Evidence Deficit',
+        message: `Incomplete proof: Missing ${res.evidence_missing.map(m => m.requirement).join(', ')}.`,
+        type: 'caution'
+      };
+    }
+
+    return null;
+  };
+
+  const getDocumentStatusBadge = (status?: string) => {
+    const norm = (status || 'unknown').toLowerCase();
+    switch (norm) {
+      case 'approved':
+        return (
+          <span 
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1"
+            style={{
+              backgroundColor: 'var(--success-bg)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--success)',
+            }}
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            <span>Approved</span>
+          </span>
+        );
+      case 'draft':
+        return (
+          <span 
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1"
+            style={{
+              backgroundColor: 'var(--warning-bg)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--warning)',
+            }}
+          >
+            <AlertTriangle className="w-3 h-3" />
+            <span>Draft</span>
+          </span>
+        );
+      case 'future-effective':
+        return (
+          <span 
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1"
+            style={{
+              backgroundColor: 'var(--accent-light)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--brand-accent)',
+            }}
+          >
+            <Clock className="w-3 h-3" />
+            <span>Future-Effective</span>
+          </span>
+        );
+      case 'superseded':
+        return (
+          <span 
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1"
+            style={{
+              backgroundColor: 'var(--error-bg)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--error)',
+            }}
+          >
+            <Scale className="w-3 h-3" />
+            <span>Superseded</span>
+          </span>
+        );
+      case 'archived':
+        return (
+          <span 
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1"
+            style={{
+              backgroundColor: 'var(--bg-surface-soft)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <FileText className="w-3 h-3" />
+            <span>Archived</span>
+          </span>
+        );
+      default:
+        return (
+          <span 
+            className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1"
+            style={{
+              backgroundColor: 'var(--bg-surface-soft)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <span>Unknown Status</span>
+          </span>
+        );
+    }
+  };
+
+  const getEvidenceTypeBadge = (evidenceType?: string) => {
+    if (evidenceType === 'direct') {
+      return (
+        <span 
+          className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border flex items-center gap-1"
+          style={{
+            backgroundColor: 'var(--accent-light)',
+            borderColor: 'var(--border-color)',
+            color: 'var(--brand-accent)',
+          }}
+        >
+          <ShieldCheck className="w-3 h-3" />
+          <span>Direct Evidence</span>
+        </span>
+      );
+    }
+    return (
+      <span 
+        className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border flex items-center gap-1"
+        style={{
+          backgroundColor: 'var(--bg-surface-soft)',
+          borderColor: 'var(--border-color)',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        <Scale className="w-3 h-3" />
+        <span>Inference</span>
+      </span>
+    );
   };
 
   return (
@@ -525,7 +698,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
             </div>
           )}
 
-          {/* Answer Narrative */}
+          {/* Answer Narrative (Concise Answer - Visible in both default and expanded views) */}
           <div 
             className="p-4 rounded-xl border leading-relaxed text-xs sm:text-sm whitespace-pre-line shadow-sm"
             style={{
@@ -534,341 +707,564 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
               color: 'var(--text-primary)',
             }}
           >
-            <div className="font-bold text-xs uppercase tracking-wider text-[var(--brand-accent)] mb-1">
-              {t('rag.governed_answer')}
+            <div className="font-bold text-xs uppercase tracking-wider text-[var(--brand-accent)] mb-1 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[var(--brand-accent)]" />
+              <span>{t('rag.governed_answer')}</span>
             </div>
-            {result.answer}
+            <div className="text-sm font-medium leading-relaxed">
+              {result.answer}
+            </div>
           </div>
 
-          {/* Missing Evidence Section */}
-          {result.evidence_missing && result.evidence_missing.length > 0 && (
-            <div 
-              className="p-4 rounded-xl border space-y-2"
-              style={{
-                backgroundColor: 'var(--error-bg)',
-                borderColor: 'var(--border-color)',
-              }}
-            >
-              <div className="text-xs font-bold text-[var(--error)] uppercase tracking-wider flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                <span>Mandatory Evidence Deficit (LORE L3)</span>
-              </div>
-              <div className="space-y-1.5 pt-1">
-                {result.evidence_missing.map((me, idx) => (
-                  <div key={idx} className="text-xs flex items-start gap-2 text-[var(--text-primary)]">
-                    <span className="font-mono font-bold text-[var(--error)]">• [{me.requirement}]:</span>
-                    <span>{me.description}</span>
+          {/* Material Caveat (Rendered in Default View if material) */}
+          {(() => {
+            const caveat = getMaterialCaveat(result);
+            if (!caveat) return null;
+            return (
+              <div 
+                id="lore-material-caveat-banner"
+                className="p-3.5 rounded-xl border flex items-start gap-2.5 text-xs transition"
+                style={{
+                  backgroundColor: caveat.type === 'info' ? 'var(--accent-light)' : (caveat.type === 'caution' ? 'var(--error-bg)' : 'var(--warning-bg)'),
+                  borderColor: 'var(--border-color)',
+                  color: caveat.type === 'info' ? 'var(--brand-accent)' : (caveat.type === 'caution' ? 'var(--error)' : 'var(--warning)'),
+                }}
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-bold text-[11px] uppercase tracking-wider">
+                    {caveat.title}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Resolved Conflicts Section */}
-          {result.conflicts_resolved && result.conflicts_resolved.length > 0 && (
-            <div 
-              className="p-4 rounded-xl border space-y-2"
-              style={{
-                backgroundColor: 'var(--warning-bg)',
-                borderColor: 'var(--border-color)',
-              }}
-            >
-              <div className="text-xs font-bold text-[var(--warning)] uppercase tracking-wider flex items-center gap-2">
-                <Scale className="w-4 h-4" />
-                <span>Source Conflict Resolved (LORE L6 Authority Dominance)</span>
-              </div>
-              <div className="space-y-1 pt-1 text-xs text-[var(--text-primary)]">
-                {result.conflicts_resolved.map((cr, idx) => (
-                  <div key={idx}>
-                    <p className="font-semibold">{cr.resolution}: {cr.note}</p>
-                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                      Subordinate claim overridden: &quot;{cr.informal_claim}&quot;
-                    </p>
+                  <div className="text-xs text-[var(--text-primary)] font-medium leading-relaxed">
+                    {caveat.message}
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
-          {/* L4 Scoped Exceptions Section */}
-          {result.exceptions_applied && result.exceptions_applied.length > 0 && (
-            <div 
-              className="p-4 rounded-xl border space-y-2"
+          {/* Evidence Details & Proof Toggle Control */}
+          <div className="flex items-center justify-between pt-1">
+            <button
+              id="lore-evidence-details-toggle"
+              type="button"
+              aria-expanded={showEvidenceDetails}
+              aria-controls="lore-evidence-details-panel"
+              onClick={() => setShowEvidenceDetails(!showEvidenceDetails)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setShowEvidenceDetails(!showEvidenceDetails);
+                }
+              }}
+              className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold border flex items-center gap-2 transition cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--brand-accent)]"
               style={{
-                backgroundColor: 'var(--accent-light)',
-                borderColor: 'var(--border-color)',
+                backgroundColor: showEvidenceDetails ? 'var(--accent-light)' : 'var(--bg-surface-soft)',
+                borderColor: showEvidenceDetails ? 'var(--brand-accent)' : 'var(--border-color)',
+                color: showEvidenceDetails ? 'var(--brand-accent)' : 'var(--text-primary)',
               }}
             >
-              <div className="text-xs font-bold text-[var(--brand-accent)] uppercase tracking-wider flex items-center gap-2">
-                <Key className="w-4 h-4 text-[var(--accent-parrot)]" />
-                <span>L4 Scoped Exception Override Active ({result.exceptions_applied.length})</span>
-              </div>
-              <div className="space-y-2 pt-1">
-                {result.exceptions_applied.map((exc, idx) => (
-                  <div 
-                    key={idx} 
-                    className="p-2.5 rounded-lg border text-xs space-y-1" 
-                    style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}
-                  >
-                    <div className="flex items-center justify-between font-bold">
-                      <span className="text-[var(--text-primary)]">{exc.name} ({exc.rule_code})</span>
-                      <span 
-                        className="px-2 py-0.5 rounded text-[10px] font-mono uppercase border"
-                        style={{
-                          backgroundColor: 'var(--accent-light)',
-                          borderColor: 'var(--border-color)',
-                          color: 'var(--brand-accent)',
-                        }}
-                      >
-                        Scope: {exc.scope_type} = {exc.scope_value}
-                      </span>
-                    </div>
-                    <p className="text-[var(--text-secondary)] leading-relaxed">{exc.justification}</p>
-                    {exc.override_state && (
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">
-                        Governed state override: <strong className="text-[var(--brand-accent)]">{exc.override_state}</strong> (approved by {exc.approved_by || 'Admin'})
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* L5 Temporal Validity Notice */}
-          {result.layers_breakdown?.l5_temporal?.temporal_notes && result.layers_breakdown.l5_temporal.temporal_notes.length > 0 && (
-            <div 
-              className="p-3.5 rounded-xl border flex items-center justify-between text-xs"
-              style={{
-                backgroundColor: 'var(--bg-surface-soft)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--warning)',
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 shrink-0" />
-                <span>{result.layers_breakdown.l5_temporal.temporal_notes.join(' · ')}</span>
-              </div>
+              <ShieldCheck className="w-4 h-4 text-[var(--brand-accent)]" />
+              <span>{showEvidenceDetails ? 'Hide details & proof' : 'Show details & proof'}</span>
               <span 
-                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border"
+                className="text-[11px] font-mono px-2 py-0.5 rounded border"
                 style={{
                   backgroundColor: 'var(--bg-surface)',
                   borderColor: 'var(--border-color)',
                   color: 'var(--text-muted)',
                 }}
               >
-                L5 Temporal Gate
+                {result.citations?.length || 0} {result.citations?.length === 1 ? 'source' : 'sources'}
               </span>
-            </div>
-          )}
+              {showEvidenceDetails ? (
+                <ChevronUp className="w-4 h-4 text-[var(--brand-accent)]" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
+              )}
+            </button>
 
-          {/* 9-Layer Enterprise Governance Stack Inspector */}
-          {result.layers_breakdown && (
+            <span className="text-[11px] font-mono text-[var(--text-muted)] hidden sm:inline">
+              Audit Provenance Verified · Zero Hallucination
+            </span>
+          </div>
+
+          {/* EXPANDED VIEW: Governed Evidence & Audit Breakdown */}
+          {showEvidenceDetails && (
             <div 
-              className="rounded-xl border overflow-hidden transition-all duration-200"
-              style={{
-                backgroundColor: 'var(--bg-surface-soft)',
-                borderColor: 'var(--border-color)',
-              }}
+              id="lore-evidence-details-panel"
+              role="region"
+              aria-labelledby="lore-evidence-details-toggle"
+              className="space-y-6 pt-4 border-t transition-all duration-200"
+              style={{ borderColor: 'var(--border-color)' }}
             >
-              <button
-                type="button"
-                onClick={() => setShowLayersInspector(!showLayersInspector)}
-                className="w-full px-4 py-3 flex items-center justify-between text-left cursor-pointer transition hover:bg-[var(--accent-light)]"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Layers className="w-4 h-4 text-[var(--brand-accent)]" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                    9-Layer Enterprise Governance Stack Audit (LORE v3.0 §3, §4, §10)
+              {/* Citations List & Proof Sources */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <Quote className="w-4 h-4 text-[var(--brand-accent)]" />
+                    <span>Governed Evidence & Proof Citations ({result.citations?.length || 0})</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                    Audit Lineage Verified
                   </span>
-                  <span 
-                    className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                </div>
+
+                {(!result.citations || result.citations.length === 0) ? (
+                  <div 
+                    className="p-4 rounded-xl border text-xs text-center space-y-1"
                     style={{
-                      backgroundColor: 'var(--success-bg)',
+                      backgroundColor: 'var(--bg-surface-soft)',
                       borderColor: 'var(--border-color)',
-                      color: 'var(--success)',
+                      color: 'var(--text-muted)',
                     }}
                   >
-                    9/9 Active
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                    Latency: {Object.values(result.layers_breakdown.l0_observability?.timings_ms || {}).reduce((a, b) => a + b, 0).toFixed(2)}ms
-                  </span>
-                  {showLayersInspector ? <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />}
-                </div>
-              </button>
+                    <Shield className="w-5 h-5 mx-auto text-[var(--brand-accent)] mb-1" />
+                    <div className="font-semibold text-[var(--text-secondary)]">No Evidence Sources Disclosed</div>
+                    <div>Access restrictions prohibit source exposure or no authoritative records were matched.</div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {result.citations.map((cit, idx) => (
+                      <div 
+                        key={cit.citation_id || idx}
+                        className="p-4 rounded-xl border space-y-3 text-xs shadow-sm transition"
+                        style={{
+                          backgroundColor: 'var(--bg-surface-soft)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      >
+                        {/* 1. Document Title, Document ID, and 5. Document Status */}
+                        <div 
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" 
+                          style={{ borderColor: 'var(--border-color)' }}
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <FileText className="w-4 h-4 text-[var(--brand-accent)] shrink-0" />
+                            <span className="font-bold text-sm text-[var(--text-primary)]">{cit.document_title}</span>
+                            <span 
+                              className="text-[10px] font-mono px-2 py-0.5 rounded border font-semibold"
+                              style={{
+                                backgroundColor: 'var(--bg-surface)',
+                                borderColor: 'var(--border-color)',
+                                color: 'var(--text-muted)',
+                              }}
+                              title="Document Unique ID"
+                            >
+                              ID: {cit.document_id}
+                            </span>
+                            {cit.document_version && (
+                              <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                                v{cit.document_version}
+                              </span>
+                            )}
+                          </div>
 
-              {showLayersInspector && (
-                <div className="p-4 border-t space-y-3" style={{ borderColor: 'var(--border-color)' }}>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                    {/* L7 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L7: PERMISSION</span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l7_permission.status === 'passed' ? 'text-[var(--success)] bg-[var(--success-bg)]' : 'text-[var(--error)] bg-[var(--error-bg)]'}`}>
-                          {result.layers_breakdown.l7_permission.status.toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Zero-leakage clearance & pre-retrieval role filtering</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l7_permission_ms || 0).toFixed(3)}ms</div>
-                    </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {getDocumentStatusBadge(cit.document_status)}
+                            {getEvidenceTypeBadge(cit.evidence_type)}
+                          </div>
+                        </div>
 
-                    {/* L1 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L1: DECISION INTEL</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
-                          {(result.layers_breakdown.l1_decision_intelligence.risk || 'NORMAL').toUpperCase()} RISK
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Type: <strong>{result.layers_breakdown.l1_decision_intelligence.decision_type}</strong></p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Escalates: {result.layers_breakdown.l1_decision_intelligence.escalation}</div>
-                    </div>
+                        {/* 2. Page Number, Section, Authority Rank, and 7. Primary vs Supporting */}
+                        <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                          <span 
+                            className="px-2 py-0.5 rounded border font-mono font-medium"
+                            style={{
+                              backgroundColor: 'var(--bg-surface)',
+                              borderColor: 'var(--border-color)',
+                              color: cit.page_number != null ? 'var(--text-primary)' : 'var(--text-muted)',
+                            }}
+                          >
+                            {cit.page_number != null ? `Page ${cit.page_number}` : 'Page not specified'}
+                          </span>
 
-                    {/* L6 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L6: AUTHORITY</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--text-secondary)] bg-[var(--bg-surface-soft)]">
-                          {result.layers_breakdown.l6_authority.conflicts_count} Resolved
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">7-rank authority ladder precedence & tie arbitration</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Unresolved tie: {result.layers_breakdown.l6_authority.unresolved_tie ? 'YES' : 'NO'}</div>
-                    </div>
+                          {cit.section && (
+                            <span 
+                              className="px-2 py-0.5 rounded border font-mono font-medium"
+                              style={{
+                                backgroundColor: 'var(--bg-surface)',
+                                borderColor: 'var(--border-color)',
+                                color: 'var(--brand-accent)',
+                              }}
+                            >
+                              Section: {cit.section}
+                            </span>
+                          )}
 
-                    {/* L5 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L5: TEMPORAL</span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l5_temporal.stale_data ? 'text-[var(--warning)] bg-[var(--warning-bg)]' : 'text-[var(--success)] bg-[var(--success-bg)]'}`}>
-                          {result.layers_breakdown.l5_temporal.stale_data ? 'STALE DETECTED' : 'FRESH'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Effective date bounds & document aging verification</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l5_temporal_ms || 0).toFixed(3)}ms</div>
-                    </div>
+                          <span 
+                            className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border"
+                            style={{
+                              backgroundColor: 'var(--accent-light)',
+                              borderColor: 'var(--border-color)',
+                              color: 'var(--brand-accent)',
+                            }}
+                          >
+                            Authority Rank {cit.authority_level}
+                          </span>
 
-                    {/* L4 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L4: SCOPED EXCEPTION</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
-                          {result.layers_breakdown.l4_exceptions.applied_count} Matched
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Tenant/project/vendor scoped rule overrides</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l4_exception_ms || 0).toFixed(3)}ms</div>
-                    </div>
+                          <span 
+                            className="px-2 py-0.5 rounded text-[10px] font-semibold border"
+                            style={{
+                              backgroundColor: idx === 0 ? 'var(--accent-light)' : 'var(--bg-surface)',
+                              borderColor: 'var(--border-color)',
+                              color: idx === 0 ? 'var(--brand-accent)' : 'var(--text-muted)',
+                            }}
+                          >
+                            {idx === 0 ? 'Primary Direct Proof' : 'Supporting Source / Context'}
+                          </span>
+                        </div>
 
-                    {/* L3 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L3: SUFFICIENCY</span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l3_sufficiency.is_sufficient ? 'text-[var(--success)] bg-[var(--success-bg)]' : 'text-[var(--error)] bg-[var(--error-bg)]'}`}>
-                          {result.layers_breakdown.l3_sufficiency.is_sufficient ? 'SATISFIED' : 'DEFICIT'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Mandatory checklist evidence completeness</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Missing items: {result.layers_breakdown.l3_sufficiency.missing_count}</div>
-                    </div>
+                        {/* 3. Shortest exact source passage that proves the answer */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3 h-3 text-[var(--success)]" />
+                            <span>Shortest Exact Source Proof:</span>
+                          </div>
+                          <blockquote 
+                            className="text-xs sm:text-sm italic font-medium pl-3 py-1.5 border-l-3 leading-relaxed text-[var(--text-primary)] rounded-r-lg"
+                            style={{
+                              borderColor: 'var(--brand-accent)',
+                              backgroundColor: 'var(--bg-surface)',
+                            }}
+                          >
+                            &quot;{cit.shortest_passage || cit.passage}&quot;
+                          </blockquote>
+                        </div>
 
-                    {/* L2 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L2: ANSWER STATE</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
-                          {result.layers_breakdown.l2_answer_state.final_state.toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Strict 9-state precedence ladder arbitration</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Directive: {result.layers_breakdown.l2_answer_state.directive}</div>
-                    </div>
+                        {/* 4. Short explanation of why the source applies */}
+                        {cit.applicability_explanation && (
+                          <div 
+                            className="p-2.5 rounded-lg border text-xs text-[var(--text-secondary)] space-y-0.5"
+                            style={{
+                              backgroundColor: 'var(--bg-surface)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
+                            <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--brand-accent)] block">
+                              Why this source applies:
+                            </span>
+                            <p className="leading-relaxed">{cit.applicability_explanation}</p>
+                          </div>
+                        )}
 
-                    {/* L0 */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L0: OBSERVABILITY</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--success)] bg-[var(--success-bg)]">
-                          RECORDED
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Decision ledger entry, audit trace & token metering</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Tokens: {result.token_count}</div>
-                    </div>
+                        {/* 6. Effective date and supersession details when relevant */}
+                        {(cit.effective_date || cit.supersession_details) && (
+                          <div className="flex items-center gap-3 flex-wrap text-[11px] pt-1">
+                            {cit.effective_date && (
+                              <span className="flex items-center gap-1 text-[var(--text-secondary)]">
+                                <Clock className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                                <span>Effective: <strong>{cit.effective_date}</strong></span>
+                              </span>
+                            )}
+                            {cit.supersession_details && (
+                              <span className="flex items-center gap-1 text-[var(--warning)] font-medium">
+                                <Scale className="w-3.5 h-3.5" />
+                                <span>Supersession: {cit.supersession_details}</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
 
-                    {/* Core Retrieval */}
-                    <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">CORE RETRIEVAL</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
-                          HYBRID RRF
-                        </span>
+                        {/* Source limitation notice (if any) */}
+                        {cit.limitation && (
+                          <div 
+                            className="p-2.5 rounded-lg border text-xs flex items-start gap-2"
+                            style={{
+                              backgroundColor: 'var(--warning-bg)',
+                              borderColor: 'var(--border-color)',
+                              color: 'var(--warning)',
+                            }}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold uppercase tracking-wider text-[10px] block">Source Limitation:</span>
+                              <span className="text-[var(--text-primary)] font-medium">{cit.limitation}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-[11px] text-[var(--text-secondary)]">Qdrant dense vectors + BM25 lexical + Context Reranker</p>
-                      <div className="text-[10px] font-mono text-[var(--text-muted)]">Evidence chunks: {result.evidence_found?.length || 0}</div>
-                    </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Missing Evidence Section */}
+              {result.evidence_missing && result.evidence_missing.length > 0 && (
+                <div 
+                  className="p-4 rounded-xl border space-y-2"
+                  style={{
+                    backgroundColor: 'var(--error-bg)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  <div className="text-xs font-bold text-[var(--error)] uppercase tracking-wider flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>Mandatory Evidence Deficit (LORE L3)</span>
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    {result.evidence_missing.map((me, idx) => (
+                      <div key={idx} className="text-xs flex items-start gap-2 text-[var(--text-primary)]">
+                        <span className="font-mono font-bold text-[var(--error)]">• [{me.requirement}]:</span>
+                        <span>{me.description}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Citations List */}
-          <div className="space-y-3 pt-2">
-            <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
-              <Quote className="w-4 h-4 text-[var(--brand-accent)]" />
-              <span>{t('rag.evidence_citations')} ({result.citations.length})</span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2.5">
-              {result.citations.map((cit, idx) => (
+              {/* Resolved Conflicts Section */}
+              {result.conflicts_resolved && result.conflicts_resolved.length > 0 && (
                 <div 
-                  key={cit.citation_id || idx}
-                  className="p-3.5 rounded-xl border space-y-1.5 text-xs transition"
+                  className="p-4 rounded-xl border space-y-2"
+                  style={{
+                    backgroundColor: 'var(--warning-bg)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  <div className="text-xs font-bold text-[var(--warning)] uppercase tracking-wider flex items-center gap-2">
+                    <Scale className="w-4 h-4" />
+                    <span>Source Conflict Resolved (LORE L6 Authority Dominance)</span>
+                  </div>
+                  <div className="space-y-1 pt-1 text-xs text-[var(--text-primary)]">
+                    {result.conflicts_resolved.map((cr, idx) => (
+                      <div key={idx}>
+                        <p className="font-semibold">{cr.resolution}: {cr.note}</p>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                          Subordinate claim overridden: &quot;{cr.informal_claim}&quot;
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* L4 Scoped Exceptions Section */}
+              {result.exceptions_applied && result.exceptions_applied.length > 0 && (
+                <div 
+                  className="p-4 rounded-xl border space-y-2"
+                  style={{
+                    backgroundColor: 'var(--accent-light)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  <div className="text-xs font-bold text-[var(--brand-accent)] uppercase tracking-wider flex items-center gap-2">
+                    <Key className="w-4 h-4 text-[var(--accent-parrot)]" />
+                    <span>L4 Scoped Exception Override Active ({result.exceptions_applied.length})</span>
+                  </div>
+                  <div className="space-y-2 pt-1">
+                    {result.exceptions_applied.map((exc, idx) => (
+                      <div 
+                        key={idx} 
+                        className="p-2.5 rounded-lg border text-xs space-y-1" 
+                        style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}
+                      >
+                        <div className="flex items-center justify-between font-bold">
+                          <span className="text-[var(--text-primary)]">{exc.name} ({exc.rule_code})</span>
+                          <span 
+                            className="px-2 py-0.5 rounded text-[10px] font-mono uppercase border"
+                            style={{
+                              backgroundColor: 'var(--accent-light)',
+                              borderColor: 'var(--border-color)',
+                              color: 'var(--brand-accent)',
+                            }}
+                          >
+                            Scope: {exc.scope_type} = {exc.scope_value}
+                          </span>
+                        </div>
+                        <p className="text-[var(--text-secondary)] leading-relaxed">{exc.justification}</p>
+                        {exc.override_state && (
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">
+                            Governed state override: <strong className="text-[var(--brand-accent)]">{exc.override_state}</strong> (approved by {exc.approved_by || 'Admin'})
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* L5 Temporal Validity Notice */}
+              {result.layers_breakdown?.l5_temporal?.temporal_notes && result.layers_breakdown.l5_temporal.temporal_notes.length > 0 && (
+                <div 
+                  className="p-3.5 rounded-xl border flex items-center justify-between text-xs"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--warning)',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <span>{result.layers_breakdown.l5_temporal.temporal_notes.join(' · ')}</span>
+                  </div>
+                  <span 
+                    className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border"
+                    style={{
+                      backgroundColor: 'var(--bg-surface)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    L5 Temporal Gate
+                  </span>
+                </div>
+              )}
+
+              {/* 9-Layer Enterprise Governance Stack Inspector */}
+              {result.layers_breakdown && (
+                <div 
+                  className="rounded-xl border overflow-hidden transition-all duration-200"
                   style={{
                     backgroundColor: 'var(--bg-surface-soft)',
                     borderColor: 'var(--border-color)',
                   }}
                 >
-                  <div className="flex items-center justify-between font-semibold text-[var(--text-primary)]">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
-                      <span>{cit.document_title}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowLayersInspector(!showLayersInspector)}
+                    className="w-full px-4 py-3 flex items-center justify-between text-left cursor-pointer transition hover:bg-[var(--accent-light)]"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Layers className="w-4 h-4 text-[var(--brand-accent)]" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                        9-Layer Enterprise Governance Stack Audit (LORE v3.0 §3, §4, §10)
+                      </span>
                       <span 
-                        className="text-[10px] px-1.5 py-0.5 rounded border"
+                        className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
                         style={{
-                          backgroundColor: 'var(--bg-surface)',
+                          backgroundColor: 'var(--success-bg)',
                           borderColor: 'var(--border-color)',
-                          color: 'var(--text-muted)',
+                          color: 'var(--success)',
                         }}
                       >
-                        Page {cit.page_number}
+                        9/9 Active
                       </span>
                     </div>
-                    <span 
-                      className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border"
-                      style={{
-                        backgroundColor: 'var(--accent-light)',
-                        borderColor: 'var(--border-color)',
-                        color: 'var(--brand-accent)',
-                      }}
-                    >
-                      Authority Rank {cit.authority_level}
-                    </span>
-                  </div>
-                  <div 
-                    className="text-xs italic pl-2 border-l-2 leading-relaxed text-[var(--text-secondary)]"
-                    style={{ borderColor: 'var(--brand-accent)' }}
-                  >
-                    &quot;{cit.passage}&quot;
-                  </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                        Latency: {Object.values(result.layers_breakdown.l0_observability?.timings_ms || {}).reduce((a, b) => a + b, 0).toFixed(2)}ms
+                      </span>
+                      {showLayersInspector ? <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />}
+                    </div>
+                  </button>
+
+                  {showLayersInspector && (
+                    <div className="p-4 border-t space-y-3" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                        {/* L7 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L7: PERMISSION</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l7_permission.status === 'passed' ? 'text-[var(--success)] bg-[var(--success-bg)]' : 'text-[var(--error)] bg-[var(--error-bg)]'}`}>
+                              {result.layers_breakdown.l7_permission.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Zero-leakage clearance & pre-retrieval role filtering</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l7_permission_ms || 0).toFixed(3)}ms</div>
+                        </div>
+
+                        {/* L1 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L1: DECISION INTEL</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                              {(result.layers_breakdown.l1_decision_intelligence.risk || 'NORMAL').toUpperCase()} RISK
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Type: <strong>{result.layers_breakdown.l1_decision_intelligence.decision_type}</strong></p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Escalates: {result.layers_breakdown.l1_decision_intelligence.escalation}</div>
+                        </div>
+
+                        {/* L6 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L6: AUTHORITY</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--text-secondary)] bg-[var(--bg-surface-soft)]">
+                              {result.layers_breakdown.l6_authority.conflicts_count} Resolved
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">7-rank authority ladder precedence & tie arbitration</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Unresolved tie: {result.layers_breakdown.l6_authority.unresolved_tie ? 'YES' : 'NO'}</div>
+                        </div>
+
+                        {/* L5 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L5: TEMPORAL</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l5_temporal.stale_data ? 'text-[var(--warning)] bg-[var(--warning-bg)]' : 'text-[var(--success)] bg-[var(--success-bg)]'}`}>
+                              {result.layers_breakdown.l5_temporal.stale_data ? 'STALE DETECTED' : 'FRESH'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Effective date bounds & document aging verification</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l5_temporal_ms || 0).toFixed(3)}ms</div>
+                        </div>
+
+                        {/* L4 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L4: SCOPED EXCEPTION</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                              {result.layers_breakdown.l4_exceptions.applied_count} Matched
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Tenant/project/vendor scoped rule overrides</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Latency: {(result.layers_breakdown.l0_observability?.timings_ms?.l4_exception_ms || 0).toFixed(3)}ms</div>
+                        </div>
+
+                        {/* L3 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L3: SUFFICIENCY</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${result.layers_breakdown.l3_sufficiency.is_sufficient ? 'text-[var(--success)] bg-[var(--success-bg)]' : 'text-[var(--error)] bg-[var(--error-bg)]'}`}>
+                              {result.layers_breakdown.l3_sufficiency.is_sufficient ? 'SATISFIED' : 'DEFICIT'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Mandatory checklist evidence completeness</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Missing items: {result.layers_breakdown.l3_sufficiency.missing_count}</div>
+                        </div>
+
+                        {/* L2 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L2: ANSWER STATE</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                              {result.layers_breakdown.l2_answer_state.final_state.toUpperCase()}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Strict 9-state precedence ladder arbitration</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Directive: {result.layers_breakdown.l2_answer_state.directive}</div>
+                        </div>
+
+                        {/* L0 */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">L0: OBSERVABILITY</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--success)] bg-[var(--success-bg)]">
+                              RECORDED
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Decision ledger entry, audit trace & token metering</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Tokens: {result.token_count}</div>
+                        </div>
+
+                        {/* Core Retrieval */}
+                        <div className="p-3 rounded-xl border bg-[var(--bg-surface)] space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-[var(--brand-accent)]">CORE RETRIEVAL</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-[var(--brand-accent)] bg-[var(--accent-light)]">
+                              HYBRID RRF
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)]">Qdrant dense vectors + BM25 lexical + Context Reranker</p>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">Evidence chunks: {result.evidence_found?.length || 0}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

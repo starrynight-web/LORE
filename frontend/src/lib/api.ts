@@ -111,10 +111,24 @@ export interface Citation {
   document_id: string;
   document_title: string;
   document_version: number;
-  page_number: number;
-  heading_path: string;
+  page_number?: number | null;
+  section?: string | null;
+  heading_path?: string;
   passage: string;
+  shortest_passage?: string;
   authority_level: number;
+  document_status?: 'approved' | 'draft' | 'archived' | 'superseded' | 'future-effective' | 'unknown';
+  effective_date?: string | null;
+  supersession_details?: string | null;
+  applicability_explanation?: string;
+  evidence_type?: 'direct' | 'inference';
+  limitation?: string | null;
+  score?: number;
+  graph_expanded?: boolean;
+  graph_depth?: number;
+  traversed_relationship?: string;
+  edge_provenance?: string;
+  graph_path?: any[];
 }
 
 export interface ScopedExceptionResult {

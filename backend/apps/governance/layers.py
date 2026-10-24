@@ -288,9 +288,12 @@ class DecisionIntelligenceLayer:
             reason_codes.append(GovernanceReasonCode.L1_EXPLICIT_DECISION_TYPE.value)
         else:
             q_lower = query.lower()
+            is_procurement_action = any(w in q_lower for w in ['approve', 'purchase', 'procure', 'buy', 'license', 'adopt', 'contract', 'onboard', 'can we use', 'can i use'])
+            is_vendor_entity = any(w in q_lower for w in ['vendor', 'cloudbox', 'third-party', 'supplier'])
+
             if any(w in q_lower for w in ['দলিল', 'খতিয়ান', 'খতিয়ান', 'মৌজা', 'সাফ কবলা', 'deed', 'khatian', 'schedule of property', 'statutory']):
                 dt = 'statutory_compliance'
-            elif any(w in q_lower for w in ['vendor', 'tool', 'cloudbox', 'software', 'approve', 'purchase', 'procure', 'third-party']):
+            elif (is_vendor_entity and is_procurement_action) or ('cloudbox' in q_lower) or (is_procurement_action and any(w in q_lower for w in ['tool', 'software'])):
                 dt = 'vendor_approval'
             elif any(w in q_lower for w in ['privacy', 'gdpr', 'customer data', 'pii', 'retention', 'residency', 'sovereignty']):
                 dt = 'data_processing'
@@ -418,10 +421,13 @@ class AuthorityLayer:
         for rank, group in rank_groups.items():
             if len(group) >= 2 and rank >= 3:
                 positive_chunks = [c for c in group if any(w in c.get('text', '').lower() for w in ['approved', 'permitted', 'allowed'])]
-                negative_chunks = [c for c in group if any(w in c.get('text', '').lower() for w in ['prohibit', 'forbidden', 'denied', 'must not', 'condition'])]
+                negative_chunks = [c for c in group if any(w in c.get('text', '').lower() for w in ['prohibit', 'forbidden', 'denied', 'must not'])]
                 if positive_chunks and negative_chunks:
                     pos_c = positive_chunks[0]
                     neg_c = negative_chunks[0]
+                    # Chunks from the same document are internal conditions/clauses, not cross-source contradictions
+                    if pos_c.get('document_id') and neg_c.get('document_id') and str(pos_c.get('document_id')) == str(neg_c.get('document_id')):
+                        continue
                     pos_ver = pos_c.get('document_version', 1)
                     neg_ver = neg_c.get('document_version', 1)
                     if pos_ver > neg_ver:
@@ -1221,35 +1227,19 @@ class EnterpriseGovernanceEngine:
             answer = f"No governed knowledge found in active workspace matching '{req.query}'."
             citations = []
         else:
-            # Build citations for supported and qualified states
-            citations = []
-            for chk in active_chunks:
-                cit_entry = {
-                    'citation_id': f"cit-{uuid.uuid4().hex[:6]}",
-                    'document_id': chk.get('document_id'),
-                    'document_title': chk.get('document_title'),
-                    'document_version': chk.get('document_version', 1),
-                    'page_number': chk.get('page_number', 1),
-                    'heading_path': chk.get('heading_path', 'General'),
-                    'passage': chk.get('text', ''),
-                    'authority_level': chk.get('authority_level', 3)
-                }
-                if chk.get('graph_expanded'):
-                    cit_entry['graph_expanded'] = True
-                    cit_entry['graph_depth'] = chk.get('graph_depth', 1)
-                    cit_entry['traversed_relationship'] = chk.get('traversed_relationship')
-                    cit_entry['edge_provenance'] = chk.get('edge_provenance')
-                    cit_entry['graph_path'] = chk.get('graph_path', [])
-                citations.append(cit_entry)
-
             # Grounded generation for supported/qualified outcomes
             from apps.decisions.engine import GroundedGenerationService
+            ctx_with_notes = {
+                'temporal_notes': temporal_notes,
+                'exceptions_applied': matched_exceptions,
+                **(req.policy_context or {})
+            }
             answer_res = GroundedGenerationService.synthesize_answer(
                 req.query, active_chunks, conflicts_resolved, state,
                 groq_api_key=req.groq_api_key, llm_model=req.llm_model,
                 execution_mode=getattr(req, 'execution_mode', None),
                 synthesis_mode=getattr(req, 'synthesis_mode', None),
-                policy_context=req.policy_context,
+                policy_context=ctx_with_notes,
                 workspace=req.workspace,
                 return_metrics=True
             )
@@ -1258,6 +1248,38 @@ class EnterpriseGovernanceEngine:
             else:
                 answer = answer_res
                 gen_metrics = GroundedGenerationService.last_metrics or {}
+
+            # Answer Completeness Validation Gate:
+            # Before returning SUPPORTED, compare the final answer against the question's requested facts.
+            # If any required part is missing, complete from evidence or downgrade to insufficient.
+            from apps.decisions.synthesizer import AnswerCompletenessValidator
+            val_res = AnswerCompletenessValidator.validate(
+                query=req.query,
+                answer=answer,
+                candidate_chunks=active_chunks,
+                current_state=state,
+                evidence_missing=evidence_missing,
+                policy_context=ctx_with_notes
+            )
+            if val_res.is_downgraded:
+                state = val_res.new_state
+                directive = val_res.new_directive
+                answer = val_res.new_answer
+                evidence_missing = val_res.evidence_missing
+                if val_res.reason_code:
+                    all_reason_codes.append(val_res.reason_code)
+            elif val_res.answer_completed:
+                answer = val_res.new_answer
+
+            # Build curated proof citations using EvidencePresentationEngine
+            from apps.governance.evidence import EvidencePresentationEngine
+            citations = EvidencePresentationEngine.curate_citations(
+                query=req.query,
+                answer=answer,
+                active_chunks=active_chunks,
+                conflicts_resolved=conflicts_resolved,
+                as_of=req.as_of
+            )
         
         # If terminal non-supported state, always record fresh deterministic metric
         if not gen_metrics or state in ('denied', 'violation', 'conflicting', 'insufficient', 'abstain', 'human_review', 'no_knowledge'):
