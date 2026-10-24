@@ -150,7 +150,8 @@ def test_approve_survives_after_django_stops() -> None:
         assert added["status"] == "stable"
         install = _request(port, key, "GET", "/api/connect")
         assert "connect" in install["command"]
-        assert "Install Lore" in install["prompt"]
+        assert "uvx lore-solo connect" in install["prompt"]
+        assert "macOS, Linux, or Windows" in install["prompt"]
         written = _request(port, key, "POST", "/api/connect")
         assert written["mcpServers"]["lore"]["command"] == "lore"
         assert written["mcpServers"]["lore"]["args"] == ["mcp"]
@@ -213,5 +214,4 @@ def test_banner_prints_local_url(capsys: pytest.CaptureFixture[str], monkeypatch
     monkeypatch.setattr(setup_cmd, "start_processes", lambda _key: [])
     setup_cmd.run([])
     printed = capsys.readouterr().out
-    assert "Lore setup is running." in printed
-    assert "Open http://127.0.0.1:3000/?key=" in printed
+    assert printed.strip().startswith("http://127.0.0.1:3000/?key=")

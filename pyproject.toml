@@ -1,7 +1,10 @@
 [project]
-name = "lore"
+name = "lore-solo"
 version = "0.1.0"
 description = "Governed persona and skill context for a solo developer’s coding agent."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "PyYAML>=6",
@@ -21,12 +24,19 @@ dev = [
     "types-jsonschema",
 ]
 
+[project.urls]
+Homepage = "https://github.com/starrynight-web/LORE"
+Repository = "https://github.com/starrynight-web/LORE"
+
 [project.scripts]
-lore = "lore.__main__:main"
+lore-solo = "lore.__main__:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.cmdclass]
+build_py = "build_support.BuildPy"
 
 [tool.setuptools.packages.find]
 include = ["lore*"]

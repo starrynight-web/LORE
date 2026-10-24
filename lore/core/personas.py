@@ -61,6 +61,15 @@ def list_skill_files(project: Path) -> list[tuple[Path, Doc]]:
     return [(path, read_doc(path)) for path in sorted(root.rglob("*.md"))]
 
 
+def visible_skills(project: Path) -> list[tuple[Path, Doc]]:
+    """Skills whose folder and header name the same role.
+
+    A file that sits in one role's folder but names another role is a mismatch.
+    The agent already ignores it. The website should too.
+    """
+    return [(path, doc) for path, doc in list_skill_files(project) if skill_belongs(path, doc, path.parent.name)]
+
+
 def served_skills(project: Path, name: str) -> list[Doc]:
     return [doc for path, doc in list_skill_files(project) if is_served(path, doc, name)]
 

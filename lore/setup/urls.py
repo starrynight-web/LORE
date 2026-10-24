@@ -5,6 +5,7 @@ from lore.setup import views
 urlpatterns = [
     path("api/health", views.health),
     path("api/browse", views.browse),
+    path("api/pick-folder", views.pick_folder_view),
     path("api/workspace", views.workspace),
     path("api/workspace/example", views.workspace_example),
     path("api/catalog", views.catalog),

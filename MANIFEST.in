@@ -1,0 +1,5 @@
+include build_support.py
+recursive-include web *
+prune web/node_modules
+prune web/.next
+global-exclude *.tsbuildinfo

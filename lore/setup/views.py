@@ -46,10 +46,12 @@ from lore.core.personas import (
     skill_belongs,
     update_persona,
     update_skill,
+    visible_skills,
     write_persona,
     write_skill,
 )
 from lore.core.personas import persona_id as make_persona_id
+from lore.core.picker import pick_folder
 from lore.core.provider import (
     clear_provider,
     draft_persona,
@@ -172,6 +174,15 @@ def _persona_payload(doc: Doc) -> dict[str, Any]:
 @_api
 def health(_request: HttpRequest) -> JsonResponse:
     return JsonResponse({"ok": True})
+
+
+@_api
+def pick_folder_view(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        raise ApiError(405, "Use POST to choose a folder.")
+    chosen = pick_folder()
+    name = Path(chosen).name if chosen else ""
+    return JsonResponse({"path": chosen, "name": name})
 
 
 @_api
@@ -420,11 +431,12 @@ def skill_featured(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"skills": featured_registry()})
 
 
+@_api
 def skill_search(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         raise ApiError(405, "Use POST to search skills.")
     payload = _json(request)
-    return JsonResponse({"skills": search_registry(str(payload.get("query", "")))})
+    return JsonResponse({"skills": search_registry(str(payload.get("query", "")), limit=200)})
 
 
 @_api
@@ -575,7 +587,7 @@ def skills(request: HttpRequest) -> JsonResponse:
         return JsonResponse(_skill_payload(doc), status=201)
     if request.method != "GET":
         raise ApiError(405, "Use GET or POST for skills.")
-    rows = [_skill_payload(doc) for _path, doc in list_skill_files(project)]
+    rows = [_skill_payload(doc) for _path, doc in visible_skills(project)]
     return JsonResponse({"skills": rows, "waiting": list_inbox(project)})
 
 

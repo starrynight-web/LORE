@@ -77,5 +77,12 @@ def copy_persona(project: Path, slug: str) -> str:
     skills_src = pack / "skills" / slug
     skills_dest = project / ".lore" / "skills" / slug
     if skills_src.is_dir() and skills_src.resolve() != skills_dest.resolve():
-        shutil.copytree(skills_src, skills_dest, dirs_exist_ok=True)
+        skills_dest.mkdir(parents=True, exist_ok=True)
+        for path in sorted(skills_src.glob("*.md")):
+            skill = read_doc(path)
+            owner = str(skill.header.get("persona", ""))
+            if owner not in {f"persona:{slug}", slug}:
+                continue
+            target = skills_dest / path.name
+            target.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     return doc.get("id")

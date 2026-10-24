@@ -92,6 +92,27 @@ def test_registry_reads_a_skill_from_its_shorter_folder(tmp_path: Path) -> None:
     assert added["title"] == "React practices"
 
 
+def test_registry_uses_the_skills_page_when_the_file_is_not_on_github(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+
+    def opener(request: object, timeout: int = 20) -> _Body:
+        del timeout
+        url = str(request.full_url)  # type: ignore[attr-defined]
+        if url.startswith("https://skills.sh/vercel/ai/"):
+            html = (
+                '<div class="prose prose-invert"><p>'
+                "Use the AI SDK generateText helper for every new feature in this app."
+                "</p></div>"
+            )
+            return _Body(html.encode("utf-8"), url)
+        raise ValueError("missing")
+
+    added = add_from_registry(tmp_path, "vercel/ai", "ai-sdk", opener)
+    assert added["title"] == "ai sdk"
+    saved = (tmp_path / ".lore" / "inbox" / "ai-sdk.md").read_text(encoding="utf-8")
+    assert "generateText" in saved
+
+
 def test_registry_refuses_a_source_that_is_not_a_github_repo(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="skills.sh"):
         add_from_registry(tmp_path, "https://evil.example/x", "react", lambda *_args: None)

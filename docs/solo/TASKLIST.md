@@ -2,7 +2,7 @@
 
 Work this list in order. Check a box only when the exit line under it is true. Each phase should leave something you can run before the next phase starts.
 
-**Branch:** `solo-approach` (started from `dev`).
+**Branch:** `solo` (renamed from `solo-approach`, which started from `dev`).
 
 **What this slice is.** One developer. One persona (a role, such as “frontend engineer”) owns a set of skills. The IDE’s agent calls Lore and receives that persona, a one-line summary of each of its skills, and a short slice of the codebase map. The setup website is optional. The agent works when the website is closed.
 
@@ -12,7 +12,7 @@ Team and Enterprise are later sections on this same Python engine. They are not 
 
 The phases below are the build record. A few of their lines describe an earlier setup site. The running program matches this section and [HOW_IT_WORKS.md](HOW_IT_WORKS.md). The page layout is in [UI.md](UI.md).
 
-- The editor starts `lore mcp` as a local process. Docker is not used. There is no LAN address. `lore setup` prints `http://127.0.0.1:3000/?key=...` and serves until Ctrl+C.
+- `lore-solo install` puts the command on this computer. `lore-solo setup` prints `http://127.0.0.1:3000/?key=...` and serves until Ctrl+C. The editor starts `lore-solo mcp` as a local process. Docker is not used. There is no LAN address. `uvx lore-solo install` and `uvx lore-solo setup` are the same commands on macOS, Linux, and Windows.
 - Personas live in the operating system’s application-data folder, or in a project that already has `.lore`. The site does not ask you to pick a folder.
 - Setup is four steps: a provider key, skills, a persona, then adding Lore to an editor. The codebase map is the Codebase page.
 - Settings lists models from the saved provider. Drafts use the model saved there. Defaults until then: Groq `llama-3.3-70b-versatile`, OpenRouter `openai/gpt-4o-mini`, Gemini `gemini-2.5-flash`, OpenAI `gpt-4o-mini`, Anthropic `claude-haiku-4-5`.
@@ -24,7 +24,7 @@ The phases below are the build record. A few of their lines describe an earlier 
 - **Persona.** A markdown role file. Calling it returns only the skills filed under it.
 - **Skill.** A short instruction pack that belongs to one persona.
 - **OKF.** A markdown file with a small YAML header and a body. This is how personas and skills are stored.
-- **MCP.** The plug an IDE uses to start a helper program and talk to it as text. The helper is `lore mcp`. It does not use a website.
+- **MCP.** The plug an IDE uses to start a helper program and talk to it as text. The helper is `lore-solo mcp`. It does not use a website.
 - **Graphify.** The `graphifyy` library, shipped inside Lore. A button runs it. It leaves a map of the code in the project folder. `lore mcp` only reads that map.
 - **Draft / stable.** New personas and skills are drafts. The agent does not receive a draft. Approve flips the file to `stable`.
 - **Token budget.** A size cap. 800 tokens is about a page. At most 8 items. `get_context` returns summaries, not full skill text, so this cap stays enough.
@@ -35,7 +35,7 @@ The phases below are the build record. A few of their lines describe an earlier 
 - [x] **0.2** Removed leftover `demo/` install folders (`node_modules`, `.next`, local env) that Git did not track.
 - [x] **0.3** Created `solo-approach` from `dev`. Phase 6 later removed the Go engine and `examples/demo-app`. Untracked notes in `docs/new/` stay.
 
-**Exit:** `git branch` shows `solo-approach`. It does not show `demo`. There is no `demo/` directory.
+**Exit:** `git branch` shows `solo`. It does not show `demo`. There is no `demo/` directory.
 
 ---
 

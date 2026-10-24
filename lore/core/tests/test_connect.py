@@ -6,7 +6,20 @@ import json
 from pathlib import Path
 
 import pytest
-from lore.connect import mcp_entry, register_agents
+from lore.connect import install_command, mcp_entry, register_agents, windows_command
+
+
+def test_uvx_is_the_command_when_nothing_is_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("LORE_COMMAND", raising=False)
+    monkeypatch.delenv("LORE_LAUNCHER", raising=False)
+    monkeypatch.setattr("lore.connect.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("lore.connect.shutil.which", lambda _name: None)
+    assert mcp_entry("cursor") == {"command": "uvx", "args": ["lore-solo", "mcp"]}
+    assert install_command() == "uvx lore-solo connect"
+    assert windows_command("uvx lore-solo connect") == "uvx lore-solo connect"
+    assert windows_command("scripts/lore-solo connect") == "scripts/lore-solo.ps1 connect"
 
 
 def test_mcp_entry_is_a_local_process(monkeypatch: pytest.MonkeyPatch) -> None:

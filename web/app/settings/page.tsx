@@ -35,6 +35,8 @@ export default function SettingsPage() {
   const [model, setModel] = useState(defaultModels("groq")[0])
   const [savedCatalog, setSavedCatalog] = useState<string[]>([])
   const [listed, setListed] = useState(false)
+  const [keyBusy, setKeyBusy] = useState(false)
+  const [keySaved, setKeySaved] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -86,30 +88,41 @@ export default function SettingsPage() {
   async function saveKey(event: React.FormEvent) {
     event.preventDefault()
     setError("")
+    setKeyBusy(true)
     const picked = model
-    const saved = await api<Provider>("/api/provider", {
-      method: "POST",
-      body: JSON.stringify({ provider: providerName, key: apiKey }),
-    })
-    setProvider(saved)
-    setApiKey("")
-    const list = await api<ModelList>("/api/provider/models")
-    const catalog = list.models.length > 0 ? list.models : [list.model]
-    let chosen = list.model
-    if (picked && picked !== list.model && catalog.includes(picked)) {
-      const updated = await api<Provider>("/api/provider/models", {
+    let stored = false
+    try {
+      const saved = await api<Provider>("/api/provider", {
         method: "POST",
-        body: JSON.stringify({ model: picked }),
+        body: JSON.stringify({ provider: providerName, key: apiKey }),
       })
-      chosen = updated.model
-      setProvider(updated)
+      setProvider(saved)
+      setApiKey("")
+      stored = true
+      setKeySaved(true)
+      const list = await api<ModelList>("/api/provider/models")
+      const catalog = list.models.length > 0 ? list.models : [list.model]
+      let chosen = list.model
+      if (picked && picked !== list.model && catalog.includes(picked)) {
+        const updated = await api<Provider>("/api/provider/models", {
+          method: "POST",
+          body: JSON.stringify({ model: picked }),
+        })
+        chosen = updated.model
+        setProvider(updated)
+      }
+      const shown = catalog.includes(chosen) ? catalog : [chosen, ...catalog]
+      setSavedCatalog(shown)
+      setModels(shown)
+      setModel(chosen)
+      setListed(true)
+      toast.success("API key saved.")
+    } catch (exc) {
+      if (!stored) setKeySaved(false)
+      setError(exc instanceof Error ? exc.message : "The key could not be saved.")
+    } finally {
+      setKeyBusy(false)
     }
-    const shown = catalog.includes(chosen) ? catalog : [chosen, ...catalog]
-    setSavedCatalog(shown)
-    setModels(shown)
-    setModel(chosen)
-    setListed(true)
-    toast.success("API key saved.")
   }
 
   async function clearKey() {
@@ -117,6 +130,7 @@ export default function SettingsPage() {
     const cleared = await api<Provider>("/api/provider", { method: "DELETE" })
     setProvider(cleared)
     setSavedCatalog([])
+    setKeySaved(false)
     showDefaults(providerName)
     toast.success("API key removed.")
   }
@@ -143,23 +157,23 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 gap-4 @3xl/main:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle><h2>Answer size</h2></CardTitle>
+            <CardTitle><h2>How much to send</h2></CardTitle>
             <CardDescription>
-              These limits apply to every get_context answer. Lore counts tokens with the cl100k tokenizer, includes skill summaries before map nodes, and drops an item whole when it would pass either cap.
+              This limits how much Lore sends when a coding agent asks for context. Longer answers are cut off, and extra notes are left out.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={(event) => save(event).catch((exc: Error) => setError(exc.message))}>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="budget">Token budget</FieldLabel>
+                  <FieldLabel htmlFor="budget">Answer length</FieldLabel>
                   <Input id="budget" inputMode="numeric" value={budget} onChange={(event) => setBudget(event.target.value)} />
-                  <FieldDescription>Maximum size of one answer. 800 is about a page. The persona summary is counted before any skill or map node.</FieldDescription>
+                  <FieldDescription>How long one answer can be. 800 is about a page. The role summary is counted first.</FieldDescription>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="items">Maximum items</FieldLabel>
+                  <FieldLabel htmlFor="items">How many pieces</FieldLabel>
                   <Input id="items" inputMode="numeric" value={items} onChange={(event) => setItems(event.target.value)} />
-                  <FieldDescription>Maximum number of skill summaries and codebase-map nodes returned together. The default is 8.</FieldDescription>
+                  <FieldDescription>How many skill notes and project notes can be included together. 8 is the usual number.</FieldDescription>
                 </Field>
                 <Button type="submit">Save settings</Button>
               </FieldGroup>
@@ -171,8 +185,8 @@ export default function SettingsPage() {
             <CardTitle><h2>Draft provider</h2></CardTitle>
             <CardDescription>
               {provider?.configured
-                ? `${savedLabel} is saved. Lore shows only the last four characters of the key and sends it only when you draft a persona.`
-                : "Save one provider key to draft personas. The key stays in the persona library on this computer and is never given to the coding agent."}
+                ? `${savedLabel} is saved. Lore shows the last four characters of the key and uses it only when you draft a role.`
+                : "Save one key so a model can draft a role. The key stays on this computer and is not given to the coding agent."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
@@ -207,7 +221,7 @@ export default function SettingsPage() {
                         </SelectGroup>
                       </SelectContent>
                     </Select>
-                    <FieldDescription>Switching providers resets the draft model to that provider’s default until you pick another.</FieldDescription>
+                    <FieldDescription>Changing the provider switches the draft model back to that provider’s usual model.</FieldDescription>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="model">Model</FieldLabel>
@@ -231,18 +245,20 @@ export default function SettingsPage() {
                     </Select>
                     <FieldDescription>
                       {provider?.configured && listed && providerName === provider.provider
-                        ? `These are the models the saved ${providerLabel} key can call. Later persona drafts use the one you save.`
-                        : `Shown first is ${providerLabel || "Groq"}’s default. Save a key to replace this with the models that key can call.`}
+                        ? `These are the models this ${providerLabel} key can use. Drafts use the one you save.`
+                        : `Shown first is ${providerLabel || "Groq"}’s usual model. Save a key to load the models that key can use.`}
                     </FieldDescription>
                   </Field>
                 </div>
                 <Field>
                   <FieldLabel htmlFor="api-key">API key</FieldLabel>
-                  <Input id="api-key" type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={provider?.configured ? `Saved key ending ${provider.last4}` : "Paste a key"} />
-                  <FieldDescription>Used only to list models and draft a persona. Replacing the key for the same provider keeps the model you already chose.</FieldDescription>
+                  <Input id="api-key" type="password" autoComplete="off" value={apiKey} onChange={(event) => { setApiKey(event.target.value); if (keySaved) setKeySaved(false) }} placeholder={provider?.configured ? `Saved key ending ${provider.last4}` : "Paste a key"} />
+                  <FieldDescription>Used to load models and draft a role. A new key for the same provider keeps the model you already chose.</FieldDescription>
                 </Field>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="submit" disabled={apiKey.trim().length < 8}>Save API key</Button>
+                  <Button type="submit" disabled={keyBusy || apiKey.trim().length < 8} aria-live="polite">
+                    {keyBusy ? "Saving…" : keySaved ? "Key saved" : "Save API key"}
+                  </Button>
                   <Button type="button" variant="outline" disabled={!provider?.configured || !model || providerName !== provider.provider} onClick={() => saveModel().catch((exc: Error) => setError(exc.message))}>
                     Save model
                   </Button>

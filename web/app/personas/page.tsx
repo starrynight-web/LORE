@@ -5,25 +5,21 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { Onboarding } from "@/components/onboarding"
 import { Shell } from "@/components/Shell"
 import { api, type Persona } from "@/lib/api"
 import { personaHref } from "@/lib/routes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 
 type Ready = { id: string; title: string; summary: string }
 
 export default function PersonasPage() {
   const [personas, setPersonas] = useState<Persona[]>([])
   const [ready, setReady] = useState<Ready[]>([])
-  const [name, setName] = useState("")
-  const [summary, setSummary] = useState("")
-  const [rules, setRules] = useState("")
   const [error, setError] = useState("")
+  const [open, setOpen] = useState(false)
 
   function reload() {
     api<{ personas: Persona[] }>("/api/personas")
@@ -45,20 +41,6 @@ export default function PersonasPage() {
     reload()
   }
 
-  async function create(event: React.FormEvent) {
-    event.preventDefault()
-    setError("")
-    await api("/api/personas", {
-      method: "POST",
-      body: JSON.stringify({ name, summary, steps: rules }),
-    })
-    setName("")
-    setSummary("")
-    setRules("")
-    toast.success("Persona saved as a draft.")
-    reload()
-  }
-
   async function remove(id: string) {
     setError("")
     await api(`/api/personas/${encodeURIComponent(id)}`, { method: "DELETE" })
@@ -69,39 +51,22 @@ export default function PersonasPage() {
   return (
     <Shell>
       <ErrorAlert message={error} />
-      <Card>
-        <CardHeader>
-          <CardTitle><h2>New persona</h2></CardTitle>
-          <CardDescription>A persona is a role. Skills you add later are the only ones that role can use.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={(event) => create(event).catch((exc: Error) => setError(exc.message))}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="persona-name">Name</FieldLabel>
-                <Input id="persona-name" value={name} onChange={(event) => setName(event.target.value)} required />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="persona-summary">Summary</FieldLabel>
-                <Input id="persona-summary" value={summary} onChange={(event) => setSummary(event.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="persona-rules">Rules</FieldLabel>
-                <Textarea id="persona-rules" rows={4} value={rules} onChange={(event) => setRules(event.target.value)} />
-              </Field>
-              <Button type="submit">Create persona</Button>
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-medium">Your personas</h2>
+          <p className="text-sm text-muted-foreground">A persona is a role. It can only use the skills you attach to it.</p>
+        </div>
+        <Button type="button" size="sm" onClick={() => setOpen(true)}>
+          New persona
+        </Button>
+      </div>
       <section className="flex flex-col gap-4">
-        <h2 className="text-base font-medium">Your personas</h2>
-        {personas.length === 0 ? <p className="text-sm text-muted-foreground">No personas yet. Create one above, or add a starter.</p> : null}
+        {personas.length === 0 ? <p className="text-sm text-muted-foreground">No personas yet. Create one, or add a starter.</p> : null}
         <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
           {personas.map((persona) => (
             <Card key={persona.id}>
               <CardHeader>
-                <Badge variant={persona.status === "stable" ? "secondary" : "outline"}>{persona.status}</Badge>
+                <Badge variant={persona.status === "stable" ? "secondary" : "outline"}>{persona.status === "stable" ? "ready" : "draft"}</Badge>
                 <CardTitle>
                   <Link href={personaHref(persona.id)} className="hover:underline">{persona.title}</Link>
                 </CardTitle>
@@ -139,6 +104,18 @@ export default function PersonasPage() {
           ))}
         </div>
       </section>
+      {open ? (
+        <Onboarding
+          panel="persona"
+          initial={{ completed: true, step: "done" }}
+          onDone={() => {
+            setOpen(false)
+            toast.success("Persona saved as a draft.")
+            reload()
+          }}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </Shell>
   )
 }

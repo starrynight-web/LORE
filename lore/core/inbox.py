@@ -12,6 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -119,7 +120,7 @@ def search_registry(
     text = query.strip()
     if len(text) < 2:
         raise ValueError("Type at least two characters to search.")
-    bounded = min(max(limit, 1), 24)
+    bounded = min(max(limit, 1), 200)
     url = "https://skills.sh/api/search?" + urllib.parse.urlencode({"q": text, "limit": str(bounded)})
     loaded = _get_json(url, opener or urllib.request.urlopen)
     skills = loaded.get("skills")
@@ -169,7 +170,10 @@ def _fetch_skill(source: str, skill_id: str, opener: Opener) -> str:
             if body.lstrip().startswith("<!") or len(body.strip()) < 20:
                 continue
             return body
-    raise ValueError("That skill could not be read from skills.sh.")
+    page = _registry_page(source, skill_id, opener)
+    if page:
+        return page
+    raise ValueError("That skill could not be downloaded. Try it again in a moment.")
 
 
 def _skill_paths(source: str, skill_id: str, opener: Opener) -> list[str]:
@@ -218,6 +222,57 @@ def _get_json(url: str, opener: Opener) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         raise ValueError("skills.sh returned an unreadable answer.")  # noqa: TRY004
     return loaded
+
+
+class _Prose(HTMLParser):
+    """Pull the readable skill text out of a skills.sh page."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._depth = 0
+        self._skip = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        classes = dict(attrs).get("class") or ""
+        if tag == "div" and self._depth == 0 and "prose" in classes.split():
+            self._depth = 1
+            return
+        if self._depth == 0:
+            return
+        if tag == "div":
+            self._depth += 1
+        if tag in {"h1", "h2", "h3", "p", "li"}:
+            self.parts.append("\n")
+        if tag in {"script", "style"}:
+            self._skip += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._skip and tag in {"script", "style"}:
+            self._skip -= 1
+            return
+        if self._depth and tag == "div":
+            self._depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._depth and not self._skip:
+            self.parts.append(data)
+
+
+def _registry_page(source: str, skill_id: str, opener: Opener) -> str:
+    """Last resort when the skill file is not at a guessed GitHub path."""
+    url = f"https://skills.sh/{source}/{skill_id}"
+    try:
+        html = _get_text(url, opener)
+    except ValueError:
+        return ""
+    parser = _Prose()
+    parser.feed(html)
+    text = " ".join("".join(parser.parts).split())
+    if len(text) < 40:
+        return ""
+    title = skill_id.replace("-", " ")
+    return f"---\nname: {title}\ndescription: {text[:240]}\n---\n{text}\n"
 
 
 def _get_text(url: str, opener: Opener) -> str:

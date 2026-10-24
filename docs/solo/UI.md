@@ -1,8 +1,8 @@
 # Setup site
 
-The site is the dashboard for creating personas. The editor still starts `lore mcp` on its own. Closing the site leaves those files in place.
+The site is the dashboard for creating personas. The editor still starts `lore-solo mcp` on its own. Closing the site leaves those files in place.
 
-`./scripts/lore setup` starts Django on `127.0.0.1:7421` and Next.js on `127.0.0.1:3000`. The page rewrites `/api` to Django. The link printed in the terminal carries a setup key that changes every start. That key guards the site only.
+`uvx lore-solo install` puts the command on this computer. `uvx lore-solo setup`, or `./scripts/lore-solo setup` from a clone, starts Django on `127.0.0.1:7421` and Next.js on `127.0.0.1:3000`. The same commands work on macOS, Linux, and Windows. The page rewrites `/api` to Django. The link printed in the terminal carries a setup key that changes every start. That key guards the site only.
 
 To work on the page while the API is already running:
 

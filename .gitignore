@@ -4,6 +4,7 @@ archive/
 
 # Build output
 /bin/
+/build/
 /dist/
 *.test
 *.out

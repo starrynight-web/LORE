@@ -1,0 +1,69 @@
+#!/bin/sh
+# Install Lore Solo, serve the setup site, or hand it to an editor.
+# The editor starts ~/.lore/bin/lore-solo directly. Docker is not required.
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+PREFIX="${HOME:?}/.lore"
+BIN="$PREFIX/bin/lore-solo"
+
+need_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return
+  fi
+  if [ -x "$HOME/.local/bin/uv" ]; then
+    PATH="$HOME/.local/bin:$PATH"
+    export PATH
+    return
+  fi
+  echo "Installing uv..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  PATH="$HOME/.local/bin:$PATH"
+  export PATH
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "uv could not be installed." >&2
+    exit 1
+  fi
+}
+
+install_lore() {
+  need_uv
+  export LORE_CHECKOUT="$ROOT"
+  exec uv run --python 3.12 --project "$ROOT" python -m lore install
+}
+
+require_lore() {
+  if [ ! -x "$BIN" ]; then
+    echo "Lore Solo is not installed. Run scripts/lore-solo install" >&2
+    exit 1
+  fi
+}
+
+case "${1:-setup}" in
+  install)
+    install_lore
+    ;;
+  setup|up)
+    require_lore
+    export LORE_COMMAND="$BIN"
+    export LORE_LAUNCHER="$ROOT/scripts/lore-solo"
+    export LORE_PROJECT_NAME=$(basename "$(pwd)")
+    exec "$BIN" setup
+    ;;
+  mcp)
+    require_lore
+    cd "${LORE_PROJECT:-$(pwd)}"
+    exec "$BIN" mcp
+    ;;
+  connect)
+    require_lore
+    export LORE_COMMAND="$BIN"
+    export LORE_LAUNCHER="$ROOT/scripts/lore-solo"
+    export LORE_HOST_OS="$(uname -s)"
+    exec "$BIN" connect
+    ;;
+  *)
+    echo "usage: scripts/lore-solo install|setup|mcp|connect" >&2
+    exit 2
+    ;;
+esac

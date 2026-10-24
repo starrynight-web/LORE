@@ -270,14 +270,17 @@ def _valid_model(model: str) -> bool:
 
 def _auth_headers(provider: str, key: str) -> dict[str, str]:
     if provider == "anthropic":
-        return {
+        headers = {
             "x-api-key": key,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
-    if provider == "gemini":
-        return {"x-goog-api-key": key, "content-type": "application/json"}
-    return {"Authorization": f"Bearer {key}", "content-type": "application/json"}
+    elif provider == "gemini":
+        headers = {"x-goog-api-key": key, "content-type": "application/json"}
+    else:
+        headers = {"Authorization": f"Bearer {key}", "content-type": "application/json"}
+    headers["User-Agent"] = "Lore"
+    return headers
 
 
 def _fetch_model_ids(provider: str, key: str, opener: Opener) -> list[str]:
@@ -301,8 +304,10 @@ def _get_json(url: str, provider: str, key: str, opener: Opener) -> dict[str, An
             raw = response.read()
     except urllib.error.HTTPError as exc:
         _ = exc.read()
+        if exc.code in {401, 403}:
+            raise ValueError("The provider did not accept that key.") from exc
         raise ValueError(
-            "The provider refused the model list. The saved model stays selected."
+            "The provider did not share its model list. The usual model stays selected."
         ) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ValueError("The provider could not be reached.") from exc

@@ -5,13 +5,14 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { Onboarding } from "@/components/onboarding"
 import { Shell } from "@/components/Shell"
-import { api, type Persona, type RegistrySkill, type Skill, type WaitingSkill } from "@/lib/api"
+import { api, type Persona, type Skill, type WaitingSkill } from "@/lib/api"
 import { personaHref, skillHref } from "@/lib/routes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -21,19 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 
 export default function SkillsPage() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [waiting, setWaiting] = useState<WaitingSkill[]>([])
   const [personas, setPersonas] = useState<Persona[]>([])
-  const [persona, setPersona] = useState("")
-  const [name, setName] = useState("")
-  const [summary, setSummary] = useState("")
-  const [steps, setSteps] = useState("")
-  const [query, setQuery] = useState("")
-  const [found, setFound] = useState<RegistrySkill[]>([])
   const [error, setError] = useState("")
+  const [addOpen, setAddOpen] = useState(false)
+  const [accepting, setAccepting] = useState<WaitingSkill | null>(null)
 
   function reload() {
     api<{ skills: Skill[]; waiting: WaitingSkill[] }>("/api/skills")
@@ -42,69 +38,14 @@ export default function SkillsPage() {
         setWaiting(row.waiting)
       })
       .catch((exc: Error) => setError(exc.message))
+    api<{ personas: Persona[] }>("/api/personas")
+      .then((row) => setPersonas(row.personas))
+      .catch((exc: Error) => setError(exc.message))
   }
 
   useEffect(() => {
     reload()
-    api<{ personas: Persona[] }>("/api/personas")
-      .then((row) => {
-        setPersonas(row.personas)
-        if (row.personas[0]) setPersona(row.personas[0].id)
-      })
-      .catch((exc: Error) => setError(exc.message))
   }, [])
-
-  async function create(event: React.FormEvent) {
-    event.preventDefault()
-    setError("")
-    await api("/api/skills", {
-      method: "POST",
-      body: JSON.stringify({ persona, name, summary, steps }),
-    })
-    setName("")
-    setSummary("")
-    setSteps("")
-    toast.success("Draft skill saved.")
-    reload()
-  }
-
-  async function search(event: React.FormEvent) {
-    event.preventDefault()
-    setError("")
-    const row = await api<{ skills: RegistrySkill[] }>("/api/skills/search", {
-      method: "POST",
-      body: JSON.stringify({ query }),
-    })
-    setFound(row.skills)
-  }
-
-  async function addRegistry(skill: RegistrySkill) {
-    setError("")
-    await api("/api/skills/add", {
-      method: "POST",
-      body: JSON.stringify({ source: skill.source, skill_id: skill.skill_id }),
-    })
-    toast.success("Skill added. File it under a persona below.")
-    reload()
-  }
-
-  async function addFile(file: File) {
-    setError("")
-    const content = await file.text()
-    await api("/api/inbox", { method: "POST", body: JSON.stringify({ name: file.name, content }) })
-    toast.success("Skill file added.")
-    reload()
-  }
-
-  async function adopt(skillId: string) {
-    setError("")
-    await api(`/api/inbox/${encodeURIComponent(skillId)}/adopt`, {
-      method: "POST",
-      body: JSON.stringify({ persona }),
-    })
-    toast.success("Skill filed under the persona.")
-    reload()
-  }
 
   async function removeWaiting(skillId: string) {
     setError("")
@@ -119,95 +60,32 @@ export default function SkillsPage() {
     reload()
   }
 
-  const personaItems = personas.map((item) => ({ label: item.title, value: item.id }))
-
   return (
     <Shell>
       <ErrorAlert message={error} />
-      <Card>
-        <CardHeader>
-          <CardTitle><h2>Add a skill</h2></CardTitle>
-          <CardDescription>Search skills.sh, add a markdown file, or write the steps yourself under a persona.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          <form className="flex gap-2" onSubmit={(event) => search(event).catch((exc: Error) => setError(exc.message))}>
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search skills.sh" aria-label="Search skills.sh" />
-            <Button type="submit">Search</Button>
-          </form>
-          {found.length > 0 ? (
-            <ul className="flex flex-col gap-2">
-              {found.map((skill) => (
-                <li key={`${skill.source}/${skill.skill_id}`} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{skill.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{skill.source}</span>
-                  </span>
-                  <Button type="button" size="sm" onClick={() => addRegistry(skill).catch((exc: Error) => setError(exc.message))}>Add</Button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <Field>
-            <FieldLabel htmlFor="local-skill">Markdown file</FieldLabel>
-            <Input
-              id="local-skill"
-              type="file"
-              accept=".md,text/markdown,text/plain"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) addFile(file).catch((exc: Error) => setError(exc.message))
-                event.target.value = ""
-              }}
-            />
-          </Field>
-          <form onSubmit={(event) => create(event).catch((exc: Error) => setError(exc.message))}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="skill-persona">Persona</FieldLabel>
-                <Select items={personaItems} value={persona} onValueChange={(value) => value && setPersona(value)} disabled={personaItems.length === 0}>
-                  <SelectTrigger id="skill-persona" className="w-full">
-                    <SelectValue placeholder="Create a persona first" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {personaItems.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="skill-name">Name</FieldLabel>
-                <Input id="skill-name" value={name} onChange={(event) => setName(event.target.value)} required />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="skill-summary">Summary</FieldLabel>
-                <Input id="skill-summary" value={summary} onChange={(event) => setSummary(event.target.value)} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="skill-steps">Steps</FieldLabel>
-                <Textarea id="skill-steps" rows={4} value={steps} onChange={(event) => setSteps(event.target.value)} />
-              </Field>
-              <Button type="submit" disabled={!persona}>Save draft skill</Button>
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-medium">Skills</h2>
+          <p className="text-sm text-muted-foreground">Instructions a role can hand to your coding agent.</p>
+        </div>
+        <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
+          Add skill
+        </Button>
+      </div>
       {waiting.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-medium">Waiting for a persona</h2>
+          <h2 className="text-base font-medium">Waiting for a role</h2>
           <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
             {waiting.map((skill) => (
               <Card key={skill.id}>
                 <CardHeader>
                   <Badge variant="outline">waiting</Badge>
                   <CardTitle>{skill.title}</CardTitle>
-                  <CardDescription>{skill.summary || skill.source || "No summary yet."}</CardDescription>
+                  <CardDescription>{skill.summary || "No summary yet."}</CardDescription>
                 </CardHeader>
                 <CardFooter className="gap-2">
-                  <Button type="button" disabled={!persona} onClick={() => adopt(skill.id).catch((exc: Error) => setError(exc.message))}>
-                    File under selected persona
+                  <Button type="button" onClick={() => setAccepting(skill)}>
+                    Choose a role
                   </Button>
                   <Button type="button" variant="destructive" onClick={() => removeWaiting(skill.id).catch((exc: Error) => setError(exc.message))}>
                     Delete
@@ -219,20 +97,20 @@ export default function SkillsPage() {
         </section>
       ) : null}
       <section className="flex flex-col gap-3">
-        <h2 className="text-base font-medium">Configured skills</h2>
-        {skills.length === 0 ? <p className="text-sm text-muted-foreground">No skills are filed under a persona yet.</p> : null}
+        <h2 className="text-base font-medium">Saved skills</h2>
+        {skills.length === 0 ? <p className="text-sm text-muted-foreground">No skills are filed under a role yet.</p> : null}
         <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
           {skills.map((skill) => (
             <Card key={skill.id}>
               <CardHeader>
-                <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status}</Badge>
+                <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status === "stable" ? "ready" : "draft"}</Badge>
                 <CardTitle>
                   <Link href={skillHref(skill.id)} className="hover:underline">{skill.title}</Link>
                 </CardTitle>
                 <CardDescription>{skill.summary || "No summary yet."}</CardDescription>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                {skill.persona ? <Link href={personaHref(skill.persona)} className="hover:underline">{skill.persona}</Link> : "No persona"}
+                {skill.persona ? <Link href={personaHref(skill.persona)} className="hover:underline">{skill.persona.replace(/^persona:/, "")}</Link> : "No role yet"}
               </CardContent>
               <CardFooter className="gap-2">
                 <Button variant="outline" nativeButton={false} render={<Link href={skillHref(skill.id)} />}>Open</Button>
@@ -244,6 +122,127 @@ export default function SkillsPage() {
           ))}
         </div>
       </section>
+      {addOpen ? (
+        <Onboarding
+          panel="skills"
+          initial={{ completed: true, step: "done" }}
+          onDone={() => {
+            setAddOpen(false)
+            reload()
+          }}
+          onClose={() => {
+            setAddOpen(false)
+            reload()
+          }}
+        />
+      ) : null}
+      {accepting ? (
+        <RoleDialog
+          skill={accepting}
+          personas={personas}
+          onClose={() => setAccepting(null)}
+          onDone={() => {
+            setAccepting(null)
+            toast.success("Skill filed under that role.")
+            reload()
+          }}
+          onError={(message) => setError(message)}
+        />
+      ) : null}
     </Shell>
+  )
+}
+
+function RoleDialog({
+  skill,
+  personas,
+  onClose,
+  onDone,
+  onError,
+}: {
+  skill: WaitingSkill
+  personas: Persona[]
+  onClose: () => void
+  onDone: () => void
+  onError: (message: string) => void
+}) {
+  const [persona, setPersona] = useState(personas[0]?.id ?? "")
+  const [name, setName] = useState("")
+  const [busy, setBusy] = useState(false)
+  const items = personas.map((item) => ({ label: item.title, value: item.id }))
+
+  async function accept(event: React.FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      let chosen = persona
+      const fresh = name.trim()
+      if (fresh) {
+        const created = await api<Persona>("/api/personas", {
+          method: "POST",
+          body: JSON.stringify({ name: fresh, summary: "", steps: "" }),
+        })
+        chosen = created.id
+      }
+      if (!chosen) {
+        onError("Choose a role for this skill, or name a new one.")
+        return
+      }
+      await api(`/api/inbox/${encodeURIComponent(skill.id)}/adopt`, {
+        method: "POST",
+        body: JSON.stringify({ persona: chosen }),
+      })
+      onDone()
+    } catch (exc) {
+      onError(exc instanceof Error ? exc.message : "The skill could not be filed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-md">
+      <div role="dialog" aria-modal="true" aria-labelledby="role-title" className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
+        <form className="flex flex-col gap-4" onSubmit={(event) => accept(event)}>
+          <div>
+            <h2 id="role-title" className="text-lg font-medium">Which role should use this skill?</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              {skill.title} is waiting. Pick a role, or name a new one.
+            </p>
+          </div>
+          {items.length > 0 ? (
+            <Field>
+              <FieldLabel htmlFor="accept-persona">Role</FieldLabel>
+              <Select items={items} value={persona} onValueChange={(value) => value && setPersona(value)}>
+                <SelectTrigger id="accept-persona" className="w-full">
+                  <SelectValue placeholder="Choose a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {items.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : (
+            <p className="text-sm text-muted-foreground">You have not created a role yet. Name one and this skill will go there.</p>
+          )}
+          <Field>
+            <FieldLabel htmlFor="accept-name">{items.length > 0 ? "Or create a role" : "Role name"}</FieldLabel>
+            <Input id="accept-name" value={name} onChange={(event) => setName(event.target.value)} required={items.length === 0} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? "Adding…" : "Add to this role"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }

@@ -95,7 +95,7 @@ export default function SkillPage() {
                 <Field>
                   <FieldLabel htmlFor="summary">Summary</FieldLabel>
                   <Input id="summary" value={summary} onChange={(event) => setSummary(event.target.value)} />
-                  <p className="text-xs text-muted-foreground">This one-line summary is what an agent receives from get_context.</p>
+                  <p className="text-xs text-muted-foreground">A short line the coding agent sees when it asks about this skill.</p>
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="body">Steps</FieldLabel>

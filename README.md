@@ -10,30 +10,52 @@ The older architecture documents describe the previous Go design.
 
 ## Quick start
 
+The setup site needs Node.js. The agent does not. With [uv](https://docs.astral.sh/uv/) installed, the same commands work on macOS, Linux, and Windows:
+
 ```bash
-./scripts/lore install
-./scripts/lore setup
+uvx lore-solo install
+uvx lore-solo setup
 ```
 
-On Windows:
+`install` puts the `lore-solo` command on this computer, in `~/.lore/bin`. `setup` prints an address and keeps running until you press Ctrl+C. Open that link. Run `uvx lore-solo setup` again whenever you want the website back. Save a provider key, add skills, create a persona, then give the connect prompt to your agent. Personas you write stay drafts until you approve them.
+
+The other commands are the same shape:
+
+```bash
+uvx lore-solo connect
+uvx lore-solo mcp
+```
+
+`connect` registers Lore with the editors already installed. The editor then starts `lore-solo mcp` on its own.
+
+From a clone of the `solo` branch, the same four commands are:
+
+```bash
+git clone -b solo https://github.com/starrynight-web/LORE.git lore-solo
+cd lore-solo
+./scripts/lore-solo install
+./scripts/lore-solo setup
+./scripts/lore-solo connect
+```
+
+On Windows, from that clone:
 
 ```powershell
-.\scripts\lore.ps1 install
-.\scripts\lore.ps1 setup
+.\scripts\lore-solo.ps1 install
+.\scripts\lore-solo.ps1 setup
+.\scripts\lore-solo.ps1 connect
 ```
-
-`install` puts a private Python and the `lore` command in `~/.lore`. `setup` prints an address and keeps running until you press Ctrl+C. Open that link. Save a provider key, add skills, create a persona, then give the connect prompt to your agent. Personas you write stay drafts until you approve them. The setup site needs Node.js. The agent does not.
 
 The agent calls Lore from any project. A project with its own `.lore` directory uses that. Every other project uses the personas saved from setup.
 
-Connect shows a prompt to paste into an agent. The prompt runs `scripts/lore connect` (or `scripts/lore.ps1 connect` on Windows), which registers Lore with each editor already installed. Writing `.cursor/mcp.json` inside one project stays available as a backup:
+Connect shows a prompt to paste into an agent. With uv, that prompt is `uvx lore-solo connect` on macOS, Linux, and Windows. From the clone it runs `scripts/lore-solo connect` (or `scripts/lore-solo.ps1 connect` on Windows). Writing `.cursor/mcp.json` inside one project stays available as a backup:
 
 ```json
 {
   "mcpServers": {
     "lore": {
-      "command": "lore",
-      "args": ["mcp"]
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"]
     }
   }
 }

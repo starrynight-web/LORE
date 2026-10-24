@@ -80,7 +80,7 @@ export default function CodebaseDetailPage() {
             <CardHeader>
               <Badge variant={ready ? "secondary" : "outline"}>{row.map.state}</Badge>
               <CardTitle className="text-2xl">{row.name}</CardTitle>
-              <CardDescription className="font-mono text-xs">{row.path}</CardDescription>
+              <CardDescription>{row.name}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <form className="flex flex-col gap-3" onSubmit={(event) => save(event).catch((exc: Error) => setError(exc.message))}>

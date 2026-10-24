@@ -150,7 +150,7 @@ export default function PersonaPage() {
           <Card>
             <CardHeader>
               <CardTitle><h2>Add a skill</h2></CardTitle>
-              <CardDescription>New skills stay drafts until you approve them.</CardDescription>
+              <CardDescription>New skills stay off until you approve them.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={(event) => addSkill(event).catch((exc: Error) => setError(exc.message))}>

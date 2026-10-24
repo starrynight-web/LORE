@@ -13,37 +13,57 @@ import shutil
 from pathlib import Path
 
 
-def lore_command() -> str:
-    """The `lore` program editors should start."""
+def invocation() -> tuple[str, list[str]]:
+    """The program an editor should start, and the arguments that select MCP."""
     explicit = os.environ.get("LORE_COMMAND", "").strip()
     if explicit:
-        return explicit
+        return explicit, ["mcp"]
     installed = _installed_command()
     if installed is not None:
-        return str(installed)
-    found = shutil.which("lore")
-    if found:
-        return found
-    return "lore"
+        return str(installed), ["mcp"]
+    for name in ("lore-solo", "lore"):
+        found = shutil.which(name)
+        if found:
+            return found, ["mcp"]
+    return "uvx", ["lore-solo", "mcp"]
+
+
+def lore_command() -> str:
+    """The program editors should start."""
+    return invocation()[0]
 
 
 def _installed_command() -> Path | None:
-    base = Path.home() / ".lore" / "bin" / "lore"
-    if os.name == "nt":
-        windows = base.with_suffix(".exe")
-        if windows.is_file():
-            return windows
-    if base.is_file():
-        return base
+    bin_dir = Path.home() / ".lore" / "bin"
+    for name in ("lore-solo", "lore"):
+        base = bin_dir / name
+        if os.name == "nt":
+            windows = base.with_suffix(".exe")
+            if windows.is_file():
+                return windows
+        if base.is_file():
+            return base
     return None
 
 
 def mcp_args() -> list[str]:
-    return ["mcp"]
+    return invocation()[1]
 
 
-def mcp_entry(kind: str, command: str | None = None, client: str = "") -> dict[str, object]:
-    entry: dict[str, object] = {"command": command or lore_command(), "args": mcp_args()}
+def mcp_entry(
+    kind: str,
+    command: str | None = None,
+    client: str = "",
+    args: list[str] | None = None,
+) -> dict[str, object]:
+    chosen, chosen_args = invocation()
+    if command is not None:
+        chosen = command
+    if args is not None:
+        chosen_args = args
+    elif command is not None:
+        chosen_args = ["mcp"]
+    entry: dict[str, object] = {"command": chosen, "args": chosen_args}
     if kind == "vscode":
         entry["type"] = "stdio"
     name = client.strip()
@@ -53,28 +73,39 @@ def mcp_entry(kind: str, command: str | None = None, client: str = "") -> dict[s
 
 
 def install_command() -> str:
-    launcher = os.environ.get("LORE_LAUNCHER", "scripts/lore")
-    return f"{launcher} connect"
+    launcher = os.environ.get("LORE_LAUNCHER", "").strip()
+    if launcher:
+        return f"{launcher} connect"
+    return "uvx lore-solo connect"
 
 
 def windows_command(command: str) -> str:
+    if command.startswith("uvx "):
+        return command
     suffix = " connect"
     if command.endswith(suffix):
         script = command[: -len(suffix)]
         if script.endswith(".ps1"):
             return command
         return f"{script}.ps1 connect"
-    return "scripts/lore.ps1 connect"
+    return "scripts/lore-solo.ps1 connect"
 
 
 def agent_prompt(command: str | None = None) -> str:
     chosen = command or install_command()
+    windows = windows_command(chosen)
+    if windows == chosen:
+        steps = f"On macOS, Linux, or Windows, run:\n\n{chosen}\n\n"
+    else:
+        steps = (
+            "On macOS or Linux, run this in the shell:\n\n"
+            f"{chosen}\n\n"
+            "On Windows, run this in PowerShell:\n\n"
+            f"{windows}\n\n"
+        )
     return (
-        "Install Lore for the project that is open. "
-        "On macOS or Linux, run this in the shell:\n\n"
-        f"{chosen}\n\n"
-        "On Windows, run this in PowerShell:\n\n"
-        f"{windows_command(chosen)}\n\n"
+        "Register Lore with the editors on this computer. "
+        f"{steps}"
         "When it finishes, confirm Lore is registered with the editors it found. "
         "A project that already has a .lore directory keeps using that directory."
     )
@@ -129,18 +160,18 @@ def _strip_toml_section(text: str, heading: str) -> str:
     return "\n".join(kept).rstrip()
 
 
-def _write_codex(path: Path, command: str, client: str = "") -> None:
+def _write_codex(path: Path, command: str, client: str = "", args: list[str] | None = None) -> None:
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
     if path.is_file():
         backup = path.with_name(path.name + ".lore.bak")
         if not backup.exists():
             shutil.copyfile(path, backup)
     kept = _strip_toml_section(existing, "[mcp_servers.lore]")
-    args = ", ".join(json.dumps(part) for part in mcp_args())
+    rendered = ", ".join(json.dumps(part) for part in (args if args is not None else mcp_args()))
     env = ""
     if client.strip():
         env = f"env = {{ LORE_CLIENT = {json.dumps(client.strip())} }}\n"
-    block = f"[mcp_servers.lore]\ncommand = {json.dumps(command)}\nargs = [{args}]\n{env}"
+    block = f"[mcp_servers.lore]\ncommand = {json.dumps(command)}\nargs = [{rendered}]\n{env}"
     body = f"{kept}\n\n{block}" if kept else block
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body if body.endswith("\n") else body + "\n", encoding="utf-8")
@@ -185,15 +216,15 @@ def register_agents(
         raw = os.environ.get("LORE_HOST_HOME", "")
         home = Path(raw) if raw else Path.home()
     host = host_system(system)
-    command = lore_command()
+    command, args = invocation()
     written: list[str] = []
     skipped: list[str] = []
     for label, path, key, editor in _targets(home, host):
         try:
             if editor == "codex":
-                _write_codex(path, command, client=label)
+                _write_codex(path, command, client=label, args=args)
             else:
-                _write_json(path, key, mcp_entry(editor, command, client=label))
+                _write_json(path, key, mcp_entry(editor, command, client=label, args=args))
         except (OSError, ValueError, json.JSONDecodeError):
             skipped.append(f"{label}: {path}")
             continue

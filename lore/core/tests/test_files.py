@@ -55,6 +55,14 @@ def test_mismatched_persona_field_is_not_served() -> None:
     assert "skill:frontend-engineer/wrong-owner@v1" not in ids
 
 
+def test_mismatched_skill_is_hidden_from_the_website_list() -> None:
+    from lore.core.personas import visible_skills
+
+    titles = [doc.get("title") for _path, doc in visible_skills(PACK)]
+    assert "Wrong owner" not in titles
+    assert "React practices" in titles
+
+
 def test_library_paths_follow_the_operating_system(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -107,6 +115,7 @@ def test_ready_made_persona_copies_its_skills(tmp_path: Path) -> None:
     persona = tmp_path / ".lore" / "personas" / "frontend-engineer.md"
     assert "status: stable" in persona.read_text(encoding="utf-8")
     assert (tmp_path / ".lore" / "skills" / "frontend-engineer" / "react-practices@v1.md").is_file()
+    assert not (tmp_path / ".lore" / "skills" / "frontend-engineer" / "wrong-owner@v1.md").exists()
 
 
 def test_finds_lore_from_a_nested_file() -> None:

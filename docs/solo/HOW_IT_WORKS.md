@@ -8,35 +8,36 @@ Team rules, accounts, and a paid host are later. This page describes the solo sl
 
 ## One local program
 
-`./scripts/lore install` puts a private Python and the `lore` command in `~/.lore`. The computer does not need a system Python. The editor then starts that command itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
+`uvx lore-solo install` puts the `lore-solo` command on this computer. `uvx lore-solo setup` starts the setup site. The same two commands work on macOS, Linux, and Windows. `./scripts/lore-solo install` from a clone of the `solo` branch does the same install into `~/.lore`. The computer does not need a system Python. The editor then starts `lore-solo mcp` itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
 
 ```mermaid
 flowchart LR
   ide[IDE or agent]
   site[Setup site]
-  lore["lore mcp"]
+  lore["lore-solo mcp"]
   project[Open project]
   library[Persona library]
   ide -->|starts| lore
-  site -->|"lore setup, port 3000"| lore
+  site -->|"lore-solo setup, port 3000"| lore
   lore --> project
   lore --> library
 ```
 
 | Command | Who starts it | What it does |
 | --- | --- | --- |
-| `./scripts/lore install` | You, once | Installs uv if needed, then Lore into `~/.lore` |
-| `./scripts/lore setup` | You, while setting up | Prints `http://127.0.0.1:3000/?key=...` and serves the site until Ctrl+C |
-| `./scripts/lore connect` | You, or the agent from the prompt | Writes Lore into editors already installed on this computer |
-| `lore mcp` | The editor, for the session | Reads and writes `.lore/` over stdio. No port. No setup key. |
+| `uvx lore-solo install` | You, once | Installs Lore Solo into `~/.lore/bin` on macOS, Linux, and Windows |
+| `uvx lore-solo setup` | You, while setting up | Prints `http://127.0.0.1:3000/?key=...` and serves the site until Ctrl+C |
+| `uvx lore-solo connect` | You, or the agent from the prompt | Writes Lore into editors already installed on this computer |
+| `uvx lore-solo mcp` | The editor, for the session | Reads and writes `.lore/` over stdio. No port. No setup key. |
 
-On Windows the same commands are `.\scripts\lore.ps1 install`, `setup`, and `connect`.
+A clone uses the same four verbs: `./scripts/lore-solo install`, `setup`, `connect`, and `mcp`. On Windows those are `.\scripts\lore-solo.ps1 install`, `setup`, `connect`, and `mcp`.
 
-The program entry is `python -m lore`, with `setup`, `mcp`, or `connect` as the first argument.
+The program entry is `lore-solo`, with `install`, `setup`, `connect`, or `mcp` as the first argument. `python -m lore` reaches the same program.
 
 ```mermaid
 flowchart TD
-  entry["python -m lore"]
+  entry["lore-solo"]
+  entry --> install["install"]
   entry --> setup["setup"]
   entry --> mcp["mcp"]
   entry --> connect["connect"]
@@ -49,7 +50,7 @@ flowchart TD
 
 The setup key is generated when the site starts. It changes every start. It guards only the website. The browser stores it in a cookie named `lore_key`. Pages opened without that cookie show the lock screen. MCP never sees the key.
 
-The setup site needs Node.js, because the page is a Next.js app. The agent does not. `install` builds the page when Node.js is already present.
+The setup site needs Node.js, because the page is a Next.js app. The agent does not. The first `setup` builds the page when it is not already built.
 
 ## Where the files live
 
@@ -119,12 +120,12 @@ A skill file lives in `.lore/skills/<persona-slug>/` and its header names the sa
 
 ## The setup site
 
-`./scripts/lore setup` runs the installed `lore setup` in the foreground. Django listens on `127.0.0.1:7421`. The page listens on `127.0.0.1:3000` and rewrites `/api` to Django. You open `127.0.0.1` on your own machine. The script does not guess a LAN address. Press Ctrl+C to stop the site.
+`uvx lore-solo setup` runs the setup site in the foreground. Django listens on `127.0.0.1:7421`. The page listens on `127.0.0.1:3000` and rewrites `/api` to Django. You open `127.0.0.1` on your own machine. The command does not guess a LAN address. Press Ctrl+C to stop the site.
 
 ```mermaid
 sequenceDiagram
   participant You
-  participant Launcher as scripts/lore
+  participant Launcher as lore-solo setup
   participant Site as Next.js :3000
   participant API as Django :7421
   participant Disk as .lore files
@@ -159,7 +160,7 @@ Connect writes an MCP entry only for editors whose config directory already exis
 
 | Editor | Config | Entry shape |
 | --- | --- | --- |
-| Cursor | `~/.cursor/mcp.json` | `mcpServers`, command `lore`, args `mcp` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers`, command `uvx`, args `lore-solo mcp` |
 | VS Code | the user `mcp.json` | `servers`, type `stdio` |
 | Claude Code | `~/.claude.json` | `mcpServers` |
 | Claude Desktop | the Claude config for this OS | `mcpServers` |
@@ -168,14 +169,14 @@ Connect writes an MCP entry only for editors whose config directory already exis
 
 Paths differ on macOS and Windows. Connect runs on the computer where the editors are installed, so the write lands in your editor config.
 
-The entry the editor stores uses the absolute path of the installed command:
+The entry the editor stores uses `uvx` when Lore Solo was started that way. A clone install stores the absolute path of `~/.lore/bin/lore-solo` and the argument `mcp`.
 
 ```json
 {
   "mcpServers": {
     "lore": {
-      "command": "/home/you/.lore/bin/lore",
-      "args": ["mcp"]
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"]
     }
   }
 }
