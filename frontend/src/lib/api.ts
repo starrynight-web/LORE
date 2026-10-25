@@ -123,6 +123,8 @@ export interface Citation {
   applicability_explanation?: string;
   evidence_type?: 'direct' | 'inference';
   limitation?: string | null;
+  supported_claim?: string | null;
+  claim_supported?: string | null;
   score?: number;
   graph_expanded?: boolean;
   graph_depth?: number;
@@ -239,6 +241,15 @@ export interface GovernedResult {
   llm_model?: string;
   anti_hallucination_active?: boolean;
   layers_breakdown?: LayerBreakdown;
+  validation_signals?: {
+    source_provenance: boolean;
+    relevance: boolean;
+    entailment: boolean;
+    authority: boolean;
+    conflict: boolean;
+    audit_provenance_verified: boolean;
+    zero_hallucination: boolean;
+  };
   audit_id?: string;
 }
 

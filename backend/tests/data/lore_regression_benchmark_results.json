@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "benchmark_suite": "LORE Enterprise Multi-Dimensional Regression Benchmark",
-  "timestamp": "2026-10-25T04:07:55.236927+00:00",
+  "timestamp": "2026-10-25T06:20:53.277993+00:00",
   "summary": {
     "total_tests": 19,
     "pass_count": 19,
@@ -20,7 +20,7 @@
       "concise_presentation": 1.0,
       "permission_enforcement": 1.0
     },
-    "total_suite_latency_s": 0.72
+    "total_suite_latency_s": 1.12
   },
   "records": [
     {
@@ -44,7 +44,7 @@
       "actual_answer": "Section 4.1: AES-256 encryption is strictly mandatory for all production database snapshots and storage at rest. According to **Production Data Encryption Standard v2.0** (Page 4), this is the authoritative operational rule.",
       "actual_evidence": [
         {
-          "citation_id": "cit-90f3ee",
+          "citation_id": "cit-856a45",
           "document_id": "DOC-ENC-002",
           "document_title": "Production Data Encryption Standard v2.0",
           "document_version": 2,
@@ -60,6 +60,8 @@
           "applicability_explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'Production Data Encryption Standard v2.0'.",
           "explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'Production Data Encryption Standard v2.0'.",
           "evidence_type": "direct",
+          "supported_claim": "Section 4.1: AES-256 encryption is strictly mandatory for all production database snapshots and storage at rest.",
+          "claim_supported": "Section 4.1: AES-256 encryption is strictly mandatory for all production database snapshots and storage at rest.",
           "limitation": null,
           "score": 0.94
         }
@@ -81,7 +83,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 71.24,
+      "latency_ms": 72.66,
       "diagnostics": []
     },
     {
@@ -102,7 +104,7 @@
       "actual_answer": "The annual leave allowance is 25 days of paid leave per calendar year. According to **POL-HR-001: Employee Benefits and Leave Policy** (Page 3), this is the authoritative operational rule.",
       "actual_evidence": [
         {
-          "citation_id": "cit-fd3b19",
+          "citation_id": "cit-4186e1",
           "document_id": "POL-HR-001",
           "document_title": "POL-HR-001: Employee Benefits and Leave Policy",
           "document_version": 1,
@@ -118,6 +120,8 @@
           "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-HR-001: Employee Benefits and Leave Policy'.",
           "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-HR-001: Employee Benefits and Leave Policy'.",
           "evidence_type": "direct",
+          "supported_claim": "The annual leave allowance is 25 days of paid leave per calendar year.",
+          "claim_supported": "The annual leave allowance is 25 days of paid leave per calendar year.",
           "limitation": null,
           "score": 0.91
         }
@@ -139,7 +143,7 @@
       },
       "overall_score": 0.95,
       "status": "PASS",
-      "latency_ms": 31.82,
+      "latency_ms": 53.23,
       "diagnostics": [
         "Expected material caveat omitted from response."
       ]
@@ -164,7 +168,7 @@
       "actual_answer": "The requested amounts are $15 for breakfast, $25 for lunch, and $45 for dinner.\n- Breakfast: $15\n- Lunch: $25\n- Dinner: $45\nAccording to **Travel Policy Meal Allowance Schedule** (Page 5), all claims must be substantiated with itemized receipts.",
       "actual_evidence": [
         {
-          "citation_id": "cit-099a05",
+          "citation_id": "cit-0f718a",
           "document_id": "DOC-TRV-SCH",
           "document_title": "Travel Policy Meal Allowance Schedule",
           "document_version": 1,
@@ -180,48 +184,10 @@
           "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'Travel Policy Meal Allowance Schedule'.",
           "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'Travel Policy Meal Allowance Schedule'.",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": null,
           "score": 0.88
-        },
-        {
-          "citation_id": "cit-2bdca1",
-          "document_id": "DOC-TRV-SCH",
-          "document_title": "Travel Policy Meal Allowance Schedule",
-          "document_version": 1,
-          "page_number": 5,
-          "section": "Schedule A > Itemized Meal Allowances",
-          "heading_path": "Schedule A > Itemized Meal Allowances",
-          "passage": "Itemized Meal Rates Schedule: The lunch allowance is $25.",
-          "shortest_passage": "Itemized Meal Rates Schedule: The lunch allowance is $25.",
-          "authority_level": 6,
-          "document_status": "approved",
-          "effective_date": null,
-          "supersession_details": null,
-          "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'Travel Policy Meal Allowance Schedule'.",
-          "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'Travel Policy Meal Allowance Schedule'.",
-          "evidence_type": "direct",
-          "limitation": null,
-          "score": 0.86
-        },
-        {
-          "citation_id": "cit-a5645f",
-          "document_id": "DOC-TRV-SCH",
-          "document_title": "Travel Policy Meal Allowance Schedule",
-          "document_version": 1,
-          "page_number": 5,
-          "section": "Schedule A > Itemized Meal Allowances",
-          "heading_path": "Schedule A > Itemized Meal Allowances",
-          "passage": "Itemized Meal Rates Schedule: The dinner allowance is $45.",
-          "shortest_passage": "Itemized Meal Rates Schedule: The dinner allowance is $45.",
-          "authority_level": 6,
-          "document_status": "approved",
-          "effective_date": null,
-          "supersession_details": null,
-          "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'Travel Policy Meal Allowance Schedule'.",
-          "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'Travel Policy Meal Allowance Schedule'.",
-          "evidence_type": "direct",
-          "limitation": null,
-          "score": 0.85
         }
       ],
       "answer_state": "supported",
@@ -241,7 +207,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 34.99,
+      "latency_ms": 56.24,
       "diagnostics": []
     },
     {
@@ -263,7 +229,7 @@
       "actual_answer": "Security access is structured into four levels: Level 1 (Public/Guest), Level 2 (Standard Employee), Level 3 (Manager/Confidential), and Level 4 (Administrative/MFA Required). According to **POL-SEC-004: Enterprise Access Control Policy** (Page 2), this is the authoritative operational rule.",
       "actual_evidence": [
         {
-          "citation_id": "cit-ffe802",
+          "citation_id": "cit-dc485d",
           "document_id": "POL-SEC-004",
           "document_title": "POL-SEC-004: Enterprise Access Control Policy",
           "document_version": 1,
@@ -279,6 +245,8 @@
           "applicability_explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'POL-SEC-004: Enterprise Access Control Policy'.",
           "explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'POL-SEC-004: Enterprise Access Control Policy'.",
           "evidence_type": "direct",
+          "supported_claim": "Security access is structured into four levels: Level 1 (Public/Guest), Level 2 (Standard Employee), Level 3 (Manager/Confidential), and Level 4 (Administrative/MFA Required).",
+          "claim_supported": "Security access is structured into four levels: Level 1 (Public/Guest), Level 2 (Standard Employee), Level 3 (Manager/Confidential), and Level 4 (Administrative/MFA Required).",
           "limitation": null,
           "score": 0.93
         }
@@ -300,7 +268,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 31.24,
+      "latency_ms": 57.99,
       "diagnostics": []
     },
     {
@@ -325,7 +293,7 @@
       "actual_answer": "Version 2.0 establishes that Version 2.0 supersedes Version 1.0 and increases the daily meal allowance to $50 per day, replacing Version 1.0 which specified that Under Version 1.0, the maximum daily meal allowance was $40 per day. According to **Travel Policy (v2.0)** (Page 3), Version 2.0 supersedes the earlier Version 1.0 specification.",
       "actual_evidence": [
         {
-          "citation_id": "cit-edd4ce",
+          "citation_id": "cit-ff7b82",
           "document_id": "DOC-TRV-V2",
           "document_title": "Travel Policy (v2.0)",
           "document_version": 2,
@@ -341,11 +309,13 @@
           "applicability_explanation": "Rank 5 procedural baseline governing standard operational practices in 'Travel Policy (v2.0)'.",
           "explanation": "Rank 5 procedural baseline governing standard operational practices in 'Travel Policy (v2.0)'.",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": null,
           "score": 0.87
         },
         {
-          "citation_id": "cit-c79f78",
+          "citation_id": "cit-158061",
           "document_id": "DOC-TRV-V1",
           "document_title": "Travel Policy (v1.0)",
           "document_version": 1,
@@ -361,6 +331,8 @@
           "applicability_explanation": "Rank 5 superseded historical record from 'Travel Policy (v1.0)' (superseded by newer version).",
           "explanation": "Rank 5 superseded historical record from 'Travel Policy (v1.0)' (superseded by newer version).",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": "Historical record: Policy has been superseded by a newer version.",
           "score": 0.88
         }
@@ -382,7 +354,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 30.28,
+      "latency_ms": 50.94,
       "diagnostics": []
     },
     {
@@ -410,7 +382,7 @@
       "actual_answer": "Effective July 1, 2026: The approved daily meal allowance is $220 per travel day. According to **DOC-002 Travel and Expense Policy** (Page 2), this is the authoritative operational rule. Note: An unapproved draft (DOC-001 Draft Expense Policy) proposes $180, but remains non-binding.",
       "actual_evidence": [
         {
-          "citation_id": "cit-895749",
+          "citation_id": "cit-407649",
           "document_id": "DOC-002",
           "document_title": "DOC-002 Travel and Expense Policy",
           "document_version": 2,
@@ -426,6 +398,8 @@
           "applicability_explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'DOC-002 Travel and Expense Policy'.",
           "explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'DOC-002 Travel and Expense Policy'.",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": null,
           "score": 0.85
         }
@@ -447,7 +421,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 30.52,
+      "latency_ms": 53.49,
       "diagnostics": []
     },
     {
@@ -470,7 +444,7 @@
       "actual_answer": "The DOC-001 Draft Expense Policy draft specifies a daily meal allowance of $180. This document is an unapproved draft and does not represent governing policy until formal approval and adoption.",
       "actual_evidence": [
         {
-          "citation_id": "cit-228d6b",
+          "citation_id": "cit-657ff5",
           "document_id": "DOC-001",
           "document_title": "DOC-001 Draft Expense Policy",
           "document_version": 1,
@@ -486,6 +460,8 @@
           "applicability_explanation": "Rank 4 draft document from 'DOC-001 Draft Expense Policy' (unapproved proposal, non-binding).",
           "explanation": "Rank 4 draft document from 'DOC-001 Draft Expense Policy' (unapproved proposal, non-binding).",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": "Non-binding: Document is an unapproved draft; cannot authorize production operations.",
           "score": 0.92
         }
@@ -507,7 +483,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 31.15,
+      "latency_ms": 42.49,
       "diagnostics": []
     },
     {
@@ -534,7 +510,7 @@
       "actual_answer": "Employees are authorized a daily meal per diem of $50. According to **POL-EXP-001: Travel & Expense Standard** (Page 6), this is the authoritative operational rule. Note: POL-EXP-001-AMEND: Travel Allowance Update 2027 takes effect on 2027-01-01 (increasing allowance to $70) and is not yet in effect for current operations.",
       "actual_evidence": [
         {
-          "citation_id": "cit-9bccf6",
+          "citation_id": "cit-568f88",
           "document_id": "POL-EXP-001",
           "document_title": "POL-EXP-001: Travel & Expense Standard",
           "document_version": 1,
@@ -550,6 +526,8 @@
           "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-EXP-001: Travel & Expense Standard'.",
           "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-EXP-001: Travel & Expense Standard'.",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": null,
           "score": 0.86
         }
@@ -571,7 +549,7 @@
       },
       "overall_score": 0.95,
       "status": "PASS",
-      "latency_ms": 33.56,
+      "latency_ms": 52.79,
       "diagnostics": [
         "Expected material caveat omitted from response."
       ]
@@ -599,7 +577,7 @@
       "actual_answer": "In 2024, the authorized daily travel meal allowance was $150. According to **DOC-016 Travel Policy 2024** (Page 4), this is the authoritative operational rule. Note: DOC-002 Travel and Expense Policy 2026 takes effect on 2026-07-01 (increasing allowance to $220) and is not yet in effect for current operations.",
       "actual_evidence": [
         {
-          "citation_id": "cit-6d8b70",
+          "citation_id": "cit-2cdecf",
           "document_id": "DOC-016",
           "document_title": "DOC-016 Travel Policy 2024",
           "document_version": 1,
@@ -615,6 +593,8 @@
           "applicability_explanation": "Rank 6 superseded historical record from 'DOC-016 Travel Policy 2024' (superseded by newer version).",
           "explanation": "Rank 6 superseded historical record from 'DOC-016 Travel Policy 2024' (superseded by newer version).",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": "Historical record: Policy has been superseded by a newer version.",
           "score": 0.88
         }
@@ -636,7 +616,7 @@
       },
       "overall_score": 0.95,
       "status": "PASS",
-      "latency_ms": 28.68,
+      "latency_ms": 46.39,
       "diagnostics": [
         "Expected material caveat omitted from response."
       ]
@@ -659,27 +639,7 @@
       "actual_answer": "Under Version 1.0, the maximum daily meal allowance was $40 per day. According to **Travel Policy (v1.0)** (Page 3), Version 1.0 specified this rule prior to being superseded. Note: In subsequent version 2, this was updated to $50.",
       "actual_evidence": [
         {
-          "citation_id": "cit-e5306e",
-          "document_id": "DOC-TRV-V2",
-          "document_title": "Travel Policy (v2.0)",
-          "document_version": 2,
-          "page_number": 3,
-          "section": "Section 3.1",
-          "heading_path": "Section 3.1",
-          "passage": "Version 2.0 supersedes Version 1.0 and increases the daily meal allowance to $50 per day.",
-          "shortest_passage": "Version 2.0 supersedes Version 1.0 and increases the daily meal allowance to $50 per day.",
-          "authority_level": 5,
-          "document_status": "approved",
-          "effective_date": null,
-          "supersession_details": "Supersedes prior version (Version 2 supersedes earlier version 1 at Rank 5.)",
-          "applicability_explanation": "Rank 5 procedural baseline governing standard operational practices in 'Travel Policy (v2.0)'.",
-          "explanation": "Rank 5 procedural baseline governing standard operational practices in 'Travel Policy (v2.0)'.",
-          "evidence_type": "direct",
-          "limitation": null,
-          "score": 0.84
-        },
-        {
-          "citation_id": "cit-6ce80b",
+          "citation_id": "cit-cc3e7a",
           "document_id": "DOC-TRV-V1",
           "document_title": "Travel Policy (v1.0)",
           "document_version": 1,
@@ -695,8 +655,32 @@
           "applicability_explanation": "Rank 5 superseded historical record from 'Travel Policy (v1.0)' (superseded by newer version).",
           "explanation": "Rank 5 superseded historical record from 'Travel Policy (v1.0)' (superseded by newer version).",
           "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
           "limitation": "Historical record: Policy has been superseded by a newer version.",
           "score": 0.86
+        },
+        {
+          "citation_id": "cit-ae494d",
+          "document_id": "DOC-TRV-V2",
+          "document_title": "Travel Policy (v2.0)",
+          "document_version": 2,
+          "page_number": 3,
+          "section": "Section 3.1",
+          "heading_path": "Section 3.1",
+          "passage": "Version 2.0 supersedes Version 1.0 and increases the daily meal allowance to $50 per day.",
+          "shortest_passage": "Version 2.0 supersedes Version 1.0 and increases the daily meal allowance to $50 per day.",
+          "authority_level": 5,
+          "document_status": "approved",
+          "effective_date": null,
+          "supersession_details": "Supersedes prior version (Version 2 supersedes earlier version 1 at Rank 5.)",
+          "applicability_explanation": "Rank 5 procedural baseline governing standard operational practices in 'Travel Policy (v2.0)'.",
+          "explanation": "Rank 5 procedural baseline governing standard operational practices in 'Travel Policy (v2.0)'.",
+          "evidence_type": "direct",
+          "supported_claim": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "claim_supported": "Reimbursable daily meal allowances and receipt substantiation rules.",
+          "limitation": null,
+          "score": 0.84
         }
       ],
       "answer_state": "qualified",
@@ -716,7 +700,7 @@
       },
       "overall_score": 0.95,
       "status": "PASS",
-      "latency_ms": 32.89,
+      "latency_ms": 55.53,
       "diagnostics": [
         "Expected material caveat omitted from response."
       ]
@@ -741,7 +725,7 @@
       "actual_answer": "A $5,000 purchase falls within the Tier 1 (Micro-Purchase) threshold (up to and including $5,000) and requires only Department Manager approval without competitive bids. According to **Enterprise Procurement Policy** (Page 3), this is the authoritative operational rule.",
       "actual_evidence": [
         {
-          "citation_id": "cit-dc739e",
+          "citation_id": "cit-af0fef",
           "document_id": "POL-PROC-001",
           "document_title": "Enterprise Procurement Policy",
           "document_version": 1,
@@ -757,6 +741,8 @@
           "applicability_explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'Enterprise Procurement Policy'.",
           "explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'Enterprise Procurement Policy'.",
           "evidence_type": "direct",
+          "supported_claim": "Procurement expenditure threshold and approval requirements.",
+          "claim_supported": "Procurement expenditure threshold and approval requirements.",
           "limitation": null,
           "score": 0.91
         }
@@ -778,7 +764,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 35.56,
+      "latency_ms": 49.86,
       "diagnostics": []
     },
     {
@@ -800,7 +786,7 @@
       "actual_answer": "A $25,000 purchase falls within the Tier 2 (Small Procurement) threshold (up to and including $25,000) and requires at least 3 competitive quotes and Director approval. According to **Enterprise Procurement Policy** (Page 3), this is the authoritative operational rule.",
       "actual_evidence": [
         {
-          "citation_id": "cit-c90399",
+          "citation_id": "cit-85e031",
           "document_id": "POL-PROC-001",
           "document_title": "Enterprise Procurement Policy",
           "document_version": 1,
@@ -808,7 +794,7 @@
           "section": "Section 3 > Expenditure Thresholds",
           "heading_path": "Section 3 > Expenditure Thresholds",
           "passage": "Enterprise Procurement Policy - Section 3: Expenditure Thresholds.\nTier 1 (Micro-Purchase): Purchases up to and including $5,000 require only Department Manager approval without competitive bids.\nTier 2 (Small Procurement): Purchases greater than $5,000 and up to and including $25,000 require at least 3 competitive quotes and Director approval.\nTier 3 (Major Contracts): Purchases exceeding $25,000 require a formal competitive Request for Proposals (RFP), Legal review, and VP approval.",
-          "shortest_passage": "Tier 3 (Major Contracts): Purchases exceeding $25,000 require a formal competitive Request for Proposals (RFP), Legal review, and VP approval.",
+          "shortest_passage": "Tier 2 (Small Procurement): Purchases greater than $5,000 and up to and including $25,000 require at least 3 competitive quotes and Director approval.",
           "authority_level": 7,
           "document_status": "approved",
           "effective_date": null,
@@ -816,6 +802,8 @@
           "applicability_explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'Enterprise Procurement Policy'.",
           "explanation": "Authoritative Rank 7 approved policy establishing binding operational compliance for 'Enterprise Procurement Policy'.",
           "evidence_type": "direct",
+          "supported_claim": "Procurement expenditure threshold and approval requirements.",
+          "claim_supported": "Procurement expenditure threshold and approval requirements.",
           "limitation": null,
           "score": 0.91
         }
@@ -837,7 +825,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 31.32,
+      "latency_ms": 53.06,
       "diagnostics": []
     },
     {
@@ -862,7 +850,7 @@
       "actual_answer": "Supplier Alpha offers $12,000 with 5 business days delivery, whereas Supplier Beta offers $9,500 with 14 business days delivery. According to **Supplier Alpha Proposal** (Page 1) and **Supplier Beta Proposal** (Page 1), each supplier specifies distinct terms.",
       "actual_evidence": [
         {
-          "citation_id": "cit-1c13fd",
+          "citation_id": "cit-ecff8e",
           "document_id": "PROP-ALPHA",
           "document_title": "Supplier Alpha Proposal",
           "document_version": 1,
@@ -878,11 +866,13 @@
           "applicability_explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Alpha Proposal'.",
           "explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Alpha Proposal'.",
           "evidence_type": "direct",
+          "supported_claim": "Supplier Alpha offers $12,000 with 5 business days delivery, whereas Supplier Beta offers $9,500 with 14 business days delivery.",
+          "claim_supported": "Supplier Alpha offers $12,000 with 5 business days delivery, whereas Supplier Beta offers $9,500 with 14 business days delivery.",
           "limitation": null,
           "score": 0.88
         },
         {
-          "citation_id": "cit-c83c1e",
+          "citation_id": "cit-8427fe",
           "document_id": "PROP-BETA",
           "document_title": "Supplier Beta Proposal",
           "document_version": 1,
@@ -898,6 +888,8 @@
           "applicability_explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Beta Proposal'.",
           "explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Beta Proposal'.",
           "evidence_type": "direct",
+          "supported_claim": "Supplier Alpha offers $12,000 with 5 business days delivery, whereas Supplier Beta offers $9,500 with 14 business days delivery.",
+          "claim_supported": "Supplier Alpha offers $12,000 with 5 business days delivery, whereas Supplier Beta offers $9,500 with 14 business days delivery.",
           "limitation": null,
           "score": 0.87
         }
@@ -919,7 +911,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 33.85,
+      "latency_ms": 54.49,
       "diagnostics": []
     },
     {
@@ -944,7 +936,7 @@
       "actual_answer": "Supplier Beta is best for cost ($12,000 vs $9,500), while Supplier Alpha is best for delivery speed (14 business days vs 5 business days). Please specify whether lowest cost or fastest delivery is your priority. According to **Supplier Alpha Proposal** (Page 1) and **Supplier Beta Proposal** (Page 1), each supplier specifies distinct terms.",
       "actual_evidence": [
         {
-          "citation_id": "cit-99fc52",
+          "citation_id": "cit-5803ef",
           "document_id": "PROP-ALPHA",
           "document_title": "Supplier Alpha Proposal",
           "document_version": 1,
@@ -960,11 +952,13 @@
           "applicability_explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Alpha Proposal'.",
           "explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Alpha Proposal'.",
           "evidence_type": "direct",
+          "supported_claim": "Supplier Beta is best for cost ($12,000 vs $9,500), while Supplier Alpha is best for delivery speed (14 business days vs 5 business days).",
+          "claim_supported": "Supplier Beta is best for cost ($12,000 vs $9,500), while Supplier Alpha is best for delivery speed (14 business days vs 5 business days).",
           "limitation": null,
           "score": 0.88
         },
         {
-          "citation_id": "cit-aff9b5",
+          "citation_id": "cit-cd45c8",
           "document_id": "PROP-BETA",
           "document_title": "Supplier Beta Proposal",
           "document_version": 1,
@@ -980,6 +974,8 @@
           "applicability_explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Beta Proposal'.",
           "explanation": "Rank 5 procedural baseline governing standard operational practices in 'Supplier Beta Proposal'.",
           "evidence_type": "direct",
+          "supported_claim": "Supplier Beta is best for cost ($12,000 vs $9,500), while Supplier Alpha is best for delivery speed (14 business days vs 5 business days).",
+          "claim_supported": "Supplier Beta is best for cost ($12,000 vs $9,500), while Supplier Alpha is best for delivery speed (14 business days vs 5 business days).",
           "limitation": null,
           "score": 0.87
         }
@@ -1001,7 +997,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 33.72,
+      "latency_ms": 53.96,
       "diagnostics": []
     },
     {
@@ -1040,7 +1036,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 31.7,
+      "latency_ms": 58.61,
       "diagnostics": []
     },
     {
@@ -1064,7 +1060,7 @@
       "actual_answer": "Governance Warning: Contradictory authoritative sources detected for 'What is the maximum data retention period for financial audit ledgers?'. Specifically, 'POL-LOG-01: Information Lifecycle Policy' (365 days (POL-LOG-01: Information Lifecycle Policy)) contradicts 'POL-COMP-02: Corporate Compliance Standard' (7 years (POL-COMP-02: Corporate Compliance Standard)). LORE will not guess between equal-authority policies. Please request human adjudication.",
       "actual_evidence": [
         {
-          "citation_id": "cit-7aa886",
+          "citation_id": "cit-7d25a1",
           "document_id": "POL-LOG-01",
           "document_title": "POL-LOG-01: Information Lifecycle Policy",
           "document_version": 1,
@@ -1080,11 +1076,13 @@
           "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-LOG-01: Information Lifecycle Policy'.",
           "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-LOG-01: Information Lifecycle Policy'.",
           "evidence_type": "direct",
+          "supported_claim": "Mandatory records retention schedule.",
+          "claim_supported": "Mandatory records retention schedule.",
           "limitation": null,
           "score": 0.89
         },
         {
-          "citation_id": "cit-fa8299",
+          "citation_id": "cit-bd4fa6",
           "document_id": "POL-COMP-02",
           "document_title": "POL-COMP-02: Corporate Compliance Standard",
           "document_version": 1,
@@ -1100,6 +1098,8 @@
           "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-COMP-02: Corporate Compliance Standard'.",
           "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-COMP-02: Corporate Compliance Standard'.",
           "evidence_type": "direct",
+          "supported_claim": "Mandatory records retention schedule.",
+          "claim_supported": "Mandatory records retention schedule.",
           "limitation": null,
           "score": 0.88
         }
@@ -1121,7 +1121,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 33.76,
+      "latency_ms": 50.62,
       "diagnostics": []
     },
     {
@@ -1159,7 +1159,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 30.19,
+      "latency_ms": 46.26,
       "diagnostics": []
     },
     {
@@ -1185,8 +1185,8 @@
       "actual_answer": "All employees receive standard IT equipment including a company laptop. According to **General IT Handbook** (Page 1), this is the authoritative operational rule.",
       "actual_evidence": [
         {
-          "citation_id": "cit-89db38",
-          "document_id": "b34f89d2-1e4b-4fe1-96a6-24eb6f7f7e95",
+          "citation_id": "cit-27fd6c",
+          "document_id": "e6cd5489-021c-46cd-a2c8-d3f3ccf0fb3e",
           "document_title": "General IT Handbook",
           "document_version": 1,
           "page_number": 1,
@@ -1201,6 +1201,8 @@
           "applicability_explanation": "Rank 4 procedural baseline governing standard operational practices in 'General IT Handbook'.",
           "explanation": "Rank 4 procedural baseline governing standard operational practices in 'General IT Handbook'.",
           "evidence_type": "direct",
+          "supported_claim": "All employees receive standard IT equipment including a company laptop.",
+          "claim_supported": "All employees receive standard IT equipment including a company laptop.",
           "limitation": null,
           "score": 0.8
         }
@@ -1222,7 +1224,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 96.58,
+      "latency_ms": 161.18,
       "diagnostics": []
     },
     {
@@ -1246,7 +1248,7 @@
       "actual_answer": "Section 5.1: Customer activity logs must be retained for exactly 365 days to comply with statutory audit mandates. According to **POL-SEC-042: Enterprise Data Retention Policy** (Page 9), this is the authoritative operational rule.",
       "actual_evidence": [
         {
-          "citation_id": "cit-a11da5",
+          "citation_id": "cit-aa4727",
           "document_id": "doc-data-retention-policy",
           "document_title": "POL-SEC-042: Enterprise Data Retention Policy",
           "document_version": 1,
@@ -1262,6 +1264,8 @@
           "applicability_explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-SEC-042: Enterprise Data Retention Policy'.",
           "explanation": "Authoritative Rank 6 approved policy establishing binding operational compliance for 'POL-SEC-042: Enterprise Data Retention Policy'.",
           "evidence_type": "direct",
+          "supported_claim": "Mandatory records retention schedule.",
+          "claim_supported": "Mandatory records retention schedule.",
           "limitation": null,
           "score": 0.72
         }
@@ -1283,7 +1287,7 @@
       },
       "overall_score": 1.0,
       "status": "PASS",
-      "latency_ms": 30.97,
+      "latency_ms": 46.3,
       "diagnostics": []
     }
   ]

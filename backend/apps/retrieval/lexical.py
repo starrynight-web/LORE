@@ -79,7 +79,7 @@ class PostgresFullTextSearchBackend(BaseLexicalSearchBackend):
             rank__gt=0.005
         ).order_by('-rank').select_related('document', 'document__collection', 'document_version')[:limit]
 
-        results = [(float(c.rank), c) for c in ranked_qs]
+        results = [(float(getattr(c, 'rank', 0.0)), c) for c in ranked_qs]
         return results
 
 
@@ -162,14 +162,30 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
         if document_id:
             qs = qs.filter(document_id=document_id)
 
-        # Clean query tokens
+        # Clean query tokens and filter stopwords to prioritize subject and action keywords
         clean_q = query.strip()
-        tokens = [w.lower() for w in re.findall(r'\w+', clean_q) if len(w) > 1]
-        if not tokens:
+        all_tokens = [w.lower() for w in re.findall(r'\w+', clean_q) if len(w) > 1]
+        if not all_tokens:
             return []
 
+        stop_words = {
+            'what', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of',
+            'and', 'or', 'by', 'with', 'from', 'as', 'be', 'can', 'we', 'it', 'this',
+            'that', 'do', 'does', 'all', 'any', 'my', 'your', 'our', 'under', 'according',
+            'tell', 'show', 'please', 'would', 'could', 'how', 'much', 'many', 'must'
+        }
+        content_tokens = [w for w in all_tokens if w not in stop_words]
+        query_terms = content_tokens if content_tokens else all_tokens
+
+        # Expand morphological variants for logging and action inquiries
+        extended_terms = list(query_terms)
+        if any(w in ['logged', 'logging', 'logs', 'log'] for w in all_tokens):
+            for variant in ['log', 'logging', 'logs', 'record', 'records', 'audit']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
         # Attempt SQLite FTS5 Query if table exists
-        fts_hits = self._query_fts5(clean_q, tokens, workspace_id, organization_id, document_id, limit)
+        fts_hits = self._query_fts5(clean_q, extended_terms, workspace_id, organization_id, document_id, limit)
         if fts_hits is not None and len(fts_hits) > 0:
             chunk_ids = [hit[0] for hit in fts_hits]
             score_map = {hit[0]: hit[1] for hit in fts_hits}
@@ -185,10 +201,10 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
         q_lower = clean_q.lower()
         has_phrase = len(q_lower) > 3
 
-        # Prefilter candidate chunks using token matching to keep in-memory scoring bounded
+        # Prefilter candidate chunks using content keywords to keep in-memory scoring bounded
         from django.db.models import Q
         q_filter = Q()
-        for t in tokens[:6]:
+        for t in extended_terms[:8]:
             q_filter |= Q(text__icontains=t) | Q(contextual_header__icontains=t)
         candidate_qs = candidate_qs.filter(q_filter)
 
@@ -196,19 +212,34 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
             body = (chunk.text or "").lower()
             header = (chunk.contextual_header or "").lower()
             heading = (chunk.heading_path or "").lower()
+            doc_title = (chunk.document.title if chunk.document else "").lower()
+            combined_text = f"{doc_title} {header} {heading} {body}"
 
             # Exact phrase match bonus
             phrase_bonus = 0.40 if has_phrase and (q_lower in body or q_lower in header) else 0.0
 
-            # Token overlap scoring
-            matched_body = sum(1 for t in tokens if t in body)
-            matched_header = sum(1 for t in tokens if t in header or t in heading)
+            # Token overlap scoring using meaningful query terms
+            matched_terms = 0
+            for t in query_terms:
+                if t in combined_text:
+                    matched_terms += 1
+                elif t in ['logged', 'logging', 'logs', 'log'] and any(v in combined_text for v in ['log', 'logging', 'logs', 'record', 'audit']):
+                    matched_terms += 1
+                elif t == 'actions' and any(v in combined_text for v in ['events', 'functions', 'changes', 'attempts', 'activities']):
+                    matched_terms += 1
 
-            body_coverage = matched_body / len(tokens)
-            header_coverage = matched_header / len(tokens)
+            matched_header = sum(1 for t in query_terms if t in header or t in heading)
 
-            # Header is weighted higher than body
-            lexical_score = (0.50 * body_coverage) + (0.35 * header_coverage) + phrase_bonus
+            term_coverage = matched_terms / len(query_terms) if query_terms else 0.0
+            header_coverage = matched_header / len(query_terms) if query_terms else 0.0
+
+            # Content-focused lexical score
+            lexical_score = (0.55 * term_coverage) + (0.25 * header_coverage) + phrase_bonus
+
+            # Bonus for audit/logging sections when query asks for logging
+            if any(w in ['logged', 'logging', 'logs', 'log'] for w in all_tokens):
+                if 'audit logging' in combined_text or 'security events' in combined_text or 'must record' in combined_text:
+                    lexical_score += 0.25
 
             if lexical_score > 0.05:
                 scored_results.append((round(lexical_score, 4), chunk))
@@ -244,16 +275,16 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
                     FROM knowledge_documentchunk_fts
                     WHERE knowledge_documentchunk_fts MATCH ?
                 """
-                params = [fts_query]
+                params: List[Any] = [fts_query]
                 if workspace_id:
                     sql += " AND workspace_id = ?"
-                    params.append(str(workspace_id))
+                    params.append(workspace_id)
                 if organization_id:
                     sql += " AND organization_id = ?"
-                    params.append(str(organization_id))
+                    params.append(organization_id)
                 if document_id:
                     sql += " AND document_id = ?"
-                    params.append(str(document_id))
+                    params.append(document_id)
                 sql += " ORDER BY rank ASC LIMIT ?"
                 params.append(limit)
 

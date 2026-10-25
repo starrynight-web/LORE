@@ -782,10 +782,27 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                 <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
               )}
             </button>
-
-            <span className="text-[11px] font-mono text-[var(--text-muted)] hidden sm:inline">
-              Audit Provenance Verified · Zero Hallucination
-            </span>
+            {result.validation_signals?.audit_provenance_verified && result.validation_signals?.authority === false ? (
+              <span className="text-[11px] font-mono text-[var(--brand-accent)] hidden sm:inline">
+                Audit Provenance Verified · Non-Binding Draft
+              </span>
+            ) : (result.validation_signals?.zero_hallucination && result.validation_signals?.audit_provenance_verified) ? (
+              <span className="text-[11px] font-mono text-[var(--success)] hidden sm:inline">
+                Audit Provenance Verified · Zero Hallucination
+              </span>
+            ) : result.state === 'conflicting' ? (
+              <span className="text-[11px] font-mono text-[var(--warning)] hidden sm:inline">
+                Contradiction Detected · Human Adjudication Required
+              </span>
+            ) : result.state === 'insufficient' ? (
+              <span className="text-[11px] font-mono text-[var(--text-muted)] hidden sm:inline">
+                Insufficient Evidence · Verification Blocked
+              </span>
+            ) : (
+              <span className="text-[11px] font-mono text-[var(--text-muted)] hidden sm:inline">
+                Governance Verification Evaluated
+              </span>
+            )}
           </div>
 
           {/* EXPANDED VIEW: Governed Evidence & Audit Breakdown */}
@@ -931,7 +948,25 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                           </blockquote>
                         </div>
 
-                        {/* 4. Short explanation of why the source applies */}
+                        {/* 4. Supported Answer Claim */}
+                        {(cit.supported_claim || cit.claim_supported) && (
+                          <div 
+                            className="p-2.5 rounded-lg border text-xs text-[var(--text-secondary)] space-y-0.5"
+                            style={{
+                              backgroundColor: 'var(--bg-surface)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
+                            <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--brand-accent)] block">
+                              Supports Answer Claim:
+                            </span>
+                            <p className="leading-relaxed font-medium text-[var(--text-primary)]">
+                              {cit.supported_claim || cit.claim_supported}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* 5. Short explanation of why the source applies */}
                         {cit.applicability_explanation && (
                           <div 
                             className="p-2.5 rounded-lg border text-xs text-[var(--text-secondary)] space-y-0.5"
@@ -1132,12 +1167,12 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                       <span 
                         className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
                         style={{
-                          backgroundColor: 'var(--success-bg)',
+                          backgroundColor: result.state === 'conflicting' ? 'var(--warning-bg)' : (result.state === 'denied' || result.state === 'violation' ? 'var(--error-bg)' : 'var(--success-bg)'),
                           borderColor: 'var(--border-color)',
-                          color: 'var(--success)',
+                          color: result.state === 'conflicting' ? 'var(--warning)' : (result.state === 'denied' || result.state === 'violation' ? 'var(--error)' : 'var(--success)'),
                         }}
                       >
-                        9/9 Active
+                        {result.state === 'conflicting' ? 'L6 Conflict Detected' : (result.state === 'denied' ? 'L7 Access Denied' : (result.state === 'insufficient' ? 'L3 Evidence Missing' : '9/9 Active'))}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

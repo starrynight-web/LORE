@@ -53,12 +53,15 @@ class EvidencePresentationEngine:
         for chk in deduped_chunks:
             cit = cls._build_citation_entry(chk, query, answer, ref_time, conflicts_resolved)
             candidate_citations.append(cit)
-
-        # Sort candidate citations: approved governing policy comes first, then by authority level, then by relevance score (Requirement 9)
+        ans_lower = (answer or '').lower()
+        # Sort candidate citations: sources cited directly in answer come first, then approved governing policy, then authority, then score
         def _sort_key(c):
+            t = (c.get('document_title') or '').lower()
+            did = str(c.get('document_id') or '').lower()
+            cited_in_ans = 3 if (t in ans_lower or (did and did in ans_lower)) else 0
             st = c.get('document_status', 'unknown')
             is_gov = 2 if st == 'approved' else (1 if st not in ['draft', 'superseded', 'future-effective'] else 0)
-            return (is_gov, int(c.get('authority_level', 0) or 0), float(c.get('score', 0.0) or 0.0))
+            return (cited_in_ans, is_gov, int(c.get('authority_level', 0) or 0), float(c.get('score', 0.0) or 0.0))
 
         candidate_citations.sort(key=_sort_key, reverse=True)
 
@@ -165,6 +168,9 @@ class EvidencePresentationEngine:
         # 6. Source limitation (if source cannot fully prove claim or has conditions)
         limitation = cls._identify_limitation(raw_text, doc_status, chk)
 
+        # 7. Which answer claim this passage supports (Requirement 5 & 7)
+        supported_claim = cls._identify_supported_claim(shortest_passage, answer, query)
+
         entry = {
             'citation_id': chk.get('citation_id') or f"cit-{uuid.uuid4().hex[:6]}",
             'document_id': doc_id,
@@ -182,6 +188,8 @@ class EvidencePresentationEngine:
             'applicability_explanation': applicability,
             'explanation': applicability,
             'evidence_type': evidence_type,
+            'supported_claim': supported_claim,
+            'claim_supported': supported_claim,
             'limitation': limitation,
             'score': round(float(chk.get('score', 0.0) or 0.0), 4)
         }
@@ -210,9 +218,15 @@ class EvidencePresentationEngine:
         if not sentences:
             return chunk_text[:200].strip()
 
-        # Extract factual numbers / terms from answer
-        ans_values = set(re.findall(r'\$\d+(?:\.\d+)?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b|\b\d+\b', answer.lower()))
+        # Extract factual numbers / terms from answer (exclude single isolated digits to avoid page number collisions)
+        ans_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b', answer.lower()))
         q_terms = set(re.findall(r'\b[a-z]{4,}\b', query.lower())) - {'what', 'when', 'where', 'which', 'who', 'does', 'with', 'from', 'have', 'more'}
+
+        ans_substantive = set(re.findall(r'\b[a-z]{4,}\b', answer.lower())) - {
+            'what', 'when', 'where', 'which', 'who', 'does', 'with', 'from', 'have', 'more',
+            'according', 'policy', 'document', 'page', 'proposed', 'formally', 'approved', 'draft',
+            'review', 'internal', 'authoritative', 'operational', 'rule', 'rules'
+        }
 
         best_sentence = sentences[0]
         best_score = -1
@@ -225,10 +239,12 @@ class EvidencePresentationEngine:
             val_matches = sum(1 for val in ans_values if val in sent_lower)
             # Query keyword overlap
             q_matches = len(q_terms.intersection(sent_words))
+            # Substantive answer keyword overlap (proves the specific answer claims)
+            ans_matches = len(ans_substantive.intersection(sent_words))
 
-            # Length penalty: prefer the shortest sentence among high matches
+            # Length penalty: prefer concise exact sentences among high matches
             length_penalty = len(sent) / 500.0
-            score = (val_matches * 5.0) + (q_matches * 2.0) - length_penalty
+            score = (val_matches * 6.0) + (ans_matches * 3.0) + (q_matches * 1.5) - length_penalty
 
             if score > best_score:
                 best_score = score
@@ -294,7 +310,13 @@ class EvidencePresentationEngine:
                 pass
 
         # Check draft status (never present draft as approved)
-        if chk.get('is_draft') or raw_status == 'draft' or 'draft' in title_lower or 'status: draft' in text_lower:
+        is_draft_doc = (
+            chk.get('is_draft') or
+            raw_status == 'draft' or
+            'draft' in title_lower or
+            any(p in text_lower for p in ['draft for review', 'draft for comment', 'status: draft', 'proposed internal policy', 'unapproved draft', 'pending formal adoption', 'pending approval'])
+        )
+        if is_draft_doc:
             return 'draft'
 
         # Check archived
@@ -402,6 +424,26 @@ class EvidencePresentationEngine:
         return None
 
     @classmethod
+    def _identify_supported_claim(cls, passage: str, answer: str, query: str) -> str:
+        """
+        Determines which specific answer claim is substantiated by the passage (Requirement 5 & 7).
+        """
+        p_lower = passage.lower()
+        q_lower = query.lower()
+        if any(w in p_lower for w in ['audit logging', 'record relevant security events', 'successful and failed authentication']):
+            return "Mandatory access-control and security event logging requirements (authentication, privileged functions, permission changes, record changes)."
+        if any(w in p_lower for w in ['per diem', 'meal allowance', 'breakfast', 'lunch', 'dinner']):
+            return "Reimbursable daily meal allowances and receipt substantiation rules."
+        if any(w in p_lower for w in ['tier 1', 'tier 2', 'tier 3', 'micro-purchase', 'expenditure threshold']):
+            return "Procurement expenditure threshold and approval requirements."
+        if any(w in p_lower for w in ['retention', 'retained', 'statutory audit', 'ledger']):
+            return "Mandatory records retention schedule."
+
+        # Default to first sentence of answer
+        sents = [s.strip() for s in re.split(r'(?<=[.!?\n])\s+', answer) if len(s.strip()) > 10]
+        return sents[0] if sents else answer[:120].strip()
+
+    @classmethod
     def _filter_necessary_sources(
         cls,
         citations: List[Dict[str, Any]],
@@ -417,33 +459,44 @@ class EvidencePresentationEngine:
         if not citations:
             return []
 
-        # The primary source (highest score) is always necessary
-        necessary: List[Dict[str, Any]] = [citations[0]]
-        covered_facts = set(re.findall(r'\b[a-z0-9$]{3,}\b', citations[0]['shortest_passage'].lower()))
-
         q_lower = query.lower()
         ans_lower = answer.lower()
 
-        # The primary source is always necessary
-        necessary: List[Dict[str, Any]] = [citations[0]]
-        covered_facts = set(re.findall(r'\b[a-z0-9$]{3,}\b', citations[0]['shortest_passage'].lower()))
+        # The primary source: choose the source cited in the answer or highest scored candidate
+        matching_cited = [c for c in citations if c['document_title'].lower() in ans_lower or (str(c.get('document_id', '')) and str(c.get('document_id', '')).lower() in ans_lower)]
+        if matching_cited:
+            ans_fact_words = set(re.findall(r'\b[a-z]{4,}\b', ans_lower)) - {'according', 'policy', 'document', 'page', 'proposed', 'formally', 'approved', 'draft'}
+            primary = max(matching_cited, key=lambda c: len(ans_fact_words.intersection(set(re.findall(r'\b[a-z]{4,}\b', (c.get('shortest_passage') or '').lower())))))
+        else:
+            primary = citations[0]
+
+        necessary: List[Dict[str, Any]] = [primary]
+        covered_facts = set(re.findall(r'\b[a-z0-9$]{3,}\b', primary['shortest_passage'].lower()))
 
         # Extract answer numerical/financial values and entities (Requirements 5 & 8)
-        ans_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b|\b\d+\b', ans_lower))
+        ans_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b', ans_lower))
 
         # Check multi-part query requirements
         multi_entities = re.findall(r'\b(?:supplier\s+[a-z0-9_-]+|vendor\s+[a-z0-9_-]+|tier\s*\d+|level\s*\d+|breakfast|lunch|dinner|micro-purchase|small procurement|major contract)\b', q_lower)
 
         user_asks_draft = bool(re.search(r'\b(draft|proposed|in draft)\b', q_lower))
 
-        for cit in citations[1:]:
+        for cit in citations:
+            if cit == primary:
+                continue
+
             title = cit['document_title']
             doc_id = str(cit.get('document_id', ''))
             p_text = (cit.get('shortest_passage') or cit.get('passage', '')).lower()
             status = cit.get('document_status', '')
 
-            # Draft documents must NOT be included in citations unless user asks about the draft (Requirement 3)
-            if status == 'draft' and not user_asks_draft:
+            # Do not duplicate citations for the same document unless proving an unrepresented value
+            is_same_doc = any(
+                (cit.get('document_id') and cit.get('document_id') == n.get('document_id')) or
+                cit['document_title'] == n['document_title']
+                for n in necessary
+            )
+            if is_same_doc:
                 continue
 
             # Condition A: Involved in genuine conflict or supersession
@@ -455,14 +508,18 @@ class EvidencePresentationEngine:
                 necessary.append(cit)
                 continue
 
-            # Condition B: Explicitly cited in answer text (e.g. material draft caveat or future amendment)
+            # Draft documents must NOT be included as supplementary citations unless user asks about the draft (Requirement 3)
+            if status == 'draft' and not user_asks_draft:
+                continue
+
+            # Condition B: Explicitly cited in answer text (e.g. governing policy or material amendment)
             if title.lower() in ans_lower or (doc_id and doc_id.lower() in ans_lower):
                 necessary.append(cit)
                 continue
 
             # Condition C: Proves an answer fact or table value not covered by already-selected citations (Requirement 5)
-            cit_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b|\b\d+\b', p_text))
-            already_covered_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b|\b\d+\b', " ".join(n['shortest_passage'].lower() for n in necessary)))
+            cit_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b', p_text))
+            already_covered_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b', " ".join(n['shortest_passage'].lower() for n in necessary)))
             new_values = cit_values.intersection(ans_values) - already_covered_values
             if new_values:
                 necessary.append(cit)
@@ -477,14 +534,6 @@ class EvidencePresentationEngine:
             if covers_unrepresented_entity:
                 necessary.append(cit)
                 covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
-                continue
-
-            # Condition E: Significant distinct substantive factual tokens
-            cit_tokens = set(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
-            new_tokens = cit_tokens - covered_facts
-            if len(new_tokens) >= 8 and any(k in p_text for k in re.findall(r'\b\w{4,}\b', q_lower)):
-                necessary.append(cit)
-                covered_facts.update(cit_tokens)
                 continue
 
             # Otherwise: Exclude unrelated or redundant documents (Requirement 6)

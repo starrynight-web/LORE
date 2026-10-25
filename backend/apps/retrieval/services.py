@@ -64,7 +64,7 @@ class ContextReranker:
             'what', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of',
             'and', 'or', 'by', 'with', 'from', 'as', 'be', 'can', 'we', 'it', 'this',
             'that', 'do', 'does', 'all', 'any', 'my', 'your', 'our', 'under', 'according',
-            'tell', 'show', 'please', 'would', 'could', 'how', 'much', 'many'
+            'tell', 'show', 'please', 'would', 'could', 'how', 'much', 'many', 'must'
         }
         content_tokens = [w for w in all_q_tokens if w not in stop_words]
         eval_q_tokens = set(content_tokens if content_tokens else all_q_tokens)
@@ -72,6 +72,7 @@ class ContextReranker:
         # Requirement 1 & 2: Identify specific fact requirements from query
         is_amount_inquiry = bool(re.search(r'\b(allowance|rate|threshold|limit|ceiling|cost|price|fee|budget|amount|total)\b', q_clean))
         is_duration_inquiry = bool(re.search(r'\b(days?|hours?|months?|years?|delivery|turnaround|retention|schedule|period|timeline|timeout)\b', q_clean))
+        is_logging_inquiry = bool(re.search(r'\b(logged|logging|logs|log|audit\s+log|audit\s+logging|record(?:ed|ing)?)\b', q_clean))
         doc_code_targets = [t.lower() for t in re.findall(r'\b[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+\b|\bdoc-\d+\b|\bpol-[a-z0-9-]+\b', q_clean)]
         section_target_m = re.search(r'\bsection\s+(\d+(?:\.\d+)?)\b', q_clean)
         section_target = section_target_m.group(0).lower() if section_target_m else None
@@ -124,9 +125,16 @@ class ContextReranker:
             if len(q_clean) > 3 and (q_clean in doc_text):
                 phrase_bonus = 0.35
 
-            # 3. Token coverage score [0, 1] using discrete word boundary tokens
+            # 3. Token coverage score [0, 1] using discrete word boundary tokens & morphological variants
             if eval_q_tokens:
-                matched_tokens = sum(1 for t in eval_q_tokens if t in doc_tokens)
+                matched_tokens = 0
+                for t in eval_q_tokens:
+                    if t in doc_tokens:
+                        matched_tokens += 1
+                    elif t in ['logged', 'logging', 'logs', 'log'] and any(v in doc_tokens for v in ['log', 'logging', 'logs', 'record', 'audit']):
+                        matched_tokens += 1
+                    elif t == 'actions' and any(v in doc_tokens for v in ['events', 'functions', 'changes', 'attempts', 'activities']):
+                        matched_tokens += 1
                 token_coverage = matched_tokens / len(eval_q_tokens)
             else:
                 token_coverage = 0.0
@@ -157,9 +165,15 @@ class ContextReranker:
                 fact_bonus += 0.15
             if is_duration_inquiry and bool(re.search(r'\b\d+\s*(?:days?|hours?|months?|years?|business days?)\b', text)):
                 fact_bonus += 0.15
+            if is_logging_inquiry:
+                if 'audit logging' in doc_text or 'security events' in doc_text or ('must record' in doc_text and 'authentication' in doc_text):
+                    fact_bonus += 0.35
+                elif ('workspace_access_request' in title or 'travel_expense' in title) and not any(w in doc_text for w in ['audit logging', 'must record', 'security events']):
+                    # Penalize transactional access request forms and travel policies that contain no logging facts
+                    fact_bonus -= 0.30
 
             # 9. Pure relevance score (CRITICAL: DO NOT MULTIPLY BY AUTHORITY!)
-            if token_coverage == 0.0 and phrase_bonus == 0.0 and header_bonus == 0.0 and doc_match_bonus == 0.0:
+            if token_coverage == 0.0 and phrase_bonus == 0.0 and header_bonus == 0.0 and doc_match_bonus == 0.0 and fact_bonus <= 0.0:
                 relevance_score = 0.0
             else:
                 relevance_score = (

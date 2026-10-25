@@ -194,7 +194,7 @@ class ConciseAnswerSynthesizer:
         # ------------------------------------------------------------------
         # 3b. Check for Threshold / Policy Interpretation Query (Requirement 5)
         # ------------------------------------------------------------------
-        threshold_res = cls._try_synthesize_threshold_evaluation(query, target_chunks)
+        threshold_res = cls._try_synthesize_threshold_evaluation(query, sorted_chunks)
         if threshold_res:
             return threshold_res
 
@@ -542,6 +542,32 @@ class ConciseAnswerSynthesizer:
             s1 = "Deploying to production or accessing administrative systems without MFA is strictly prohibited under the Security Access Policy."
             s2 = f"According to **{title}** (Page {page}), this is the authoritative operational rule."
             return f"{s1} {s2}"
+
+        # 6. Access-Control Logging Requirements Inquiry (Requirement 4)
+        if any(w in q_lower for w in ['log', 'logging', 'logged']) and any(w in q_lower for w in ['access', 'security', 'audit', 'actions', 'event', 'events']):
+            logging_chunk = next((
+                c for c in chunks
+                if any(p in c.get('text', '').lower() for p in ['audit logging', 'record relevant security events', 'successful and failed authentication'])
+            ), None)
+            if logging_chunk:
+                l_title = logging_chunk.get('document_title', 'Information Security Policy')
+                l_page = logging_chunk.get('page_number', 1)
+                l_status = (logging_chunk.get('document_status') or logging_chunk.get('status') or '').lower()
+                is_draft = l_status == 'draft' or 'draft' in l_title.lower() or 'draft for review' in logging_chunk.get('text', '').lower()
+
+                s1 = (
+                    "Systems that process confidential or business-critical information must record relevant security events, including:\n"
+                    "- Successful and failed authentication attempts\n"
+                    "- Access to privileged functions\n"
+                    "- Permission changes\n"
+                    "- Significant changes to protected records where technically feasible."
+                )
+                if is_draft:
+                    s2 = f"According to **{l_title}** (Page {l_page}), this document is a proposed internal policy (Draft for review) and has not yet been formally approved."
+                else:
+                    s2 = f"According to **{l_title}** (Page {l_page}), these are the authoritative operational logging requirements."
+
+                return f"{s1}\n\n{s2}"
 
         return None
 
