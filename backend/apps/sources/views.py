@@ -7,9 +7,20 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 
-from .models import SourceDocument, DocumentVersion, DocumentPage
-from .serializers import SourceDocumentSerializer, DocumentPageSerializer, DocumentVersionSerializer
+import csv
+from django.http import HttpResponse
+
+from .models import SourceDocument, DocumentVersion, DocumentPage, ZipImportJob, ZipImportEntry
+from .serializers import (
+    SourceDocumentSerializer, 
+    DocumentPageSerializer, 
+    DocumentVersionSerializer,
+    ZipImportJobSerializer,
+    ZipImportEntrySerializer
+)
 from .services import StorageSecurityService
+from .zip_security import ZipSecurityError
+from .zip_engine import ZipImportEngine
 from apps.workspaces.models import Workspace, WorkspaceMembership, Collection
 from apps.ingestion.models import IngestionJob
 from apps.ingestion.tasks import process_ingestion_pipeline, process_document_job
@@ -140,6 +151,73 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
         if len(uploaded_files) == 1:
             file_obj = uploaded_files[0]
             title = request.data.get('title')
+
+            # Handle single ZIP archive upload with automated extraction & ingestion
+            if file_obj.name.lower().endswith('.zip'):
+                try:
+                    job = ZipImportEngine.preview_archive(
+                        file_obj=file_obj,
+                        workspace=workspace,
+                        user=request.user,
+                        collection=collection,
+                        authority_level=authority_level,
+                        description=description
+                    )
+                    job = ZipImportEngine.execute_import(job, request.user)
+                    imported_docs = [e.document for e in job.entries.filter(status='imported') if e.document]
+                    first_doc = imported_docs[0] if imported_docs else None
+                    return Response({
+                        'zip_job': ZipImportJobSerializer(job).data,
+                        'documents': SourceDocumentSerializer(imported_docs, many=True).data,
+                        'count': len(imported_docs),
+                        'document': SourceDocumentSerializer(first_doc).data if first_doc else None,
+                        'job_id': str(job.id),
+                        'status': job.status,
+                        'errors': [{'filename': e.entry_path, 'error': e.error_message} for e in job.entries.filter(status='failed')]
+                    }, status=status.HTTP_201_CREATED if imported_docs or job.total_entries == 0 else status.HTTP_400_BAD_REQUEST)
+                except ZipSecurityError as e:
+                    return Response({'error': str(e), 'category': 'security_violation'}, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    is_quota = 'quota' in str(e).lower()
+                    status_code = status.HTTP_402_PAYMENT_REQUIRED if is_quota else status.HTTP_400_BAD_REQUEST
+                    return Response({'error': str(e), 'quota_exceeded': is_quota}, status=status_code)
+
+            # Handle direct Slack export JSON upload
+            if file_obj.name.lower().endswith('.json'):
+                peek = file_obj.read(4096)
+                file_obj.seek(0)
+                is_slack_json = False
+                try:
+                    peek_str = peek.decode('utf-8', errors='ignore')
+                    if '"type": "message"' in peek_str or '"type":"message"' in peek_str:
+                        is_slack_json = True
+                except Exception:
+                    pass
+
+                if is_slack_json:
+                    from .slack_engine import SlackExportService
+                    ch_title = title or os.path.splitext(file_obj.name)[0]
+                    is_priv = request.data.get('is_private', 'false').lower() in ('true', '1', 'yes')
+                    try:
+                        doc, job = SlackExportService.import_single_slack_json(
+                            file_obj=file_obj,
+                            workspace=workspace,
+                            user=request.user,
+                            collection=collection,
+                            channel_name=ch_title,
+                            is_private=is_priv
+                        )
+                        return Response({
+                            'document': SourceDocumentSerializer(doc).data,
+                            'job_id': str(job.id) if job else None,
+                            'status': doc.status,
+                            'is_slack_export': True
+                        }, status=status.HTTP_201_CREATED)
+                    except Exception as e:
+                        is_quota = 'quota' in str(e).lower()
+                        status_code = status.HTTP_402_PAYMENT_REQUIRED if is_quota else status.HTTP_400_BAD_REQUEST
+                        return Response({'error': str(e), 'quota_exceeded': is_quota}, status=status_code)
+
             try:
                 doc, job = self._ingest_single_file(
                     file_obj=file_obj,
@@ -488,4 +566,122 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             'timings_ms': elapsed_ms,
             'document_id': saved_doc_id
         })
+
+
+class ZipImportViewSet(viewsets.ModelViewSet):
+    serializer_class = ZipImportJobSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        ws_id = self.request.query_params.get('workspace_id')
+        qs = ZipImportJob.objects.filter(workspace__memberships__user=user)
+        if ws_id:
+            qs = qs.filter(workspace_id=ws_id)
+        return qs.distinct()
+
+    @action(detail=False, methods=['post'], url_path='preview')
+    def preview(self, request):
+        """
+        Inspects an uploaded ZIP archive, validates security boundaries (Zip Slip, bombs, encryption, size),
+        registers the ZipImportJob and its entries in 'previewed' state, and returns detected files.
+        """
+        uploaded_file = request.FILES.get('file') or request.FILES.get('archive')
+        if not uploaded_file and 'files' in request.FILES:
+            uploaded_file = request.FILES.getlist('files')[0]
+
+        if not uploaded_file:
+            return Response({'error': 'No archive file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        workspace_id = request.data.get('workspace')
+        if not workspace_id:
+            return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        workspace = get_object_or_404(Workspace, id=workspace_id, memberships__user=request.user)
+
+        collection_id = request.data.get('collection')
+        collection = None
+        if collection_id:
+            collection = Collection.objects.filter(workspace=workspace, id=collection_id).first()
+
+        authority_level = int(request.data.get('authority_level', 3))
+        description = request.data.get('description', '')
+
+        try:
+            job = ZipImportEngine.preview_archive(
+                file_obj=uploaded_file,
+                workspace=workspace,
+                user=request.user,
+                collection=collection,
+                authority_level=authority_level,
+                description=description
+            )
+            return Response(ZipImportJobSerializer(job).data, status=status.HTTP_201_CREATED)
+        except ZipSecurityError as e:
+            return Response({'error': str(e), 'category': 'security_violation'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            is_quota = 'quota' in str(e).lower()
+            code = status.HTTP_402_PAYMENT_REQUIRED if is_quota else status.HTTP_400_BAD_REQUEST
+            return Response({'error': str(e), 'quota_exceeded': is_quota}, status=code)
+
+    @action(detail=True, methods=['post'], url_path='start')
+    def start_import(self, request, pk=None):
+        """
+        Starts ingesting supported files from the archive through LORE's canonical pipeline.
+        """
+        job = self.get_object()
+        try:
+            job = ZipImportEngine.execute_import(job, request.user)
+            return Response(ZipImportJobSerializer(job).data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel_import(self, request, pk=None):
+        """
+        Cancels an in-flight or previewed ZIP import job.
+        """
+        job = self.get_object()
+        try:
+            job = ZipImportEngine.cancel_job(job, request.user)
+            return Response(ZipImportJobSerializer(job).data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='retry')
+    def retry_import(self, request, pk=None):
+        """
+        Retries ONLY entries that failed in a previous attempt, skipping successful documents.
+        """
+        job = self.get_object()
+        try:
+            job = ZipImportEngine.retry_failed_entries(job, request.user)
+            return Response(ZipImportJobSerializer(job).data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='summary')
+    def import_summary(self, request, pk=None, format=None):
+        """
+        Returns an import summary report (JSON or CSV download).
+        """
+        job = self.get_object()
+        summary = ZipImportEngine.generate_summary(job)
+
+        export = request.query_params.get('export') or request.query_params.get('as')
+        if export == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{job.archive_filename}_summary.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['Entry Path', 'Sanitized Filename', 'Size (Bytes)', 'Document Type', 'Supported', 'Status', 'Document ID', 'Error'])
+            for e in summary['entries']:
+                writer.writerow([
+                    e['entry_path'], e['sanitized_filename'], e['file_size'],
+                    e['document_type'], e['is_supported'], e['status'],
+                    e['document_id'] or '', e['error_message'] or ''
+                ])
+            return response
+
+        return Response(summary)
+
 

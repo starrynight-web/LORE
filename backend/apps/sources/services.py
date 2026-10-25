@@ -24,6 +24,7 @@ ALLOWED_EXTENSIONS = {
     '.ppt': 'presentation',
     '.html': 'txt',
     '.htm': 'txt',
+    '.json': 'json',
 }
 
 class StorageSecurityService:
@@ -108,13 +109,15 @@ class StorageSecurityService:
                 raise ValidationError(f"Invalid legacy Office file '{ext}': Missing binary OLE or PK signature.")
             mime_type = 'application/vnd.ms-powerpoint' if ext == '.ppt' else 'application/vnd.ms-excel'
 
-        elif ext in ('.txt', '.md', '.markdown', '.csv', '.html', '.htm'):
+        elif ext in ('.txt', '.md', '.markdown', '.csv', '.html', '.htm', '.json'):
             try:
                 header.decode('utf-8')
                 if ext in ('.html', '.htm'):
                     mime_type = 'text/html'
                 elif ext == '.csv':
                     mime_type = 'text/csv'
+                elif ext == '.json':
+                    mime_type = 'application/json'
                 else:
                     mime_type = 'text/plain'
             except UnicodeDecodeError:
@@ -125,6 +128,8 @@ class StorageSecurityService:
                         mime_type = 'text/html'
                     elif ext == '.csv':
                         mime_type = 'text/csv'
+                    elif ext == '.json':
+                        mime_type = 'application/json'
                     else:
                         mime_type = 'text/plain'
                 except Exception:

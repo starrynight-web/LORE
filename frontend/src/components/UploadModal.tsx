@@ -17,9 +17,14 @@ import {
   Presentation, 
   Code, 
   Check, 
-  RefreshCw 
+  RefreshCw,
+  Archive,
+  Download,
+  AlertTriangle,
+  Layers,
+  Ban
 } from 'lucide-react';
-import { Collection, api } from '@/lib/api';
+import { Collection, ZipImportJob, ZipImportEntry, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 interface UploadFileItem {
@@ -59,9 +64,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [overallError, setOverallError] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<{ success: number; failed: number } | null>(null);
 
+  // ZIP Ingestion Engine State
+  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [zipJob, setZipJob] = useState<ZipImportJob | null>(null);
+  const [isZipPreviewing, setIsZipPreviewing] = useState<boolean>(false);
+  const [isZipImporting, setIsZipImporting] = useState<boolean>(false);
+  const [zipFilter, setZipFilter] = useState<'all' | 'supported' | 'unsupported'>('all');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset state when modal is opened
+  // Reset state when modal is opened or closed
   useEffect(() => {
     if (isOpen) {
       setFileList([]);
@@ -69,6 +81,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setOverallError(null);
       setUploadSummary(null);
       setIsUploading(false);
+      setZipFile(null);
+      setZipJob(null);
+      setIsZipPreviewing(false);
+      setIsZipImporting(false);
+      setZipFilter('all');
     }
   }, [isOpen]);
 
@@ -109,10 +126,39 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     if (['html', 'htm'].includes(ext)) {
       return { label: 'HTML', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/20', icon: Code };
     }
+    if (ext === 'json') {
+      return { label: 'JSON / Slack', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', icon: Code };
+    }
     if (['md', 'markdown'].includes(ext)) {
       return { label: 'MD', color: 'text-amber-500 bg-amber-500/10 border-amber-500/20', icon: FileText };
     }
+    if (ext === 'zip') {
+      return { label: 'ZIP', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20', icon: Archive };
+    }
     return { label: ext.toUpperCase() || 'TXT', color: 'text-slate-500 bg-slate-500/10 border-slate-500/20', icon: FileText };
+  };
+
+  const handleZipPreview = async (file: File) => {
+    setIsZipPreviewing(true);
+    setOverallError(null);
+    setZipFile(file);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('workspace', workspaceId);
+      if (collectionId) formData.append('collection', collectionId);
+      formData.append('authority_level', authorityLevel.toString());
+      formData.append('description', description);
+
+      const job = await api.previewZipArchive(formData);
+      setZipJob(job);
+    } catch (err: any) {
+      setOverallError(err.message || 'ZIP archive validation and security scan failed.');
+      setZipFile(null);
+      setZipJob(null);
+    } finally {
+      setIsZipPreviewing(false);
+    }
   };
 
   const addFiles = async (filesToAdd: File[]) => {
@@ -120,10 +166,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setOverallError(null);
     setUploadSummary(null);
 
+    // If single ZIP archive selected, route to ZIP Engine Preview
+    if (filesToAdd.length === 1 && filesToAdd[0].name.toLowerCase().endsWith('.zip')) {
+      await handleZipPreview(filesToAdd[0]);
+      return;
+    }
+
     const newItems: UploadFileItem[] = [];
 
     for (const f of filesToAdd) {
-      // Avoid duplicate additions in the same upload batch
+      if (f.name.toLowerCase().endsWith('.zip')) {
+        // If multiple files include a zip, alert user to upload zip archives individually
+        setOverallError('ZIP archives should be uploaded individually to inspect and preview archive contents.');
+        continue;
+      }
       const alreadyInList = fileList.some(item => item.file.name === f.name && item.file.size === f.size);
       if (alreadyInList) continue;
 
@@ -146,7 +202,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
     setFileList(prev => [...prev, ...newItems]);
 
-    // Asynchronously compute SHA-256 for provenance & deduplication checking
     for (const item of newItems) {
       computeSHA256(item.file).then(hashHex => {
         setFileList(prev => prev.map(f => f.id === item.id ? { ...f, sha256: hashHex } : f));
@@ -157,7 +212,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       addFiles(Array.from(e.target.files));
-      // Reset input value so same files can be re-selected if removed
       e.target.value = '';
     }
   };
@@ -179,12 +233,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   const handleClearAll = () => {
-    if (isUploading) return;
+    if (isUploading || isZipImporting) return;
     setFileList([]);
+    setZipFile(null);
+    setZipJob(null);
     setOverallError(null);
     setUploadSummary(null);
   };
 
+  // Regular multi-file upload submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileList.length) {
@@ -196,7 +253,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setOverallError(null);
     setUploadSummary(null);
 
-    // Mark all pending files as uploading
     setFileList(prev => prev.map(f => ({ ...f, status: 'uploading', error: undefined })));
 
     try {
@@ -212,14 +268,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         formData.append('collection', collectionId);
       }
 
-      // Pass map of individual titles to prevent cross-document title conflation and RAG hallucination
       const titlesMap: Record<string, string> = {};
       fileList.forEach(item => {
         titlesMap[item.file.name] = item.title.trim() || item.file.name;
       });
       formData.append('titles', JSON.stringify(titlesMap));
 
-      // Call bulk upload endpoint with partial-failure resilience
       const res = await api.bulkUploadDocuments(formData);
 
       let successCount = 0;
@@ -278,6 +332,53 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     }
   };
 
+  // ZIP Import Actions
+  const handleStartZipImport = async () => {
+    if (!zipJob) return;
+    setIsZipImporting(true);
+    setOverallError(null);
+    try {
+      const updatedJob = await api.startZipImport(zipJob.id);
+      setZipJob(updatedJob);
+      const firstImported = updatedJob.entries.find(e => e.status === 'imported' && e.document_id);
+      if (firstImported && firstImported.document_id) {
+        onUploadSuccess(firstImported.document_id, firstImported.ingestion_job_id || '');
+      }
+    } catch (err: any) {
+      setOverallError(err.message || 'ZIP import processing failed.');
+    } finally {
+      setIsZipImporting(false);
+    }
+  };
+
+  const handleCancelZipImport = async () => {
+    if (!zipJob) return;
+    try {
+      const cancelledJob = await api.cancelZipImport(zipJob.id);
+      setZipJob(cancelledJob);
+    } catch (err: any) {
+      setOverallError(err.message || 'Failed to cancel ZIP import.');
+    }
+  };
+
+  const handleRetryZipFailed = async () => {
+    if (!zipJob) return;
+    setIsZipImporting(true);
+    setOverallError(null);
+    try {
+      const retriedJob = await api.retryZipImport(zipJob.id);
+      setZipJob(retriedJob);
+      const firstImported = retriedJob.entries.find(e => e.status === 'imported' && e.document_id);
+      if (firstImported && firstImported.document_id) {
+        onUploadSuccess(firstImported.document_id, firstImported.ingestion_job_id || '');
+      }
+    } catch (err: any) {
+      setOverallError(err.message || 'Failed to retry failed entries.');
+    } finally {
+      setIsZipImporting(false);
+    }
+  };
+
   const totalSizeMB = (fileList.reduce((acc, curr) => acc + curr.sizeBytes, 0) / (1024 * 1024)).toFixed(2);
   const isAllCompleted = fileList.length > 0 && fileList.every(f => f.status === 'completed');
 
@@ -290,6 +391,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     { rank: 2, label: 'Wiki Entry (Rank 2)', desc: 'Internal engineering wiki (provisional, condition-governed).' },
     { rank: 1, label: 'Informal Note (Rank 1)', desc: 'Meeting minutes, procurement notes, Slack updates.' },
   ];
+
+  const filteredZipEntries = zipJob?.entries.filter(e => {
+    if (zipFilter === 'supported') return e.is_supported;
+    if (zipFilter === 'unsupported') return !e.is_supported;
+    return true;
+  }) || [];
 
   return (
     <div 
@@ -317,14 +424,26 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 color: 'var(--brand-accent)',
               }}
             >
-              <Upload className="w-4 h-4" />
+              {zipJob || zipFile ? <Archive className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-bold text-[var(--text-primary)]">
-                  {t('upload.modal_title')}
+                  {zipJob || zipFile ? 'ZIP Archive Ingestion Engine' : t('upload.modal_title')}
                 </h3>
-                {fileList.length > 0 && (
+                {zipJob && (
+                  <span 
+                    className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--brand-accent)'
+                    }}
+                  >
+                    {zipJob.supported_entries} Supported / {zipJob.total_entries} Files
+                  </span>
+                )}
+                {!zipJob && fileList.length > 0 && (
                   <span 
                     className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
                     style={{
@@ -338,13 +457,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 )}
               </div>
               <p className="text-xs text-[var(--text-muted)] line-clamp-1 mt-0.5">
-                {t('upload.supported_formats')}
+                {zipJob || zipFile 
+                  ? 'Deep security verified (Zip Slip, Bomb, & Encryption shielded)' 
+                  : t('upload.supported_formats')}
               </p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            disabled={isUploading}
+            disabled={isUploading || isZipImporting}
             className="p-1.5 rounded-xl border transition cursor-pointer hover:border-[var(--brand-accent)] disabled:opacity-50"
             style={{
               backgroundColor: 'var(--bg-surface-soft)',
@@ -356,381 +477,727 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
-          {overallError && (
-            <div 
-              className="p-3 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in"
-              style={{
-                backgroundColor: 'var(--error-bg)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--error)',
-              }}
-            >
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{overallError}</span>
-            </div>
-          )}
-
-          {uploadSummary && (
-            <div 
-              className="p-3.5 rounded-xl border text-xs flex items-center justify-between animate-in fade-in"
-              style={{
-                backgroundColor: uploadSummary.failed === 0 ? 'var(--success-bg)' : 'var(--bg-surface-soft)',
-                borderColor: uploadSummary.failed === 0 ? 'var(--success)' : 'var(--border-color)',
-                color: uploadSummary.failed === 0 ? 'var(--success)' : 'var(--text-primary)',
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-[var(--success)]" />
-                <span>
-                  {uploadSummary.success} document{uploadSummary.success > 1 ? 's' : ''} successfully ingested into the knowledge grid.
-                  {uploadSummary.failed > 0 && ` (${uploadSummary.failed} failed)`}
-                </span>
-              </div>
-              <span className="text-[11px] font-mono opacity-80">6-Stage Settlement Passed</span>
-            </div>
-          )}
-
-          {/* Hidden multi-file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            onChange={handleFileChange}
-            className="hidden"
-            accept=".pdf,.docx,.txt,.md,.markdown,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.tiff,.tif,.webp,.pptx,.ppt,.html,.htm"
-          />
-
-          {/* Drag & Drop Zone */}
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-            onClick={() => !isUploading && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all duration-200 ${
-              isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:border-[var(--brand-accent)]'
-            }`}
-            style={{
-              backgroundColor: 'var(--bg-surface-soft)',
-              borderColor: 'var(--border-color)',
-            }}
-          >
-            <div className="flex flex-col items-center">
+        {/* ========================================================================= */}
+        {/* VIEW 1: ZIP ARCHIVE INSPECTOR & IMPORT WORKBENCH */}
+        {/* ========================================================================= */}
+        {zipJob || isZipPreviewing ? (
+          <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+            {overallError && (
               <div 
-                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-2.5 border"
+                className="p-3 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in"
                 style={{
-                  backgroundColor: 'var(--accent-light)',
+                  backgroundColor: 'var(--error-bg)',
                   borderColor: 'var(--border-color)',
-                  color: 'var(--brand-accent)',
+                  color: 'var(--error)',
                 }}
               >
-                <Upload className="w-6 h-6" />
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{overallError}</span>
               </div>
-              <span className="text-xs sm:text-sm font-bold text-[var(--text-primary)]">
-                {t('upload.drag_drop')}
-              </span>
-              <span className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5">
-                {t('upload.or_browse')}
-              </span>
+            )}
 
-              {/* Supported format badges */}
-              <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3 pt-3 border-t border-[var(--border-color)]/60 max-w-md">
-                {['PDF', 'DOCX', 'XLSX', 'CSV', 'PPTX', 'PNG / JPG', 'TIFF', 'HTML', 'Markdown'].map(fmt => (
-                  <span 
-                    key={fmt} 
-                    className="text-[10px] font-medium px-2 py-0.5 rounded-md border"
+            {isZipPreviewing ? (
+              <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
+                <div className="w-10 h-10 border-3 border-[var(--brand-accent)]/30 border-t-[var(--brand-accent)] rounded-full animate-spin" />
+                <span className="text-sm font-bold text-[var(--text-primary)]">
+                  Inspecting ZIP archive & running security pre-scan...
+                </span>
+                <span className="text-xs text-[var(--text-muted)] max-w-sm">
+                  Checking for Zip Slip path traversals, decompression ratios, magic byte integrity, and nested archives.
+                </span>
+              </div>
+            ) : zipJob && (
+              <>
+                {/* Archive Metadata Bar */}
+                <div 
+                  className="p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0"
+                      style={{
+                        backgroundColor: 'var(--accent-light)',
+                        borderColor: 'var(--border-color)',
+                        color: 'var(--brand-accent)'
+                      }}
+                    >
+                      <Archive className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm block text-[var(--text-primary)]">
+                          {zipJob.archive_filename}
+                        </span>
+                        {zipJob.is_slack_export && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#4A154B]/20 text-[#ECB22E] border border-[#E01E5A]/30">
+                            Slack Workspace Export
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                        {(zipJob.archive_size / (1024 * 1024)).toFixed(2)} MB • SHA-256: {zipJob.archive_hash.substring(0, 16)}...
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Summary Status Badges */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span 
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1"
+                      style={{
+                        backgroundColor: 'var(--success-bg)',
+                        color: 'var(--success)',
+                        borderColor: 'var(--border-color)'
+                      }}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{zipJob.supported_entries} Supported</span>
+                    </span>
+
+                    {zipJob.unsupported_entries > 0 && (
+                      <span 
+                        className="px-2.5 py-1 rounded-lg text-xs font-semibold border flex items-center gap-1"
+                        style={{
+                          backgroundColor: 'var(--warning-bg)',
+                          color: 'var(--warning)',
+                          borderColor: 'var(--border-color)'
+                        }}
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>{zipJob.unsupported_entries} Skipped</span>
+                      </span>
+                    )}
+
+                    <span 
+                      className="px-2.5 py-1 rounded-lg text-xs font-mono font-semibold uppercase border"
+                      style={{
+                        backgroundColor: 'var(--bg-surface)',
+                        color: 'var(--text-secondary)',
+                        borderColor: 'var(--border-color)'
+                      }}
+                    >
+                      {zipJob.status}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-2 border-b pb-2" style={{ borderColor: 'var(--border-color)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setZipFilter('all')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      zipFilter === 'all' ? 'bg-[var(--accent-light)] text-[var(--brand-accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    All Entries ({zipJob.total_entries})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZipFilter('supported')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      zipFilter === 'supported' ? 'bg-[var(--accent-light)] text-[var(--brand-accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Supported ({zipJob.supported_entries})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZipFilter('unsupported')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      zipFilter === 'unsupported' ? 'bg-[var(--accent-light)] text-[var(--brand-accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Unsupported / Skipped ({zipJob.unsupported_entries})
+                  </button>
+                </div>
+
+                {/* Entry List */}
+                <div 
+                  className="border rounded-2xl divide-y max-h-64 overflow-y-auto"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)'
+                  }}
+                >
+                  {filteredZipEntries.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-[var(--text-muted)]">
+                      No files match the selected filter.
+                    </div>
+                  ) : (
+                    filteredZipEntries.map(entry => {
+                      const badge = getFormatBadge(entry.sanitized_filename);
+                      const BadgeIcon = badge.icon;
+
+                      return (
+                        <div key={entry.id} className="p-3 flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1 ${badge.color}`}>
+                              <BadgeIcon className="w-3 h-3" />
+                              <span>{badge.label}</span>
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold block truncate text-[var(--text-primary)]">
+                                  {entry.entry_path}
+                                </span>
+                                {entry.is_private && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-0.5">
+                                    <Shield className="w-2.5 h-2.5" />
+                                    Private / Restricted
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-[var(--text-muted)]">
+                                {(entry.file_size / 1024).toFixed(1)} KB
+                                {entry.skip_reason && (
+                                  <span className="text-[var(--warning)] ml-2">• {entry.skip_reason}</span>
+                                )}
+                                {entry.error_message && (
+                                  <span className="text-[var(--error)] ml-2 font-semibold">• {entry.error_message}</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Status Badge */}
+                          <div className="flex-shrink-0">
+                            {entry.status === 'imported' && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--success)]">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Imported</span>
+                              </span>
+                            )}
+                            {entry.status === 'failed' && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--error)]">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                <span>Failed</span>
+                              </span>
+                            )}
+                            {entry.status === 'skipped' && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-muted)]">
+                                <Ban className="w-3.5 h-3.5" />
+                                <span>Skipped</span>
+                              </span>
+                            )}
+                            {entry.status === 'cancelled' && (
+                              <span className="text-[11px] text-[var(--text-muted)]">Cancelled</span>
+                            )}
+                            {entry.status === 'pending' && (
+                              <span className="text-[11px] text-[var(--brand-accent)] font-medium">Ready</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Governance Options */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                      {t('upload.collection_label')}
+                    </label>
+                    <select
+                      value={collectionId}
+                      disabled={isZipImporting || zipJob.status !== 'previewed'}
+                      onChange={(e) => setCollectionId(e.target.value)}
+                      className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none cursor-pointer disabled:opacity-50"
+                      style={{
+                        backgroundColor: 'var(--input-bg)',
+                        borderColor: 'var(--input-border)',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <option value="">{t('upload.default_collection')}</option>
+                      {collections.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1 flex items-center justify-between">
+                      <span>Authority Ladder (LORE L6)</span>
+                      <span className="text-[10px] text-[var(--text-muted)]">Precedence Rank</span>
+                    </label>
+                    <select
+                      value={authorityLevel}
+                      disabled={isZipImporting || zipJob.status !== 'previewed'}
+                      onChange={(e) => setAuthorityLevel(Number(e.target.value))}
+                      className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none cursor-pointer disabled:opacity-50"
+                      style={{
+                        backgroundColor: 'var(--input-bg)',
+                        borderColor: 'var(--input-border)',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      {authorityLadder.map(item => (
+                        <option key={item.rank} value={item.rank}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Progress or Completion Bar */}
+                {['completed', 'partial_success', 'failed'].includes(zipJob.status) && (
+                  <div 
+                    className="p-3.5 rounded-xl border text-xs flex items-center justify-between animate-in fade-in"
                     style={{
-                      backgroundColor: 'var(--bg-surface)',
-                      borderColor: 'var(--border-color)',
-                      color: 'var(--text-secondary)'
+                      backgroundColor: zipJob.failed_count === 0 ? 'var(--success-bg)' : 'var(--bg-surface-soft)',
+                      borderColor: zipJob.failed_count === 0 ? 'var(--success)' : 'var(--border-color)',
+                      color: zipJob.failed_count === 0 ? 'var(--success)' : 'var(--text-primary)',
                     }}
                   >
-                    {fmt}
-                  </span>
-                ))}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-[var(--success)]" />
+                      <span>
+                        Import finished: <strong>{zipJob.success_count}</strong> imported, <strong>{zipJob.failed_count}</strong> failed, <strong>{zipJob.skipped_count}</strong> skipped.
+                      </span>
+                    </div>
+
+                    <a
+                      href={api.getZipImportSummaryCsvUrl(zipJob.id)}
+                      download
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-semibold transition hover:bg-[var(--bg-surface)] text-[var(--text-primary)] cursor-pointer"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    >
+                      <Download className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                      <span>Summary CSV</span>
+                    </a>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ZIP Actions Footer */}
+            <div 
+              className="pt-3 flex items-center justify-between border-t flex-shrink-0"
+              style={{ borderColor: 'var(--border-color)' }}
+            >
+              <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                <span>Zip Slip Traversal & Bomb Protected</span>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  disabled={isZipImporting}
+                  className="px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl border transition cursor-pointer disabled:opacity-50"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Clear Archive
+                </button>
+
+                {zipJob?.status === 'previewed' && (
+                  <button
+                    type="button"
+                    onClick={handleStartZipImport}
+                    disabled={zipJob.supported_entries === 0 || isZipImporting}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer active:scale-95 disabled:opacity-50"
+                    style={{
+                      backgroundColor: 'var(--brand-accent)',
+                      color: 'var(--cta-text)',
+                    }}
+                  >
+                    {isZipImporting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Importing Archive...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Start Import ({zipJob.supported_entries})</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {isZipImporting && (
+                  <button
+                    type="button"
+                    onClick={handleCancelZipImport}
+                    className="px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl border transition text-[var(--error)] border-[var(--error)] cursor-pointer"
+                  >
+                    Cancel Import
+                  </button>
+                )}
+
+                {zipJob && ['completed', 'partial_success', 'failed'].includes(zipJob.status) && (
+                  <>
+                    {zipJob.failed_count > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleRetryZipFailed}
+                        disabled={isZipImporting}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition cursor-pointer active:scale-95"
+                        style={{
+                          backgroundColor: 'var(--warning-bg)',
+                          borderColor: 'var(--warning)',
+                          color: 'var(--warning)'
+                        }}
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Retry Failed ({zipJob.failed_count})</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer active:scale-95"
+                      style={{
+                        backgroundColor: 'var(--brand-accent)',
+                        color: 'var(--cta-text)',
+                      }}
+                    >
+                      <span>Done</span>
+                      <Check className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
+        ) : (
+          /* ========================================================================= */
+          /* VIEW 2: STANDARD SINGLE & MULTI-FILE UPLOAD WORKBENCH (UNTOUCHED LOGIC) */
+          /* ========================================================================= */
+          <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+            {overallError && (
+              <div 
+                className="p-3 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in"
+                style={{
+                  backgroundColor: 'var(--error-bg)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--error)',
+                }}
+              >
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{overallError}</span>
+              </div>
+            )}
 
-          {/* Queued Files List with Anti-Hallucination Titles */}
-          {fileList.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs font-semibold text-[var(--text-secondary)]">
-                <span className="flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
-                  <span>{t('upload.individual_titles')}</span>
-                </span>
+            {uploadSummary && (
+              <div 
+                className="p-3.5 rounded-xl border text-xs flex items-center justify-between animate-in fade-in"
+                style={{
+                  backgroundColor: uploadSummary.failed === 0 ? 'var(--success-bg)' : 'var(--bg-surface-soft)',
+                  borderColor: uploadSummary.failed === 0 ? 'var(--success)' : 'var(--border-color)',
+                  color: uploadSummary.failed === 0 ? 'var(--success)' : 'var(--text-primary)',
+                }}
+              >
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                    className="text-[11px] font-medium text-[var(--brand-accent)] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>{t('upload.add_more')}</span>
-                  </button>
-                  <span className="text-[var(--border-color)]">•</span>
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-[var(--success)]" />
+                  <span>
+                    {uploadSummary.success} document{uploadSummary.success > 1 ? 's' : ''} successfully ingested into the knowledge grid.
+                    {uploadSummary.failed > 0 && ` (${uploadSummary.failed} failed)`}
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono opacity-80">6-Stage Settlement Passed</span>
+              </div>
+            )}
+
+            {/* Hidden multi-file input with ZIP and JSON enabled */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileChange}
+              className="hidden"
+              accept=".pdf,.docx,.txt,.md,.markdown,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.tiff,.tif,.webp,.pptx,.ppt,.html,.htm,.zip,.json"
+            />
+
+            {/* Drag & Drop Zone */}
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              onClick={() => !isUploading && fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all duration-200 ${
+                isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:border-[var(--brand-accent)]'
+              }`}
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <div className="flex flex-col items-center">
+                <div 
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center mb-2.5 border"
+                  style={{
+                    backgroundColor: 'var(--accent-light)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--brand-accent)',
+                  }}
+                >
+                  <Upload className="w-6 h-6" />
+                </div>
+                <span className="text-xs sm:text-sm font-bold text-[var(--text-primary)]">
+                  {t('upload.drag_drop')}
+                </span>
+                <span className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5">
+                  {t('upload.or_browse')}
+                </span>
+
+                {/* Supported format badges including ZIP, Slack, PPTX */}
+                <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3 pt-3 border-t border-[var(--border-color)]/60 max-w-md">
+                  {['ZIP Archive', 'Slack Export', 'PPTX', 'PDF', 'DOCX', 'XLSX', 'CSV', 'PNG / JPG', 'HTML', 'Markdown', 'JSON'].map(fmt => (
+                    <span 
+                      key={fmt} 
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${
+                        fmt === 'ZIP Archive' || fmt === 'Slack Export' ? 'border-[var(--brand-accent)]/40 text-[var(--brand-accent)] font-semibold' : ''
+                      }`}
+                      style={{
+                        backgroundColor: 'var(--bg-surface)',
+                        borderColor: fmt === 'ZIP Archive' ? undefined : 'var(--border-color)',
+                        color: fmt === 'ZIP Archive' ? undefined : 'var(--text-secondary)'
+                      }}
+                    >
+                      {fmt}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Selected File List */}
+            {fileList.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-[var(--text-secondary)] px-1">
+                  <span>Selected Documents ({fileList.length})</span>
                   <button
                     type="button"
                     onClick={handleClearAll}
                     disabled={isUploading}
-                    className="text-[11px] font-medium text-[var(--text-muted)] hover:text-red-500 cursor-pointer disabled:opacity-50"
+                    className="text-[11px] text-[var(--text-muted)] hover:text-[var(--error)] transition cursor-pointer"
                   >
-                    {t('upload.clear_all')}
+                    Clear All
                   </button>
                 </div>
-              </div>
 
-              <div 
-                className="max-h-56 overflow-y-auto space-y-2 pr-1 rounded-xl"
-              >
-                {fileList.map((item, idx) => {
-                  const badge = getFormatBadge(item.file.name);
-                  const BadgeIcon = badge.icon;
-                  const sizeMB = (item.sizeBytes / (1024 * 1024)).toFixed(2);
-
-                  return (
-                    <div 
-                      key={item.id}
-                      className="p-3 rounded-xl border transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                      style={{
-                        backgroundColor: item.status === 'completed' ? 'var(--accent-light)' : 'var(--bg-surface-soft)',
-                        borderColor: item.status === 'failed' ? 'var(--error)' : 'var(--border-color)',
-                      }}
-                    >
-                      {/* Left: format badge + editable title & details */}
-                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                        <div className={`px-2 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 flex-shrink-0 ${badge.color}`}>
-                          <BadgeIcon className="w-3.5 h-3.5" />
-                          <span>{badge.label}</span>
+                <div 
+                  className="border rounded-2xl divide-y max-h-56 overflow-y-auto"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  {fileList.map((item) => {
+                    const badge = getFormatBadge(item.file.name);
+                    const BadgeIcon = badge.icon;
+                    return (
+                      <div key={item.id} className="p-3 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <span className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1 ${badge.color}`}>
+                            <BadgeIcon className="w-3 h-3" />
+                            <span>{badge.label}</span>
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <input
+                              type="text"
+                              value={item.title}
+                              disabled={isUploading || item.status === 'completed'}
+                              onChange={(e) => handleTitleChange(item.id, e.target.value)}
+                              className="font-medium text-xs w-full bg-transparent border-b border-transparent hover:border-[var(--border-color)] focus:border-[var(--brand-accent)] focus:outline-none transition py-0.5 text-[var(--text-primary)]"
+                              placeholder="Document title"
+                            />
+                            <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] font-mono">
+                              <span>{(item.sizeBytes / 1024).toFixed(1)} KB</span>
+                              {item.sha256 && (
+                                <span className="truncate max-w-[140px]" title={item.sha256}>
+                                  SHA: {item.sha256.substring(0, 10)}...
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="flex-1 min-w-0">
-                          {/* Individual title input for contextual grounding */}
-                          <input
-                            type="text"
-                            value={item.title}
-                            disabled={isUploading || item.status === 'completed'}
-                            onChange={(e) => handleTitleChange(item.id, e.target.value)}
-                            placeholder="Enter distinct document title..."
-                            className="w-full text-xs font-semibold px-2 py-1 rounded-lg border focus:outline-none transition-colors"
-                            style={{
-                              backgroundColor: 'var(--input-bg)',
-                              borderColor: 'var(--input-border)',
-                              color: 'var(--text-primary)',
-                            }}
-                          />
-                          <div className="flex items-center gap-2 mt-1 text-[11px] text-[var(--text-muted)]">
-                            <span className="truncate max-w-[180px] sm:max-w-[240px]" title={item.file.name}>
-                              {item.file.name}
+                        {/* Status / Remove Action */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {item.status === 'completed' && (
+                            <span className="text-[11px] text-[var(--success)] font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Ready</span>
                             </span>
-                            <span>•</span>
-                            <span>{sizeMB} MB</span>
-                            {item.sha256 && (
-                              <>
-                                <span>•</span>
-                                <span className="font-mono text-[10px] truncate max-w-[100px]" title={`SHA-256: ${item.sha256}`}>
-                                  {item.sha256.substring(0, 8)}...
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {item.error && (
-                            <div className="text-[11px] text-[var(--error)] mt-1 flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                              <span>{item.error}</span>
-                            </div>
+                          )}
+                          {item.status === 'failed' && (
+                            <span className="text-[11px] text-[var(--error)] font-semibold flex items-center gap-1" title={item.error}>
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>Failed</span>
+                            </span>
+                          )}
+                          {item.status === 'uploading' && (
+                            <div className="w-4 h-4 border-2 border-[var(--brand-accent)]/30 border-t-[var(--brand-accent)] rounded-full animate-spin" />
+                          )}
+                          {item.status === 'pending' && !isUploading && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFile(item.id)}
+                              className="p-1 rounded-lg hover:bg-[var(--bg-surface-soft)] text-[var(--text-muted)] hover:text-[var(--error)] transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           )}
                         </div>
                       </div>
-
-                      {/* Right: status indicator & delete button */}
-                      <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
-                        {item.status === 'pending' && (
-                          <span 
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md border text-[var(--text-muted)]"
-                            style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-surface)' }}
-                          >
-                            {t('upload.ready_badge')}
-                          </span>
-                        )}
-                        {item.status === 'uploading' && (
-                          <span className="flex items-center gap-1 text-[11px] font-semibold text-[var(--brand-accent)]">
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            <span>{t('upload.ingesting_badge')}</span>
-                          </span>
-                        )}
-                        {item.status === 'completed' && (
-                          <span className="flex items-center gap-1 text-[11px] font-semibold text-[var(--success)]">
-                            <Check className="w-3.5 h-3.5" />
-                            <span>{t('upload.indexed_badge')}</span>
-                          </span>
-                        )}
-                        {item.status === 'failed' && (
-                          <span className="flex items-center gap-1 text-[11px] font-semibold text-[var(--error)]">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            <span>{t('upload.error_badge')}</span>
-                          </span>
-                        )}
-
-                        {!isUploading && item.status !== 'completed' && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFile(item.id)}
-                            className="p-1 rounded-lg border text-[var(--text-muted)] hover:text-red-500 hover:border-red-500/30 transition cursor-pointer"
-                            style={{ borderColor: 'var(--border-color)' }}
-                            title="Remove from queue"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Collection & Authority Ladder */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-                {t('upload.collection_label')}
-              </label>
-              <select
-                value={collectionId}
-                disabled={isUploading}
-                onChange={(e) => setCollectionId(e.target.value)}
-                className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none cursor-pointer disabled:opacity-50"
-                style={{
-                  backgroundColor: 'var(--input-bg)',
-                  borderColor: 'var(--input-border)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <option value="">{t('upload.default_collection')}</option>
-                {collections.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1 flex items-center justify-between">
-                <span>Authority Ladder (LORE L6)</span>
-                <span className="text-[10px] text-[var(--text-muted)]">Precedence Rank</span>
-              </label>
-              <select
-                value={authorityLevel}
-                disabled={isUploading}
-                onChange={(e) => setAuthorityLevel(Number(e.target.value))}
-                className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none cursor-pointer disabled:opacity-50"
-                style={{
-                  backgroundColor: 'var(--input-bg)',
-                  borderColor: 'var(--input-border)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                {authorityLadder.map(item => (
-                  <option key={item.rank} value={item.rank}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Description (Optional) */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-              Batch Ingestion Notes (Optional)
-            </label>
-            <input
-              type="text"
-              value={description}
-              disabled={isUploading}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Q3 Audited Financial Statements, HR Onboarding Guidelines..."
-              className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none disabled:opacity-50"
-              style={{
-                backgroundColor: 'var(--input-bg)',
-                borderColor: 'var(--input-border)',
-                color: 'var(--text-primary)',
-              }}
-            />
-          </div>
-
-          {/* Action Buttons */}
-          <div 
-            className="pt-3 flex items-center justify-between border-t flex-shrink-0"
-            style={{ borderColor: 'var(--border-color)' }}
-          >
-            <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
-              <span>Grounded in Six-Stage Settlement Gate</span>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isUploading}
-                className="px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl border transition cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--bg-surface-soft)',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                {isAllCompleted ? 'Close' : t('common.cancel')}
-              </button>
-
-              {!isAllCompleted ? (
-                <button
-                  type="submit"
-                  disabled={fileList.length === 0 || isUploading}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer active:scale-95 disabled:opacity-50"
+            {/* Target Collection & Authority Selection */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  {t('upload.collection_label')}
+                </label>
+                <select
+                  value={collectionId}
+                  disabled={isUploading}
+                  onChange={(e) => setCollectionId(e.target.value)}
+                  className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none cursor-pointer disabled:opacity-50"
                   style={{
-                    backgroundColor: 'var(--brand-accent)',
-                    color: 'var(--cta-text)',
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--text-primary)',
                   }}
                 >
-                  {isUploading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>{t('upload.processing_btn')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>
-                        {fileList.length > 1 
-                          ? `${t('upload.ingest_all')} (${fileList.length})` 
-                          : t('upload.start_btn')}
-                      </span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              ) : (
+                  <option value="">{t('upload.default_collection')}</option>
+                  {collections.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1 flex items-center justify-between">
+                  <span>Authority Ladder (LORE L6)</span>
+                  <span className="text-[10px] text-[var(--text-muted)]">Precedence Rank</span>
+                </label>
+                <select
+                  value={authorityLevel}
+                  disabled={isUploading}
+                  onChange={(e) => setAuthorityLevel(Number(e.target.value))}
+                  className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none cursor-pointer disabled:opacity-50"
+                  style={{
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {authorityLadder.map(item => (
+                    <option key={item.rank} value={item.rank}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Description (Optional) */}
+            <div>
+              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                Batch Ingestion Notes (Optional)
+              </label>
+              <input
+                type="text"
+                value={description}
+                disabled={isUploading}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Q3 Audited Financial Statements, HR Onboarding Guidelines..."
+                className="w-full border rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none disabled:opacity-50"
+                style={{
+                  backgroundColor: 'var(--input-bg)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--text-primary)',
+                }}
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div 
+              className="pt-3 flex items-center justify-between border-t flex-shrink-0"
+              style={{ borderColor: 'var(--border-color)' }}
+            >
+              <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                <span>Grounded in Six-Stage Settlement Gate</span>
+              </div>
+
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer active:scale-95"
+                  disabled={isUploading}
+                  className="px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl border transition cursor-pointer"
                   style={{
-                    backgroundColor: 'var(--brand-accent)',
-                    color: 'var(--cta-text)',
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-secondary)',
                   }}
                 >
-                  <span>Done</span>
-                  <Check className="w-4 h-4" />
+                  {isAllCompleted ? 'Close' : t('common.cancel')}
                 </button>
-              )}
+
+                {!isAllCompleted ? (
+                  <button
+                    type="submit"
+                    disabled={fileList.length === 0 || isUploading}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer active:scale-95 disabled:opacity-50"
+                    style={{
+                      backgroundColor: 'var(--brand-accent)',
+                      color: 'var(--cta-text)',
+                    }}
+                  >
+                    {isUploading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>{t('upload.processing_btn')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          {fileList.length > 1 
+                            ? `${t('upload.ingest_all')} (${fileList.length})` 
+                            : t('upload.start_btn')}
+                        </span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer active:scale-95"
+                    style={{
+                      backgroundColor: 'var(--brand-accent)',
+                      color: 'var(--cta-text)',
+                    }}
+                  >
+                    <span>Done</span>
+                    <Check className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </div>
   );

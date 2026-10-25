@@ -117,3 +117,88 @@ class DocumentPage(models.Model):
 
     def __str__(self):
         return f"{self.document.title} - Page {self.page_number} ({self.confidence:.2f})"
+
+
+class ZipImportJob(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('previewed', 'Previewed'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('partial_success', 'Partial Success'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='zip_import_jobs')
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='zip_import_jobs')
+    collection = models.ForeignKey(Collection, on_delete=models.SET_NULL, null=True, blank=True, related_name='zip_import_jobs')
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='zip_import_jobs')
+
+    archive_filename = models.CharField(max_length=255)
+    archive_size = models.PositiveBigIntegerField(default=0)
+    archive_hash = models.CharField(max_length=64, db_index=True)
+    archive_file = models.FileField(upload_to='zip_archives/%Y/%m/', null=True, blank=True)
+
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pending')
+    is_slack_export = models.BooleanField(default=False)
+    total_entries = models.PositiveIntegerField(default=0)
+    supported_entries = models.PositiveIntegerField(default=0)
+    unsupported_entries = models.PositiveIntegerField(default=0)
+    success_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+
+    authority_level = models.PositiveSmallIntegerField(choices=SourceDocument.AUTHORITY_LEVELS, default=3)
+    description = models.TextField(blank=True, default='')
+    error_message = models.TextField(blank=True, default='')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"ZipImportJob {self.id} ({self.archive_filename}) [{self.status}]"
+
+
+class ZipImportEntry(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('imported', 'Imported'),
+        ('failed', 'Failed'),
+        ('skipped', 'Skipped'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    import_job = models.ForeignKey(ZipImportJob, on_delete=models.CASCADE, related_name='entries')
+    entry_path = models.CharField(max_length=500)
+    sanitized_filename = models.CharField(max_length=255)
+    file_size = models.PositiveBigIntegerField(default=0)
+    compressed_size = models.PositiveBigIntegerField(default=0)
+    file_hash = models.CharField(max_length=64, blank=True, default='')
+    mime_type = models.CharField(max_length=100, blank=True, default='')
+    document_type = models.CharField(max_length=50, blank=True, default='')
+    is_supported = models.BooleanField(default=False)
+    is_nested_archive = models.BooleanField(default=False)
+    is_private = models.BooleanField(default=False)
+    skip_reason = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pending')
+
+    document = models.ForeignKey(SourceDocument, null=True, blank=True, on_delete=models.SET_NULL, related_name='zip_entry')
+    ingestion_job = models.ForeignKey('ingestion.IngestionJob', null=True, blank=True, on_delete=models.SET_NULL, related_name='zip_entry')
+    error_message = models.TextField(blank=True, default='')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['entry_path']
+
+    def __str__(self):
+        return f"{self.sanitized_filename} ({self.status})"
+

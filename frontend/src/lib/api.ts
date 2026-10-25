@@ -106,6 +106,56 @@ export interface IngestionJob {
   updated_at: string;
 }
 
+export interface ZipImportEntry {
+  id: string;
+  entry_path: string;
+  sanitized_filename: string;
+  file_size: number;
+  compressed_size: number;
+  file_hash: string;
+  mime_type: string;
+  document_type: string;
+  is_supported: boolean;
+  is_nested_archive: boolean;
+  is_private?: boolean;
+  skip_reason: string;
+  status: 'pending' | 'imported' | 'failed' | 'skipped' | 'cancelled';
+  document_id: string | null;
+  ingestion_job_id: string | null;
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZipImportJob {
+  id: string;
+  organization: string;
+  workspace: string;
+  workspace_name: string;
+  collection: string | null;
+  collection_name: string | null;
+  owner: number | null;
+  owner_username: string;
+  archive_filename: string;
+  archive_size: number;
+  archive_hash: string;
+  is_slack_export?: boolean;
+  status: 'pending' | 'previewed' | 'processing' | 'completed' | 'partial_success' | 'failed' | 'cancelled';
+  total_entries: number;
+  supported_entries: number;
+  unsupported_entries: number;
+  success_count: number;
+  failed_count: number;
+  skipped_count: number;
+  authority_level: number;
+  description: string;
+  error_message: string;
+  entries: ZipImportEntry[];
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 export interface Citation {
   citation_id: string;
   document_id: string;
@@ -390,6 +440,44 @@ class ApiClient {
       method: 'POST',
       body: formData
     });
+  }
+
+  // ZIP Archive Ingestion Engine
+  async previewZipArchive(formData: FormData): Promise<ZipImportJob> {
+    return this.request<ZipImportJob>('/sources/zip-imports/preview/', {
+      method: 'POST',
+      body: formData
+    });
+  }
+
+  async startZipImport(jobId: string): Promise<ZipImportJob> {
+    return this.request<ZipImportJob>(`/sources/zip-imports/${jobId}/start/`, {
+      method: 'POST'
+    });
+  }
+
+  async getZipImportJob(jobId: string): Promise<ZipImportJob> {
+    return this.request<ZipImportJob>(`/sources/zip-imports/${jobId}/`);
+  }
+
+  async cancelZipImport(jobId: string): Promise<ZipImportJob> {
+    return this.request<ZipImportJob>(`/sources/zip-imports/${jobId}/cancel/`, {
+      method: 'POST'
+    });
+  }
+
+  async retryZipImport(jobId: string): Promise<ZipImportJob> {
+    return this.request<ZipImportJob>(`/sources/zip-imports/${jobId}/retry/`, {
+      method: 'POST'
+    });
+  }
+
+  async getZipImportSummary(jobId: string): Promise<any> {
+    return this.request<any>(`/sources/zip-imports/${jobId}/summary/`);
+  }
+
+  getZipImportSummaryCsvUrl(jobId: string): string {
+    return `${API_BASE}/sources/zip-imports/${jobId}/summary/?export=csv`;
   }
 
   async reprocessDocument(id: string) {
