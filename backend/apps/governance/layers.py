@@ -222,6 +222,23 @@ class PermissionLayer:
 
         return PermissionFilterTuple(authorized_chunks, denial_reasons, deduped_reasons)
 
+    @classmethod
+    def can_access_document(cls, doc: Any, user=None, user_role: str = 'member') -> bool:
+        """Evaluates whether the given user/role can access the document."""
+        if not doc or getattr(doc, 'status', None) in ('deleted', 'quarantined', 'failed'):
+            return False
+
+        normalized_role = (user_role or 'member').lower()
+        is_anonymous = (user is None and normalized_role in ('anonymous', 'guest', 'unauthenticated'))
+
+        perm = SourcePermission.objects.filter(document_id=doc.id).first()
+        if perm:
+            return perm.is_user_permitted(user=user, user_role=normalized_role)
+
+        if is_anonymous:
+            return False
+        return normalized_role in cls.INTERNAL_ROLES
+
 
 # ==============================================================================
 # L1 — DECISION INTELLIGENCE LAYER
@@ -1020,6 +1037,7 @@ class TemporalValidityLayer:
             if resolved_status == 'draft':
                 # Check if there is an approved alternative chunk in candidate evidence that directly addresses the query
                 has_approved_alternative = False
+                chk_has_direct_answer = False
                 if query:
                     # If this draft chunk contains direct factual answers (e.g. logging requirements):
                     chk_has_direct_answer = any(

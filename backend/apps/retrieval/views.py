@@ -7,12 +7,16 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+import logging
 
 from apps.workspaces.models import Workspace
 from apps.decisions.models import DecisionRecord
 from .services import HybridRetrievalService
 from apps.decisions.engine import AnswerStateMachine
 from apps.governance.layers import EnterpriseGovernanceEngine
+
+logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
@@ -183,6 +187,73 @@ def governed_query_view(request):
         QuotaEnforcementService.record_query(workspace.organization, workspace, envelope.get('token_count', 0))
     except Exception:
         pass
+
+    # 4. Optional Persistent Chat Turn Recording
+    conversation_id = request.data.get('conversation_id')
+    save_conversation = request.data.get('save_conversation', False) or bool(conversation_id)
+
+    if save_conversation and effective_user:
+        try:
+            from apps.decisions.models import Conversation, ChatMessage
+            from apps.decisions.title_generator import generate_conversation_title
+
+            conv = None
+            if conversation_id:
+                conv = Conversation.objects.filter(
+                    id=conversation_id,
+                    workspace=workspace,
+                    is_deleted=False
+                ).first()
+
+            if not conv:
+                conv_title = generate_conversation_title(query)
+                conv = Conversation.objects.create(
+                    organization=workspace.organization,
+                    workspace=workspace,
+                    user=effective_user,
+                    title=conv_title,
+                    document_id=document_id if document_id else None,
+                    collection_id=collection_id if collection_id else None
+                )
+
+            last_msg = conv.messages.order_by('-sequence_number').first()
+            seq = (last_msg.sequence_number + 1) if last_msg else 1
+
+            client_msg_id = request.data.get('client_message_id', '')
+            user_msg = ChatMessage.objects.create(
+                conversation=conv,
+                role='user',
+                content=query,
+                sequence_number=seq,
+                client_message_id=client_msg_id or '',
+                status='completed'
+            )
+
+            assistant_msg = ChatMessage.objects.create(
+                conversation=conv,
+                role='assistant',
+                content=envelope.get('answer', ''),
+                sequence_number=seq + 1,
+                status='completed',
+                governance_state=envelope.get('state', ''),
+                governance_directive=envelope.get('directive', ''),
+                trace_id=envelope.get('trace_id', ''),
+                citations=envelope.get('citations', []),
+                evidence_missing=envelope.get('evidence_missing', []),
+                conflicts_resolved=envelope.get('conflicts_resolved', []),
+                layers_breakdown=envelope.get('layers_breakdown', {}),
+                retrieval_config={'document_id': document_id, 'collection_id': collection_id}
+            )
+
+            conv.last_activity_at = timezone.now()
+            conv.save(update_fields=['last_activity_at', 'updated_at'])
+
+            envelope['conversation_id'] = str(conv.id)
+            envelope['conversation_title'] = conv.title
+            envelope['user_message_id'] = str(user_msg.id)
+            envelope['assistant_message_id'] = str(assistant_msg.id)
+        except Exception as persist_err:
+            logger.warning(f"Failed to persist conversation turn: {persist_err}")
 
     return Response(envelope)
 

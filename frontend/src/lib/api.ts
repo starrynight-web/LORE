@@ -348,6 +348,56 @@ export interface AuditEvent {
   created_at: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  conversation: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  sequence_number: number;
+  status: 'pending' | 'completed' | 'failed' | 'retrying';
+  error_message?: string;
+  client_message_id?: string;
+  governance_state?: string;
+  governance_directive?: string;
+  trace_id?: string;
+  citations?: Citation[];
+  revalidated_citations?: Citation[];
+  evidence_missing?: Array<{ requirement: string; mandatory?: boolean; status?: string; explanation?: string }>;
+  conflicts_resolved?: any[];
+  layers_breakdown?: LayerBreakdown;
+  retrieval_config?: {
+    document_id?: string | null;
+    collection_id?: string | null;
+  };
+  created_at: string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  document_id?: string | null;
+  collection_id?: string | null;
+  message_count: number;
+  last_query_snippet?: string;
+  last_activity_at: string;
+  created_at: string;
+  updated_at: string;
+  is_archived: boolean;
+}
+
+export interface ConversationDetail {
+  id: string;
+  title: string;
+  document_id?: string | null;
+  collection_id?: string | null;
+  message_count: number;
+  last_activity_at: string;
+  created_at: string;
+  updated_at: string;
+  is_archived: boolean;
+  messages: ChatMessage[];
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -375,7 +425,8 @@ class ApiClient {
     const url = `${API_BASE}${endpoint}`;
     const headers = new Headers(options.headers || {});
 
-    if (this.token) {
+    const isPublicAuthEndpoint = endpoint.includes('/identity/login') || endpoint.includes('/identity/register');
+    if (this.token && !isPublicAuthEndpoint) {
       headers.set('Authorization', `Token ${this.token}`);
     }
 
@@ -385,6 +436,9 @@ class ApiClient {
 
     const response = await fetch(url, { ...options, headers });
     if (!response.ok) {
+      if (response.status === 401) {
+        this.clearToken();
+      }
       let errDetail = response.statusText;
       try {
         const errJson = await response.json();
@@ -400,6 +454,7 @@ class ApiClient {
 
   // Auth
   async login(username: string, password: string) {
+    this.clearToken();
     const res = await this.request<{ token: string; user: User; organizations: Organization[] }>('/identity/login/', {
       method: 'POST',
       body: JSON.stringify({ username, password })
@@ -562,18 +617,98 @@ class ApiClient {
     collectionId?: string,
     documentId?: string,
     groqApiKey?: string,
-    llmModel?: string
+    llmModel?: string,
+    conversationId?: string,
+    clientMessageId?: string
   ) {
     const activeGroqKey = groqApiKey || (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
     const activeModel = llmModel || (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
 
-    return this.request<GovernedResult>('/retrieval/query/', {
+    return this.request<GovernedResult & { conversation_id?: string; conversation_title?: string; user_message_id?: string; assistant_message_id?: string }>('/retrieval/query/', {
       method: 'POST',
       body: JSON.stringify({ 
         workspace: workspaceId, 
         query, 
         collection: collectionId,
         document_id: documentId,
+        groq_api_key: activeGroqKey,
+        llm_model: activeModel,
+        conversation_id: conversationId,
+        save_conversation: true,
+        client_message_id: clientMessageId
+      })
+    });
+  }
+
+  // Persistent Chat History & Conversations
+  async getConversations(workspaceId: string, search?: string, archived?: boolean): Promise<ConversationSummary[]> {
+    let url = `/decisions/conversations/?workspace=${workspaceId}`;
+    if (search && search.trim()) {
+      url += `&search=${encodeURIComponent(search.trim())}`;
+    }
+    if (archived !== undefined) {
+      url += `&archived=${archived}`;
+    }
+    const res = await this.request<{ count: number; results: ConversationSummary[] } | ConversationSummary[]>(url);
+    return Array.isArray(res) ? res : res.results || [];
+  }
+
+  async getConversation(id: string): Promise<ConversationDetail> {
+    return this.request<ConversationDetail>(`/decisions/conversations/${id}/`);
+  }
+
+  async createConversation(workspaceId: string, title?: string, documentId?: string, collectionId?: string): Promise<ConversationDetail> {
+    return this.request<ConversationDetail>('/decisions/conversations/', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspace: workspaceId,
+        title: title || 'New Conversation',
+        document_id: documentId,
+        collection_id: collectionId
+      })
+    });
+  }
+
+  async renameConversation(id: string, title: string): Promise<{ id: string; title: string }> {
+    return this.request<{ id: string; title: string }>(`/decisions/conversations/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title })
+    });
+  }
+
+  async deleteConversation(id: string): Promise<{ status: string; id: string }> {
+    return this.request<{ status: string; id: string }>(`/decisions/conversations/${id}/`, {
+      method: 'DELETE'
+    });
+  }
+
+  async sendConversationMessage(
+    conversationId: string,
+    query: string,
+    options?: {
+      clientMessageId?: string;
+      documentId?: string;
+      collectionId?: string;
+      groqApiKey?: string;
+      llmModel?: string;
+    }
+  ): Promise<{
+    conversation_id: string;
+    conversation_title?: string;
+    user_message: ChatMessage;
+    assistant_message: ChatMessage;
+    result: GovernedResult;
+  }> {
+    const activeGroqKey = options?.groqApiKey || (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
+    const activeModel = options?.llmModel || (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
+
+    return this.request(`/decisions/conversations/${conversationId}/messages/`, {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        client_message_id: options?.clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        document_id: options?.documentId,
+        collection_id: options?.collectionId,
         groq_api_key: activeGroqKey,
         llm_model: activeModel
       })
@@ -834,4 +969,12 @@ export interface OrganizationInvitation {
 }
 
 export const api = new ApiClient();
+
+// Explicit bindings to guarantee prototype availability across Turbopack HMR sessions
+api.getConversations = api.getConversations.bind(api);
+api.getConversation = api.getConversation.bind(api);
+api.createConversation = api.createConversation.bind(api);
+api.renameConversation = api.renameConversation.bind(api);
+api.deleteConversation = api.deleteConversation.bind(api);
+api.sendConversationMessage = api.sendConversationMessage.bind(api);
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, ChevronDown, Building2, User, Search, LogOut, Check } from 'lucide-react';
+import { Upload, ChevronDown, Building2, User, Search, LogOut, Check, Menu } from 'lucide-react';
 import { Workspace, Organization, User as UserType } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { ThemeToggle, LanguageToggle } from '@/components/PremiumToggles';
@@ -17,6 +17,8 @@ interface HeaderProps {
   onSearchClick: () => void;
   onLogout: () => void;
   onOpenAuthModal?: () => void;
+  isSidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,7 +31,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUpload,
   onSearchClick,
   onLogout,
-  onOpenAuthModal
+  onOpenAuthModal,
+  isSidebarOpen = true,
+  onToggleSidebar
 }) => {
   const { t } = useI18n();
   const [isWsDropdownOpen, setIsWsDropdownOpen] = useState(false);
@@ -63,24 +67,42 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header 
-      className="h-16 border-b flex items-center justify-between px-6 z-20 sticky top-0 transition-colors duration-200"
+      className="h-16 border-b flex items-center justify-between px-4 sm:px-6 z-20 sticky top-0 transition-colors duration-200 gap-3"
       style={{
         backgroundColor: 'var(--bg-surface)',
         borderColor: 'var(--border-color)',
       }}
     >
-      {/* Left: Workspace Switcher */}
-      <div className="flex items-center gap-4 relative" ref={dropdownRef}>
-        <div 
-          onClick={() => setIsWsDropdownOpen(!isWsDropdownOpen)}
-          className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl cursor-pointer border transition-all duration-200 select-none shadow-sm"
-          style={{
-            backgroundColor: 'var(--bg-surface-soft)',
-            borderColor: isWsDropdownOpen ? 'var(--brand-accent)' : 'var(--border-color)',
-          }}
-        >
-          <Building2 className="w-4 h-4 text-[var(--brand-accent)]" />
-          <div className="text-left">
+      {/* Left: Menu Open Button (when sidebar is closed) + Workspace Switcher */}
+      <div className="flex items-center gap-3">
+        {!isSidebarOpen && onToggleSidebar && (
+          <button
+            id="lore-open-sidebar-btn"
+            onClick={onToggleSidebar}
+            className="p-2 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition cursor-pointer active:scale-95 shadow-sm hover:bg-[var(--bg-surface-soft)] shrink-0"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-primary)',
+            }}
+            title="Open navigation menu"
+          >
+            <Menu className="w-4 h-4 text-[var(--brand-accent)]" />
+            <span className="hidden sm:inline">Menu</span>
+          </button>
+        )}
+
+        <div className="flex items-center gap-4 relative" ref={dropdownRef}>
+          <div 
+            onClick={() => setIsWsDropdownOpen(!isWsDropdownOpen)}
+            className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl cursor-pointer border transition-all duration-200 select-none shadow-sm"
+            style={{
+              backgroundColor: 'var(--bg-surface-soft)',
+              borderColor: isWsDropdownOpen ? 'var(--brand-accent)' : 'var(--border-color)',
+            }}
+          >
+            <Building2 className="w-4 h-4 text-[var(--brand-accent)]" />
+            <div className="text-left">
             <div className="text-xs font-semibold text-[var(--text-primary)]">
               {currentWorkspace ? currentWorkspace.name : t('header.select_workspace')}
             </div>
@@ -135,6 +157,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
         )}
+      </div>
       </div>
 
       {/* Middle & Right: Search, Upload, Toggles, User Profile */}

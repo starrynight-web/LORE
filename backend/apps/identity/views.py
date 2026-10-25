@@ -1,5 +1,5 @@
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
@@ -14,6 +14,7 @@ from .serializers import (
 )
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def register_view(request):
     username = request.data.get('username')
@@ -48,6 +49,7 @@ def register_view(request):
     }, status=status.HTTP_201_CREATED)
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def login_view(request):
     username = request.data.get('username')

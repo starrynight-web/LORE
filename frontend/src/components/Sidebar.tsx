@@ -14,7 +14,9 @@ import {
   Zap,
   Server,
   Shield,
-  Mail
+  Mail,
+  X,
+  PanelLeftClose
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 
@@ -23,13 +25,17 @@ interface SidebarProps {
   setActiveTab: (tab: string) => void;
   reviewCount?: number;
   activeJobsCount?: number;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
   reviewCount = 0,
-  activeJobsCount = 0
+  activeJobsCount = 0,
+  isOpen = true,
+  onClose
 }) => {
   const { t } = useI18n();
 
@@ -58,36 +64,50 @@ export const Sidebar: React.FC<SidebarProps> = ({
     >
       {/* Brand Header */}
       <div 
-        className="h-16 flex items-center px-6 border-b gap-3"
+        className="h-16 flex items-center justify-between px-4 sm:px-5 border-b gap-2.5"
         style={{ borderColor: 'var(--border-color)' }}
       >
-        <img 
-          src="/logo.png" 
-          alt="LORE Logo" 
-          className="w-9 h-9 rounded-xl object-contain shadow-sm border p-0.5"
-          style={{ 
-            backgroundColor: 'var(--bg-surface-soft)',
-            borderColor: 'var(--border-color)' 
-          }}
-        />
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold tracking-wide text-base text-[var(--text-primary)]">
-              {t('app.name')}
-            </span>
-            <span 
-              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border"
-              style={{
-                backgroundColor: 'var(--accent-light)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--brand-accent)',
-              }}
-            >
-              Enterprise
-            </span>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img 
+            src="/logo.png" 
+            alt="LORE Logo" 
+            className="w-9 h-9 rounded-xl object-contain shadow-sm border p-0.5 shrink-0"
+            style={{ 
+              backgroundColor: 'var(--bg-surface-soft)',
+              borderColor: 'var(--border-color)' 
+            }}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold tracking-wide text-base text-[var(--text-primary)] truncate">
+                {t('app.name')}
+              </span>
+              <span 
+                className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0"
+                style={{
+                  backgroundColor: 'var(--accent-light)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--brand-accent)',
+                }}
+              >
+                Enterprise
+              </span>
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)] truncate">{t('app.tagline')}</p>
           </div>
-          <p className="text-[11px] text-[var(--text-muted)]">{t('app.tagline')}</p>
         </div>
+
+        {onClose && (
+          <button
+            id="lore-close-sidebar-btn"
+            onClick={onClose}
+            className="p-1.5 rounded-lg border text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-soft)] transition cursor-pointer shrink-0"
+            style={{ borderColor: 'var(--border-color)' }}
+            title="Close menu"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Navigation Links */}

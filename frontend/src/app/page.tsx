@@ -45,6 +45,7 @@ export default function Home() {
   const [selectedDocument, setSelectedDocument] = useState<SourceDocument | null>(null);
   const [ragScopedDocId, setRagScopedDocId] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Authenticate and load initial data
   const loadWorkspaceData = async (wsId: string) => {
@@ -110,6 +111,8 @@ export default function Home() {
         const meData = await api.me();
         await handleAuthSuccess(meData, false);
       } catch (err) {
+        // Clear any invalid or expired tokens
+        api.clearToken();
         // Automatic Guest Mode: Login as demo admin to enable full workspace access with zero friction
         try {
           const guestRes = await api.login('admin@northstar.demo', 'Northstar2026!');
@@ -162,12 +165,21 @@ export default function Home() {
       }}
     >
       {/* Sidebar */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        reviewCount={reviewDocs.length}
-        activeJobsCount={activeJobsCount}
-      />
+      {isSidebarOpen && (
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+            if (typeof window !== 'undefined' && window.innerWidth < 768) {
+              setIsSidebarOpen(false);
+            }
+          }}
+          reviewCount={reviewDocs.length}
+          activeJobsCount={activeJobsCount}
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+        />
+      )}
 
       {/* Main Workspace Frame */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -185,6 +197,8 @@ export default function Home() {
           onSearchClick={() => setActiveTab('rag')}
           onLogout={handleLogout}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          isSidebarOpen={isSidebarOpen}
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         />
 
         {/* Viewport */}
