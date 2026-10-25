@@ -75,6 +75,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -97,6 +98,15 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
       loadConversations();
     }
   }, [workspaceId]);
+
+  // Auto-resize textarea to fit full paragraphs
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollH = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(Math.max(scrollH, 38), 240)}px`;
+    }
+  }, [query]);
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -319,6 +329,65 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
       setIsLoading(false);
     }
   };
+
+  const renderQueryInput = (isSticky: boolean = false) => (
+    <div 
+      className={`rounded-2xl p-3.5 sm:p-4 border transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--brand-accent)] focus-within:border-[var(--brand-accent)] shadow-sm hover:shadow-md ${
+        isSticky 
+          ? 'sticky bottom-4 z-10 mt-4 backdrop-blur-md' 
+          : 'w-full shadow-xs'
+      }`}
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        borderColor: 'var(--border-color)',
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <Search className="w-5 h-5 text-[var(--brand-accent)] flex-shrink-0 mt-2" />
+        <textarea
+          id="lore-chat-query-input"
+          ref={textareaRef}
+          rows={1}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (!isLoading && query.trim()) {
+                handleExecute();
+              }
+            }
+          }}
+          placeholder={
+            activeConversation 
+              ? (language === 'bn' ? 'এই কথোপকথনে সম্পূরক প্রশ্ন করুন...' : 'Ask follow-up question in this conversation (context bounded)...')
+              : (language === 'bn' ? 'নথি বা দলিলের ভিত্তিতে প্রশ্ন জিজ্ঞাসা করুন...' : t('rag.input_placeholder', 'Ask a question across policy documents or scanned deeds...'))
+          }
+          style={{ outline: 'none', border: 'none', boxShadow: 'none', resize: 'none' }}
+          className="w-full bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] py-1.5 leading-relaxed break-words whitespace-pre-wrap overflow-y-auto min-h-[38px] max-h-[240px]"
+        />
+        <button
+          id="lore-chat-send-btn"
+          onClick={() => handleExecute()}
+          disabled={isLoading || !query.trim()}
+          className="p-2.5 rounded-xl font-semibold shadow-sm transition cursor-pointer flex-shrink-0 active:scale-95 disabled:opacity-40 self-end mb-0.5"
+          style={{
+            backgroundColor: 'var(--brand-accent)',
+            color: 'var(--cta-text)',
+          }}
+          title="Send inquiry"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Keyboard Hint */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[10px] text-[var(--text-muted)] font-mono mt-2 pt-2 border-t border-[var(--border-color)] gap-1">
+        <span>Press <strong className="text-[var(--text-primary)]">Enter ↵</strong> to submit · <strong className="text-[var(--text-primary)]">Shift+Enter</strong> for newline</span>
+        <span>All turns persisted with zero-extrapolation citations</span>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
@@ -584,23 +653,12 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
             </div>
           </div>
 
-          {/* Chat Messages Stream */}
+          {/* Chat Messages Stream or Welcome Hero */}
           <div className="min-h-[280px] space-y-4">
-            {activeConversation && activeConversation.messages.length > 0 ? (
-              <div className="space-y-4">
-                {activeConversation.messages.map((msg, idx) => (
-                  <GovernedMessageCard
-                    key={msg.id || idx}
-                    message={msg}
-                    onRetry={(text) => handleExecute(text)}
-                    language={language}
-                  />
-                ))}
-              </div>
-            ) : (
+            {(!activeConversation || activeConversation.messages.length === 0) ? (
               /* Welcome Hero State when starting a fresh inquiry */
               <div 
-                className="p-6 sm:p-8 rounded-2xl border text-center space-y-4 shadow-xs"
+                className="p-6 sm:p-8 rounded-2xl border text-center space-y-6 shadow-xs"
                 style={{
                   backgroundColor: 'var(--bg-surface)',
                   borderColor: 'var(--border-color)',
@@ -615,7 +673,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                 >
                   <ShieldCheck className="w-6 h-6 text-[var(--brand-accent)]" />
                 </div>
-                <div className="space-y-1 max-w-lg mx-auto">
+                <div className="space-y-1.5 max-w-lg mx-auto">
                   <h3 className="font-extrabold text-base sm:text-lg text-[var(--text-primary)]">
                     Ask Governed Questions with Proof
                   </h3>
@@ -624,9 +682,59 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                   </p>
                 </div>
 
+                {/* Integrated Query Box right in the center */}
+                <div className="max-w-2xl mx-auto text-left">
+                  {renderQueryInput(false)}
+                </div>
+
+                {/* In-Flight Query Spinner for Turn 1 */}
+                {isLoading && (
+                  <div 
+                    className="p-6 rounded-2xl border text-center space-y-2 animate-in fade-in max-w-2xl mx-auto"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    <div 
+                      className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin mx-auto"
+                      style={{
+                        borderColor: 'var(--brand-accent)',
+                        borderTopColor: 'transparent',
+                      }}
+                    />
+                    <div className="text-sm font-bold text-[var(--text-primary)]">
+                      {t('rag.searching', 'Evaluating Governed RAG Pipeline...')}
+                    </div>
+                    <div className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
+                      Arbitrating 9-state precedence ladder, checking document authority dominance, and verifying citations...
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Banner for Turn 1 */}
+                {error && (
+                  <div 
+                    className="p-4 rounded-xl border text-xs sm:text-sm flex items-center justify-between gap-3 max-w-2xl mx-auto text-left"
+                    style={{
+                      backgroundColor: 'var(--error-bg)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--error)',
+                    }}
+                  >
+                    <span>{error}</span>
+                    <button
+                      onClick={() => setError(null)}
+                      className="p-1 rounded text-[var(--error)] hover:opacity-80"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Suggested Queries */}
-                <div className="pt-2 max-w-2xl mx-auto">
-                  <div className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+                <div className="pt-1 max-w-2xl mx-auto space-y-2.5">
+                  <div className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
                     {t('rag.sample_questions', 'Recommended Inquiries')}
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-2">
@@ -637,7 +745,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                           setQuery(sq);
                           handleExecute(sq);
                         }}
-                        className="text-xs px-3 py-1.5 rounded-xl border transition cursor-pointer active:scale-95 text-left"
+                        className="text-xs px-3 py-1.5 rounded-xl border transition cursor-pointer active:scale-95 text-left hover:border-[var(--brand-accent)] hover:text-[var(--text-primary)]"
                         style={{
                           backgroundColor: 'var(--bg-surface-soft)',
                           borderColor: 'var(--border-color)',
@@ -650,99 +758,69 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                   </div>
                 </div>
               </div>
-            )}
+            ) : (
+              /* Chat Messages Stream */
+              <div className="space-y-4 pb-2">
+                {activeConversation.messages.map((msg, idx) => (
+                  <GovernedMessageCard
+                    key={msg.id || idx}
+                    message={msg}
+                    onRetry={(text) => handleExecute(text)}
+                    language={language}
+                  />
+                ))}
 
-            {/* In-Flight Query Spinner */}
-            {isLoading && (
-              <div 
-                className="p-6 rounded-2xl border text-center space-y-2 animate-in fade-in"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-color)',
-                }}
-              >
-                <div 
-                  className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin mx-auto"
-                  style={{
-                    borderColor: 'var(--brand-accent)',
-                    borderTopColor: 'transparent',
-                  }}
-                />
-                <div className="text-sm font-bold text-[var(--text-primary)]">
-                  {t('rag.searching', 'Evaluating Governed RAG Pipeline...')}
-                </div>
-                <div className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-                  Arbitrating 9-state precedence ladder, checking document authority dominance, and verifying citations...
-                </div>
+                {/* In-Flight Query Spinner for follow-up turns */}
+                {isLoading && (
+                  <div 
+                    className="p-6 rounded-2xl border text-center space-y-2 animate-in fade-in"
+                    style={{
+                      backgroundColor: 'var(--bg-surface)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    <div 
+                      className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin mx-auto"
+                      style={{
+                        borderColor: 'var(--brand-accent)',
+                        borderTopColor: 'transparent',
+                      }}
+                    />
+                    <div className="text-sm font-bold text-[var(--text-primary)]">
+                      {t('rag.searching', 'Evaluating Governed RAG Pipeline...')}
+                    </div>
+                    <div className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
+                      Arbitrating 9-state precedence ladder, checking document authority dominance, and verifying citations...
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Banner for follow-up turns */}
+                {error && (
+                  <div 
+                    className="p-4 rounded-xl border text-xs sm:text-sm flex items-center justify-between gap-3"
+                    style={{
+                      backgroundColor: 'var(--error-bg)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--error)',
+                    }}
+                  >
+                    <span>{error}</span>
+                    <button
+                      onClick={() => setError(null)}
+                      className="p-1 rounded text-[var(--error)] hover:opacity-80"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+
+                {/* Sticky Query Input for follow-up turns */}
+                {renderQueryInput(true)}
               </div>
             )}
-
-            {/* Error Banner */}
-            {error && (
-              <div 
-                className="p-4 rounded-xl border text-xs sm:text-sm flex items-center justify-between gap-3"
-                style={{
-                  backgroundColor: 'var(--error-bg)',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--error)',
-                }}
-              >
-                <span>{error}</span>
-                <button
-                  onClick={() => setError(null)}
-                  className="p-1 rounded text-[var(--error)] hover:opacity-80"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Sticky Bottom Query Input Box */}
-          <div 
-            className="rounded-2xl p-3.5 sm:p-4 border shadow-sm transition-all duration-200 sticky bottom-4"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--border-color)',
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <Search className="w-5 h-5 text-[var(--brand-accent)] flex-shrink-0" />
-              <input
-                id="lore-chat-query-input"
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleExecute()}
-                placeholder={
-                  activeConversation 
-                    ? "Ask follow-up question in this conversation (context bounded)..." 
-                    : t('rag.input_placeholder', 'Ask a question across policy documents or scanned deeds...')
-                }
-                className="w-full bg-transparent focus:outline-none text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-              />
-              <button
-                id="lore-chat-send-btn"
-                onClick={() => handleExecute()}
-                disabled={isLoading || !query.trim()}
-                className="p-2.5 rounded-xl font-semibold shadow-sm transition cursor-pointer flex-shrink-0 active:scale-95 disabled:opacity-40"
-                style={{
-                  backgroundColor: 'var(--brand-accent)',
-                  color: 'var(--cta-text)',
-                }}
-                title="Send inquiry"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Keyboard Hint */}
-            <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] font-mono mt-2 pt-2 border-t border-[var(--border-color)]">
-              <span>Press <strong className="text-[var(--text-primary)]">Enter ↵</strong> to submit</span>
-              <span>All turns persisted with zero-extrapolation citations</span>
-            </div>
           </div>
         </div>
       </div>

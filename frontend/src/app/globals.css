@@ -185,6 +185,14 @@ kbd {
   outline-offset: var(--focus-ring-offset, 2px);
 }
 
+/* Suppress raw browser outline on text fields that provide custom focus designs */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+}
+
 /* Theme transition rule */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
