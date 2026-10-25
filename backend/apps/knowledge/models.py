@@ -22,6 +22,8 @@ class DocumentChunk(models.Model):
 
     # Vector store reference ID
     vector_id = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    # Deterministic content hash for selective embedding reuse (SHA-256)
+    content_hash = models.CharField(max_length=64, blank=True, default='', db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

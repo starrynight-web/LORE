@@ -284,3 +284,253 @@ def telemetry_view(request):
     snapshot = TelemetryService.get_telemetry_snapshot(workspace_id=workspace_id)
     return Response(snapshot)
 
+
+# ==============================================================================
+# End-to-End Evaluation & Regression Testing API (Prompt 4 §11)
+# ==============================================================================
+
+class EndToEndEvaluationRunSerializer(serializers.ModelSerializer):
+    workspace_name = serializers.CharField(source='workspace.name', read_only=True)
+    document_title = serializers.SerializerMethodField()
+
+    def get_document_title(self, obj):
+        return obj.document.title if obj.document else ''
+
+    class Meta:
+        from apps.governance.models import EndToEndEvaluationRun
+        model = EndToEndEvaluationRun
+        fields = [
+            'id', 'workspace', 'workspace_name', 'document', 'document_title',
+            'job', 'retrieval_config', 'baseline_run', 'evaluation_dataset_version',
+            'embedding_model_identity', 'vector_index_identity', 'app_version',
+            'status', 'decision', 'decision_reason', 'is_approved_for_promotion',
+            'is_active_baseline', 'promoted_at', 'eval_cases_total', 'eval_cases_passed',
+            'eval_cases_unverified', 'retrieval_metrics', 'answer_metrics',
+            'governance_metrics', 'category_metrics', 'baseline_comparison',
+            'regressions_detected', 'proposed_actions', 'duration_ms',
+            'started_at', 'completed_at', 'created_at'
+        ]
+
+
+class EvaluationFailureRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        from apps.governance.models import EvaluationFailureRecord
+        model = EvaluationFailureRecord
+        fields = [
+            'id', 'case_id', 'query', 'category', 'root_cause_group',
+            'failure_detail', 'expected_behavior', 'actual_behavior',
+            'proposed_remedy', 'created_at'
+        ]
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.AllowAny])
+def evaluations_view(request):
+    """
+    GET: Lists evaluation runs for workspace.
+    POST: Triggers a new End-to-End evaluation run.
+    """
+    from apps.workspaces.models import Workspace
+    from apps.governance.models import EndToEndEvaluationRun
+    from apps.governance.e2e_evaluation import EndToEndEvaluationService
+
+    try:
+        workspace_id = request.query_params.get('workspace') or request.data.get('workspace')
+        if not workspace_id:
+            return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        workspace = Workspace.objects.filter(id=workspace_id).first()
+        if not workspace:
+            return Response({'error': 'Workspace not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'GET':
+            runs = EndToEndEvaluationRun.objects.filter(workspace=workspace).order_by('-created_at')
+            active_baseline = EndToEndEvaluationService.get_active_baseline(workspace)
+            return Response({
+                'workspace_id': str(workspace.id),
+                'active_baseline': EndToEndEvaluationRunSerializer(active_baseline).data if active_baseline else None,
+                'evaluations': EndToEndEvaluationRunSerializer(runs, many=True).data
+            })
+
+        elif request.method == 'POST':
+            custom_cases = request.data.get('custom_cases')
+            dataset_version = request.data.get('dataset_version', 'gold_evaluation_v1')
+            user = request.user if request.user and request.user.is_authenticated else None
+
+            eval_run = EndToEndEvaluationService.run_evaluation(
+                workspace=workspace,
+                custom_cases=custom_cases,
+                requested_by=user,
+                dataset_version=dataset_version
+            )
+            return Response(EndToEndEvaluationRunSerializer(eval_run).data, status=status.HTTP_201_CREATED)
+    except Exception as ex:
+        import traceback
+        traceback.print_exc()
+        return Response({'error': str(ex)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def evaluation_detail_view(request, pk):
+    """Returns complete summary and decision for a specific evaluation run."""
+    from apps.governance.models import EndToEndEvaluationRun
+    eval_run = EndToEndEvaluationRun.objects.filter(id=pk).first()
+    if not eval_run:
+        return Response({'error': f'Evaluation run {pk} not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(EndToEndEvaluationRunSerializer(eval_run).data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def evaluation_categories_view(request, pk):
+    """Returns granular metrics broken down across 8 enterprise query categories."""
+    from apps.governance.models import EndToEndEvaluationRun
+    eval_run = EndToEndEvaluationRun.objects.filter(id=pk).first()
+    if not eval_run:
+        return Response({'error': f'Evaluation run {pk} not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response({
+        'evaluation_run_id': str(eval_run.id),
+        'decision': eval_run.decision,
+        'category_metrics': eval_run.category_metrics
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def evaluation_failures_view(request, pk):
+    """Returns representative failing cases grouped by root cause for continuous improvement."""
+    from apps.governance.models import EndToEndEvaluationRun, EvaluationFailureRecord
+    eval_run = EndToEndEvaluationRun.objects.filter(id=pk).first()
+    if not eval_run:
+        return Response({'error': f'Evaluation run {pk} not found.'}, status=status.HTTP_404_NOT_FOUND)
+    failures = EvaluationFailureRecord.objects.filter(evaluation_run=eval_run).order_by('root_cause_group', 'case_id')
+    
+    grouped = {}
+    for f in failures:
+        grouped.setdefault(f.root_cause_group, []).append(EvaluationFailureRecordSerializer(f).data)
+
+    return Response({
+        'evaluation_run_id': str(eval_run.id),
+        'total_failures': failures.count(),
+        'grouped_by_root_cause': grouped
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def evaluation_compare_view(request):
+    """Compares two evaluation runs and identifies regressions and improvements."""
+    from apps.governance.models import EndToEndEvaluationRun
+
+    run_a_id = request.query_params.get('run_a')
+    run_b_id = request.query_params.get('run_b')
+    if not run_a_id or not run_b_id:
+        return Response({'error': 'run_a and run_b query parameters are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    run_a = EndToEndEvaluationRun.objects.filter(id=run_a_id).first()
+    run_b = EndToEndEvaluationRun.objects.filter(id=run_b_id).first()
+    if not run_a or not run_b:
+        return Response({'error': 'One or both evaluation runs not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Calculate comparative deltas (Run B minus Run A)
+    ret_a = run_a.retrieval_metrics or {}
+    ret_b = run_b.retrieval_metrics or {}
+    ans_a = run_a.answer_metrics or {}
+    ans_b = run_b.answer_metrics or {}
+
+    delta_precision = ret_b.get('precision_k', 0.0) - ret_a.get('precision_k', 0.0)
+    delta_recall = ret_b.get('recall_k', 0.0) - ret_a.get('recall_k', 0.0)
+    delta_mrr = ret_b.get('mrr', 0.0) - ret_a.get('mrr', 0.0)
+    delta_factual = ans_b.get('factual_correctness', 0.0) - ans_a.get('factual_correctness', 0.0)
+    delta_latency = ret_b.get('avg_latency_ms', 0.0) - ret_a.get('avg_latency_ms', 0.0)
+
+    return Response({
+        'run_a': {
+            'id': str(run_a.id),
+            'decision': run_a.decision,
+            'dataset_version': run_a.evaluation_dataset_version,
+            'retrieval_metrics': ret_a,
+            'answer_metrics': ans_a,
+        },
+        'run_b': {
+            'id': str(run_b.id),
+            'decision': run_b.decision,
+            'dataset_version': run_b.evaluation_dataset_version,
+            'retrieval_metrics': ret_b,
+            'answer_metrics': ans_b,
+        },
+        'comparison': {
+            'delta_precision_k': round(delta_precision, 4),
+            'delta_recall_k': round(delta_recall, 4),
+            'delta_mrr': round(delta_mrr, 4),
+            'delta_factual_correctness': round(delta_factual, 4),
+            'delta_latency_ms': round(delta_latency, 1),
+            'regressions_in_b': run_b.regressions_detected
+        }
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def evaluation_baseline_view(request):
+    """Returns the current approved baseline evaluation for a workspace."""
+    from apps.workspaces.models import Workspace
+    from apps.governance.e2e_evaluation import EndToEndEvaluationService
+
+    workspace_id = request.query_params.get('workspace')
+    if not workspace_id:
+        return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    workspace = get_object_or_404(Workspace, id=workspace_id)
+    baseline = EndToEndEvaluationService.get_active_baseline(workspace)
+    if not baseline:
+        return Response({'baseline': None, 'message': 'No approved baseline established yet.'})
+
+    return Response({
+        'baseline': EndToEndEvaluationRunSerializer(baseline).data
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def evaluation_promote_view(request, pk):
+    """Promotes an evaluation run to the active baseline with rollback capability."""
+    from apps.governance.e2e_evaluation import EndToEndEvaluationService
+
+    user = request.user if request.user.is_authenticated else None
+    try:
+        promoted = EndToEndEvaluationService.promote_baseline(pk, user=user)
+        return Response({
+            'status': 'promoted',
+            'promoted_baseline': EndToEndEvaluationRunSerializer(promoted).data,
+            'message': f"Evaluation run {promoted.id} promoted as active workspace baseline."
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def evaluation_rollback_view(request):
+    """Rolls back the active baseline to the previous known-good evaluation run."""
+    from apps.workspaces.models import Workspace
+    from apps.governance.e2e_evaluation import EndToEndEvaluationService
+
+    workspace_id = request.data.get('workspace')
+    if not workspace_id:
+        return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    workspace = get_object_or_404(Workspace, id=workspace_id)
+    user = request.user if request.user.is_authenticated else None
+
+    try:
+        restored = EndToEndEvaluationService.rollback_baseline(workspace, user=user)
+        return Response({
+            'status': 'rolled_back',
+            'restored_baseline': EndToEndEvaluationRunSerializer(restored).data,
+            'message': f"Active baseline rolled back to run {restored.id}."
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+

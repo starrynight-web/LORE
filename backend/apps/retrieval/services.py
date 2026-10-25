@@ -279,6 +279,29 @@ class HybridRetrievalService:
             }
             return []
 
+        # Load active production RetrievalConfiguration if workspace provided and using defaults
+        if workspace_id:
+            try:
+                from apps.retrieval.models import RetrievalConfiguration
+                cfg = RetrievalConfiguration.objects.filter(workspace_id=workspace_id, is_active=True).first()
+                if not cfg:
+                    cfg = RetrievalConfiguration.objects.filter(workspace=None, is_active=True).first()
+                if cfg:
+                    if limit == 8 and cfg.limit:
+                        limit = cfg.limit
+                    if rrf_k == 60.0 and cfg.rrf_k:
+                        rrf_k = cfg.rrf_k
+                    if min_relevance_threshold == 0.05 and cfg.min_relevance_threshold:
+                        min_relevance_threshold = cfg.min_relevance_threshold
+                    if context_budget_tokens is None and cfg.context_budget_tokens:
+                        context_budget_tokens = cfg.context_budget_tokens
+                    if enable_graph_expansion is True and cfg.enable_graph_expansion is not None:
+                        enable_graph_expansion = cfg.enable_graph_expansion
+                        graph_max_depth = cfg.graph_max_depth
+                        graph_max_nodes = cfg.graph_max_nodes
+            except Exception:
+                pass
+
         budget = context_budget_tokens or getattr(settings, 'RETRIEVAL_CONTEXT_BUDGET_TOKENS', 800)
         query_clean = query.strip()
         q_tokens = [w.lower() for w in re.findall(r'\w+', query_clean) if len(w) > 1]

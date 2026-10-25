@@ -87,6 +87,124 @@ export interface SourceDocument {
   updated_at: string;
 }
 
+export interface PipelineRun {
+  id: string;
+  stage: 'run_1_ingestion' | 'run_2_quality' | 'run_3_retrieval' | 'run_4_decision' | string;
+  status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped' | 'blocked' | 'needs_review' | string;
+  attempt_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+  diagnostics: Record<string, any>;
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RetrievalConfiguration {
+  id: string;
+  name: string;
+  version: number;
+  description: string;
+  is_active: boolean;
+  limit: number;
+  rrf_k: number;
+  min_relevance_threshold: number;
+  context_budget_tokens: number;
+  enable_graph_expansion: boolean;
+  graph_max_depth: number;
+  graph_max_nodes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RetrievalMetrics {
+  total_cases: number;
+  passed_cases: number;
+  precision_k: number;
+  recall_k: number;
+  mrr: number;
+  ndcg_k: number;
+  correct_source_rate: number;
+  evidence_coverage: number;
+  citation_source_accuracy: number;
+  avg_latency_ms: number;
+  leakage_rate: number;
+  failure_rate: number;
+  category_breakdown?: Record<string, any>;
+}
+
+export interface RetrievalOptimizationRun {
+  id: string;
+  workspace: string;
+  document?: string;
+  status: string;
+  decision: string;
+  decision_reason: string;
+  eval_cases_count: number;
+  baseline_metrics: RetrievalMetrics;
+  candidate_metrics: RetrievalMetrics;
+  category_breakdown: Record<string, any>;
+  is_promoted: boolean;
+  promoted_at: string | null;
+  proposed_config?: RetrievalConfiguration;
+  rollback_config?: RetrievalConfiguration;
+  created_at: string;
+}
+
+export interface EndToEndEvaluationRun {
+  id: string;
+  workspace: string;
+  workspace_name?: string;
+  document?: string | null;
+  document_title?: string;
+  job?: string | null;
+  retrieval_config?: string | null;
+  baseline_run?: string | null;
+  evaluation_dataset_version: string;
+  embedding_model_identity: string;
+  vector_index_identity: string;
+  app_version: string;
+  status: string;
+  decision: 'PASS' | 'PASS_WITH_LIMITATIONS' | 'IMPROVEMENT_DEMONSTRATED' | 'NO_CHANGE_JUSTIFIED' | 'REGRESSION_DETECTED' | 'BLOCKED' | 'FAILED' | string;
+  decision_reason: string;
+  is_approved_for_promotion: boolean;
+  is_active_baseline: boolean;
+  promoted_at?: string | null;
+  eval_cases_total: number;
+  eval_cases_passed: number;
+  eval_cases_unverified: number;
+  retrieval_metrics: Record<string, any>;
+  answer_metrics: Record<string, any>;
+  governance_metrics: Record<string, any>;
+  category_metrics: Record<string, any>;
+  baseline_comparison: Record<string, any>;
+  regressions_detected: Array<{
+    metric: string;
+    baseline: number;
+    candidate: number;
+    max_allowed_regression: number;
+    regression: number;
+  }>;
+  proposed_actions: string[];
+  duration_ms: number;
+  started_at: string;
+  completed_at?: string | null;
+  created_at: string;
+}
+
+export interface EvaluationFailureRecord {
+  id: string;
+  case_id: string;
+  query: string;
+  category: string;
+  root_cause_group: 'extraction' | 'chunking' | 'metadata' | 'retrieval' | 'governance' | 'generation' | 'unverified_ground_truth' | string;
+  failure_detail: string;
+  expected_behavior: Record<string, any>;
+  actual_behavior: Record<string, any>;
+  proposed_remedy: string;
+  created_at: string;
+}
+
 export interface IngestionJob {
   id: string;
   document: string;
@@ -96,6 +214,8 @@ export interface IngestionJob {
   status: string;
   current_stage: string;
   stage_timings: Record<string, number>;
+  pipeline_summary?: Record<string, any>;
+  pipeline_runs?: PipelineRun[];
   error_message: string;
   error_category: string;
   attempt_count: number;
@@ -902,6 +1022,129 @@ class ApiClient {
     });
     this.setToken(res.token);
     return res;
+  }
+
+  // Evidence-Driven Retrieval Optimization (Run 3)
+  async getRetrievalConfigurations(workspaceId: string) {
+    return this.request<{
+      workspace_id: string;
+      active_configuration: RetrievalConfiguration;
+      configurations: RetrievalConfiguration[];
+    }>(`/retrieval/configurations/?workspace=${workspaceId}`);
+  }
+
+  async runRetrievalOptimization(workspaceId: string, customCases?: any[]) {
+    return this.request<{
+      status: string;
+      optimization_run_id: string;
+      decision: string;
+      decision_reason: string;
+      eval_cases_count: number;
+      baseline_metrics: RetrievalMetrics;
+      candidate_metrics: RetrievalMetrics;
+      category_breakdown: Record<string, any>;
+      proposed_config?: RetrievalConfiguration;
+    }>('/retrieval/configurations/', {
+      method: 'POST',
+      body: JSON.stringify({ workspace: workspaceId, custom_cases: customCases })
+    });
+  }
+
+  async promoteRetrievalConfiguration(optimizationRunId: string) {
+    return this.request<{
+      status: string;
+      promoted_configuration: RetrievalConfiguration;
+      message: string;
+    }>('/retrieval/configurations/promote/', {
+      method: 'POST',
+      body: JSON.stringify({ optimization_run_id: optimizationRunId })
+    });
+  }
+
+  async rollbackRetrievalConfiguration(workspaceId: string, targetConfigId?: string) {
+    return this.request<{
+      status: string;
+      active_configuration: RetrievalConfiguration;
+      message: string;
+    }>('/retrieval/configurations/rollback/', {
+      method: 'POST',
+      body: JSON.stringify({ workspace: workspaceId, target_config_id: targetConfigId })
+    });
+  }
+
+  async getRetrievalOptimizationRuns(workspaceId: string) {
+    return this.request<{
+      workspace_id: string;
+      runs: RetrievalOptimizationRun[];
+    }>(`/retrieval/optimizations/?workspace=${workspaceId}`);
+  }
+
+  // End-to-End Final Evaluation, Regression Testing & Continuous Improvement (Run 4)
+  async getEvaluations(workspaceId: string) {
+    return this.request<{
+      workspace_id: string;
+      active_baseline: EndToEndEvaluationRun | null;
+      evaluations: EndToEndEvaluationRun[];
+    }>(`/governance/evaluations/?workspace=${workspaceId}`);
+  }
+
+  async getEvaluationDetail(runId: string) {
+    return this.request<EndToEndEvaluationRun>(`/governance/evaluations/${runId}/`);
+  }
+
+  async getEvaluationCategories(runId: string) {
+    return this.request<{
+      evaluation_run_id: string;
+      decision: string;
+      category_metrics: Record<string, any>;
+    }>(`/governance/evaluations/${runId}/categories/`);
+  }
+
+  async getEvaluationFailures(runId: string) {
+    return this.request<{
+      evaluation_run_id: string;
+      total_failures: number;
+      grouped_by_root_cause: Record<string, EvaluationFailureRecord[]>;
+    }>(`/governance/evaluations/${runId}/failures/`);
+  }
+
+  async compareEvaluations(runAId: string, runBId: string) {
+    return this.request<any>(`/governance/evaluations/compare/?run_a=${runAId}&run_b=${runBId}`);
+  }
+
+  async getEvaluationBaseline(workspaceId: string) {
+    return this.request<{
+      workspace_id: string;
+      active_baseline: EndToEndEvaluationRun | null;
+    }>(`/governance/evaluations/baseline/?workspace=${workspaceId}`);
+  }
+
+  async promoteEvaluationBaseline(runId: string) {
+    return this.request<{
+      status: string;
+      promoted_run_id: string;
+      message: string;
+    }>(`/governance/evaluations/${runId}/promote/`, {
+      method: 'POST'
+    });
+  }
+
+  async rollbackEvaluationBaseline(workspaceId: string, targetRunId?: string) {
+    return this.request<{
+      status: string;
+      active_baseline_id: string;
+      message: string;
+    }>('/governance/evaluations/rollback/', {
+      method: 'POST',
+      body: JSON.stringify({ workspace: workspaceId, target_run_id: targetRunId })
+    });
+  }
+
+  async runEvaluation(workspaceId: string, customCases?: any[], datasetVersion?: string) {
+    return this.request<EndToEndEvaluationRun>('/governance/evaluations/', {
+      method: 'POST',
+      body: JSON.stringify({ workspace: workspaceId, custom_cases: customCases, dataset_version: datasetVersion })
+    });
   }
 }
 

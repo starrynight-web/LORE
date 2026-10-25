@@ -152,3 +152,125 @@ class ScopedException(models.Model):
     def __str__(self):
         return f"Exception [{self.rule_code}] for {self.scope_type}={self.scope_value} ({self.status})"
 
+
+class EvaluationThresholdConfig(models.Model):
+    """
+    Configurable acceptance criteria for regression gating (Prompt 4 §7).
+    Defines threshold boundaries to prevent scattering arbitrary constants in code.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.OneToOneField(Workspace, on_delete=models.CASCADE, related_name='eval_thresholds', null=True, blank=True)
+    min_retrieval_precision = models.FloatField(default=0.80)
+    min_retrieval_recall = models.FloatField(default=0.80)
+    min_factual_correctness = models.FloatField(default=0.90)
+    max_hallucination_rate = models.FloatField(default=0.00) # Zero tolerance
+    max_leakage_rate = models.FloatField(default=0.00)       # Zero tolerance
+    min_citation_accuracy = models.FloatField(default=0.95)
+    max_permitted_regression = models.FloatField(default=0.05)
+    max_query_latency_ms = models.IntegerField(default=3000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        ws_name = self.workspace.name if self.workspace else "Global Default"
+        return f"Thresholds [{ws_name}] - Min Precision: {self.min_retrieval_precision}, Max Reg: {self.max_permitted_regression}"
+
+
+class EndToEndEvaluationRun(models.Model):
+    """
+    Persistent record of an End-to-End Evaluation & Regression Gate run (Prompt 4 §2 & §8).
+    Evaluates Runs 1-4, tracks answer grounding, governance, security, and baseline comparison.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('blocked', 'Blocked'),
+        ('failed', 'Failed'),
+    ]
+
+    DECISION_CHOICES = [
+        ('PASS', 'Pass - All Required Criteria Met'),
+        ('PASS_WITH_LIMITATIONS', 'Pass with Limitations - Partial Evidence Coverage'),
+        ('IMPROVEMENT_DEMONSTRATED', 'Improvement Demonstrated - Outperforms Baseline'),
+        ('NO_CHANGE_JUSTIFIED', 'No Change Justified - Retain Current Configuration'),
+        ('REGRESSION_DETECTED', 'Regression Detected - Metric Drop Exceeds Threshold'),
+        ('BLOCKED', 'Blocked - Missing Prerequisites or Unverified Dataset'),
+        ('FAILED', 'Failed - Execution Error or Critical Security Breach'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='e2e_evaluations')
+    document = models.ForeignKey(SourceDocument, on_delete=models.SET_NULL, null=True, blank=True, related_name='e2e_evaluations')
+    job = models.ForeignKey('ingestion.IngestionJob', on_delete=models.SET_NULL, null=True, blank=True, related_name='e2e_evaluations')
+    retrieval_config = models.ForeignKey('retrieval.RetrievalConfiguration', on_delete=models.SET_NULL, null=True, blank=True, related_name='e2e_evaluations')
+    baseline_run = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='candidate_evaluations')
+
+    evaluation_dataset_version = models.CharField(max_length=50, default='gold_evaluation_v1')
+    embedding_model_identity = models.CharField(max_length=100, default='all-MiniLM-L6-v2')
+    vector_index_identity = models.CharField(max_length=100, default='lore_chunks')
+    app_version = models.CharField(max_length=50, default='2.0.0')
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    decision = models.CharField(max_length=30, choices=DECISION_CHOICES, default='BLOCKED')
+    decision_reason = models.TextField(blank=True, default='')
+
+    is_approved_for_promotion = models.BooleanField(default=False)
+    is_active_baseline = models.BooleanField(default=False)
+    promoted_at = models.DateTimeField(null=True, blank=True)
+    promoted_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='promoted_evaluations')
+
+    eval_cases_total = models.IntegerField(default=0)
+    eval_cases_passed = models.IntegerField(default=0)
+    eval_cases_unverified = models.IntegerField(default=0)
+
+    # Granular Metrics
+    retrieval_metrics = models.JSONField(default=dict, blank=True)
+    answer_metrics = models.JSONField(default=dict, blank=True)
+    governance_metrics = models.JSONField(default=dict, blank=True)
+    category_metrics = models.JSONField(default=dict, blank=True)
+    baseline_comparison = models.JSONField(default=dict, blank=True)
+    regressions_detected = models.JSONField(default=list, blank=True)
+    proposed_actions = models.JSONField(default=list, blank=True)
+
+    duration_ms = models.IntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"E2E Eval [{self.decision}] - {self.workspace.name} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
+
+
+class EvaluationFailureRecord(models.Model):
+    """
+    Root-cause grouped failure record for safe continuous improvement (Prompt 4 §9).
+    """
+    ROOT_CAUSE_CHOICES = [
+        ('extraction', 'Extraction / OCR Issue'),
+        ('chunking', 'Chunking / Boundary Issue'),
+        ('metadata', 'Metadata / Version Issue'),
+        ('retrieval', 'Retrieval / Ranking Issue'),
+        ('governance', 'Governance / Security Issue'),
+        ('generation', 'Answer Generation / Grounding Issue'),
+        ('unverified_ground_truth', 'Unverified / Ambiguous Ground Truth'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    evaluation_run = models.ForeignKey(EndToEndEvaluationRun, on_delete=models.CASCADE, related_name='failure_records')
+    case_id = models.CharField(max_length=100)
+    query = models.TextField()
+    category = models.CharField(max_length=50)
+    root_cause_group = models.CharField(max_length=30, choices=ROOT_CAUSE_CHOICES)
+    failure_detail = models.TextField()
+    expected_behavior = models.TextField()
+    actual_behavior = models.TextField()
+    proposed_remedy = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Failure [{self.root_cause_group}] - Case {self.case_id} ({self.evaluation_run.id})"
+

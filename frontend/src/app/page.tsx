@@ -268,6 +268,7 @@ export default function Home() {
               {activeTab === 'activity' && (
                 <IngestionActivityView
                   jobs={jobs}
+                  workspaceId={currentWorkspace?.id}
                   onRefresh={handleRefreshCurrentWorkspace}
                 />
               )}

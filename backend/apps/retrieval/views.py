@@ -311,3 +311,137 @@ def test_groq_api_view(request):
     except Exception as e:
         return Response({'status': 'error', 'error': f"Connection failed: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.AllowAny])
+def configurations_view(request):
+    """
+    GET: Returns active and historic retrieval configurations for workspace.
+    POST: Triggers evidence-driven optimization evaluation run for the workspace.
+    """
+    from apps.retrieval.models import RetrievalConfiguration
+    from apps.retrieval.optimization import EvidenceDrivenOptimizationService
+
+    workspace_id = request.query_params.get('workspace') or request.data.get('workspace')
+    if not workspace_id:
+        return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    workspace = get_object_or_404(Workspace, id=workspace_id)
+
+    if request.method == 'GET':
+        configs = RetrievalConfiguration.objects.filter(workspace=workspace).order_by('-is_active', '-version')
+        active_cfg = EvidenceDrivenOptimizationService.get_or_create_active_config(workspace)
+        return Response({
+            'workspace_id': str(workspace.id),
+            'active_configuration': active_cfg.to_dict(),
+            'configurations': [c.to_dict() for c in configs]
+        })
+
+    elif request.method == 'POST':
+        # Trigger explicit retrieval optimization evaluation
+        custom_cases = request.data.get('custom_cases')
+        opt_run = EvidenceDrivenOptimizationService.run_optimization(
+            workspace=workspace,
+            custom_cases=custom_cases
+        )
+        return Response({
+            'status': opt_run.status,
+            'optimization_run_id': str(opt_run.id),
+            'decision': opt_run.decision,
+            'decision_reason': opt_run.decision_reason,
+            'eval_cases_count': opt_run.eval_cases_count,
+            'baseline_metrics': opt_run.baseline_metrics,
+            'candidate_metrics': opt_run.candidate_metrics,
+            'category_breakdown': opt_run.category_breakdown,
+            'proposed_config': opt_run.proposed_config.to_dict() if opt_run.proposed_config else None
+        })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def promote_configuration_view(request):
+    """Promotes a proposed configuration to active production status with rollback checkpoint."""
+    from apps.retrieval.optimization import EvidenceDrivenOptimizationService
+
+    run_id = request.data.get('optimization_run_id')
+    if not run_id:
+        return Response({'error': 'optimization_run_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = request.user if request.user.is_authenticated else None
+    try:
+        promoted_cfg = EvidenceDrivenOptimizationService.promote_configuration(run_id, user=user)
+        return Response({
+            'status': 'promoted',
+            'promoted_configuration': promoted_cfg.to_dict(),
+            'message': f"Successfully promoted configuration '{promoted_cfg.name}' v{promoted_cfg.version} to active production."
+        })
+    except Exception as e:
+        logger.error(f"Promotion failed for run {run_id}: {e}")
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def rollback_configuration_view(request):
+    """Rolls back the active retrieval configuration to the previous known-good state."""
+    from apps.retrieval.optimization import EvidenceDrivenOptimizationService
+
+    workspace_id = request.data.get('workspace')
+    target_config_id = request.data.get('target_config_id')
+    if not workspace_id:
+        return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    workspace = get_object_or_404(Workspace, id=workspace_id)
+    user = request.user if request.user.is_authenticated else None
+
+    try:
+        restored_cfg = EvidenceDrivenOptimizationService.rollback_configuration(
+            workspace=workspace,
+            target_config_id=target_config_id,
+            user=user
+        )
+        return Response({
+            'status': 'rolled_back',
+            'active_configuration': restored_cfg.to_dict(),
+            'message': f"Successfully rolled back active configuration to v{restored_cfg.version} ('{restored_cfg.name}')."
+        })
+    except Exception as e:
+        logger.error(f"Rollback failed for workspace {workspace_id}: {e}")
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def optimization_runs_view(request):
+    """Lists retrieval optimization audit runs with baseline vs candidate metrics."""
+    from apps.retrieval.models import RetrievalOptimizationRun
+
+    workspace_id = request.query_params.get('workspace')
+    if not workspace_id:
+        return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    runs = RetrievalOptimizationRun.objects.filter(workspace_id=workspace_id).select_related(
+        'baseline_config', 'proposed_config', 'rollback_config'
+    ).order_by('-created_at')[:20]
+
+    output = []
+    for r in runs:
+        output.append({
+            'id': str(r.id),
+            'status': r.status,
+            'decision': r.decision,
+            'decision_reason': r.decision_reason,
+            'eval_cases_count': r.eval_cases_count,
+            'eval_dataset_version': r.eval_dataset_version,
+            'is_promoted': r.is_promoted,
+            'baseline_metrics': r.baseline_metrics,
+            'candidate_metrics': r.candidate_metrics,
+            'category_breakdown': r.category_breakdown,
+            'baseline_config': r.baseline_config.to_dict() if r.baseline_config else None,
+            'proposed_config': r.proposed_config.to_dict() if r.proposed_config else None,
+            'created_at': r.created_at.isoformat(),
+        })
+
+    return Response({'runs': output})
+
+

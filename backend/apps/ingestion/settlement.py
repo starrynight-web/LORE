@@ -15,6 +15,7 @@ Stages:
 import os
 import re
 import time
+import hashlib
 import logging
 from enum import Enum
 from dataclasses import dataclass, field
@@ -565,7 +566,11 @@ class StagedMergeService:
             with transaction.atomic():
                 DocumentChunk.objects.filter(document=doc).delete()
                 created_chunks = []
+                embedder_ref = get_embedding_adapter()
                 for c in raw_chunks:
+                    norm_t = " ".join(c['text'].strip().split())
+                    norm_h = " ".join((c.get('contextual_header') or '').strip().split())
+                    c_hash = hashlib.sha256(f"{norm_h}\n---\n{norm_t}:{embedder_ref.model_name}:{embedder_ref.dimension}".encode('utf-8')).hexdigest()
                     created_chunks.append(DocumentChunk(
                         organization=doc.organization,
                         workspace=doc.workspace,
@@ -579,6 +584,7 @@ class StagedMergeService:
                         char_offset_start=c['char_offset_start'],
                         char_offset_end=c['char_offset_end'],
                         token_count=c['token_count'],
+                        content_hash=c_hash,
                     ))
                 DocumentChunk.objects.bulk_create(created_chunks)
             chunking_ms = max(1, int((time.time() - t_chunk_start) * 1000))
