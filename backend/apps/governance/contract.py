@@ -264,6 +264,8 @@ def validate_canonical_envelope(data: Dict[str, Any]) -> Dict[str, Any]:
 
     if "reason_codes" not in data:
         data["reason_codes"] = [GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value]
+    elif GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value not in data["reason_codes"]:
+        data["reason_codes"].append(GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value)
 
     return data
 

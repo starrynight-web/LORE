@@ -13,7 +13,8 @@ import {
   Building2,
   Zap,
   Server,
-  Shield
+  Shield,
+  Mail
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 
@@ -36,6 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'overview', label: t('nav.workspace_overview'), icon: Layers },
     { id: 'ocr', label: t('nav.live_ocr'), icon: Scan, badge: 'Live', isLive: true },
     { id: 'documents', label: t('nav.all_documents'), icon: FileText },
+    { id: 'email_connect', label: 'Email Connectors', icon: Mail, badge: 'Gmail' },
     { id: 'activity', label: t('nav.ingestion_activity'), icon: Cpu, badge: activeJobsCount > 0 ? activeJobsCount : undefined },
     { id: 'rag', label: t('nav.governed_rag'), icon: Search, highlight: true },
     { id: 'governance_layers', label: '9 Governance Layers', icon: Shield, badge: '9/9' },

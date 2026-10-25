@@ -893,7 +893,10 @@ class AnswerCompletenessValidator:
             )
 
         requested_parts = ConciseAnswerSynthesizer.extract_requested_parts(query)
-        all_candidate_text = "\n".join(c.get('text', '') for c in candidate_chunks if isinstance(c, dict))
+        all_candidate_text = "\n".join(
+            f"{c.get('document_title', '')} {c.get('contextual_header', '')} {c.get('heading_path', '')} {c.get('text', '')}"
+            for c in candidate_chunks if isinstance(c, dict)
+        )
 
         # ------------------------------------------------------------------
         # Multi-Part Query Validation
@@ -986,7 +989,12 @@ class AnswerCompletenessValidator:
 
         if q_keywords:
             # Check if any substantive keyword appears in the candidate text
-            has_keyword_match = any(k in all_candidate_text.lower() for k in q_keywords)
+            all_text_lower = all_candidate_text.lower()
+            has_keyword_match = any(
+                k in all_text_lower or
+                (len(k) > 4 and (k[:5] in all_text_lower or k.rstrip('tion').rstrip('ing').rstrip('ed').rstrip('s') in all_text_lower))
+                for k in q_keywords
+            )
             if not has_keyword_match:
                 # Query subject is completely absent from retrieved text!
                 missing_topic = " ".join(q_keywords)

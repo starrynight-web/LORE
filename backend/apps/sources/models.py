@@ -71,6 +71,16 @@ class SourceDocument(models.Model):
     ocr_confidence = models.FloatField(default=0.0)
     page_count = models.PositiveIntegerField(default=1)
 
+    # Connector provenance tracking
+    external_id = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    email_connection = models.ForeignKey(
+        'EmailAccountConnection',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='synced_documents'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -201,4 +211,108 @@ class ZipImportEntry(models.Model):
 
     def __str__(self):
         return f"{self.sanitized_filename} ({self.status})"
+
+
+class EmailAccountConnection(models.Model):
+    """
+    Represents an authorized external email connection (e.g. Gmail) in a workspace.
+    Tokens are strictly encrypted at rest via TokenEncryptionService.
+    Tokens and secrets are never exposed in serialized responses or string representations.
+    """
+    PROVIDER_CHOICES = [
+        ('gmail', 'Google Workspace / Gmail'),
+        ('outlook', 'Microsoft Outlook / 365'),
+    ]
+
+    STATUS_CHOICES = [
+        ('connected', 'Connected'),
+        ('syncing', 'Syncing'),
+        ('error', 'Sync Error'),
+        ('disconnected', 'Disconnected'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='email_connections')
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='email_connections')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_connections')
+
+    provider = models.CharField(max_length=30, choices=PROVIDER_CHOICES, default='gmail')
+    email_address = models.CharField(max_length=255)
+    account_name = models.CharField(max_length=255, blank=True, default='')
+
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='connected')
+    encrypted_access_token = models.TextField(blank=True, default='')
+    encrypted_refresh_token = models.TextField(blank=True, default='')
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    scopes = models.JSONField(default=list, blank=True)
+
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=50, default='idle')
+    last_error = models.TextField(blank=True, default='')
+    sync_checkpoint = models.JSONField(default=dict, blank=True)
+    total_messages_synced = models.PositiveIntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = ('workspace', 'user', 'email_address')
+
+    def __str__(self):
+        return f"{self.provider.upper()} ({self.email_address}) [{self.status}]"
+
+    def __repr__(self):
+        return f"<EmailAccountConnection id={self.id} email={self.email_address} provider={self.provider} status={self.status}>"
+
+    def set_tokens(self, access_token: str, refresh_token: str = ""):
+        from .token_encryption import TokenEncryptionService
+        if access_token:
+            self.encrypted_access_token = TokenEncryptionService.encrypt(access_token)
+        if refresh_token:
+            self.encrypted_refresh_token = TokenEncryptionService.encrypt(refresh_token)
+
+    def get_access_token(self) -> str:
+        from .token_encryption import TokenEncryptionService
+        return TokenEncryptionService.decrypt(self.encrypted_access_token)
+
+    def get_refresh_token(self) -> str:
+        from .token_encryption import TokenEncryptionService
+        return TokenEncryptionService.decrypt(self.encrypted_refresh_token)
+
+
+class EmailSyncJob(models.Model):
+    """
+    Tracks atomic background or synchronous email sync batches for observability and auditability.
+    """
+    STATUS_CHOICES = [
+        ('queued', 'Queued'),
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('partial_success', 'Partial Success'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    connection = models.ForeignKey(EmailAccountConnection, on_delete=models.CASCADE, related_name='sync_jobs')
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='email_sync_jobs')
+
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='queued')
+    messages_detected = models.PositiveIntegerField(default=0)
+    messages_imported = models.PositiveIntegerField(default=0)
+    attachments_imported = models.PositiveIntegerField(default=0)
+    errors = models.JSONField(default=list, blank=True)
+    duration_ms = models.PositiveIntegerField(default=0)
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"EmailSyncJob {self.id} ({self.connection.email_address}) [{self.status}]"
+
 

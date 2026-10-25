@@ -14,6 +14,7 @@ import { DocumentDetailModal } from '@/components/DocumentDetailModal';
 import { RealtimeOCRStudio } from '@/components/RealtimeOCRStudio';
 import { AuthModal } from '@/components/AuthModal';
 import { OrganizationSettingsView } from '@/components/OrganizationSettingsView';
+import { EmailConnectorView } from '@/components/EmailConnectorView';
 import { 
   api, 
   Workspace, 
@@ -236,6 +237,16 @@ export default function Home() {
                   onAskAgent={(docId) => {
                     setRagScopedDocId(docId);
                     setActiveTab('rag');
+                  }}
+                />
+              )}
+
+              {activeTab === 'email_connect' && currentWorkspace && (
+                <EmailConnectorView
+                  workspaceId={currentWorkspace.id}
+                  onNavigateToDocs={() => {
+                    handleRefreshCurrentWorkspace();
+                    setActiveTab('documents');
                   }}
                 />
               )}

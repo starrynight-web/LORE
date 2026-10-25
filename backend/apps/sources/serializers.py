@@ -73,3 +73,32 @@ class ZipImportJobSerializer(serializers.ModelSerializer):
             'skipped_count', 'created_at', 'updated_at', 'completed_at'
         ]
 
+
+from .models import EmailAccountConnection, EmailSyncJob
+
+
+class EmailSyncJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailSyncJob
+        fields = [
+            'id', 'connection', 'workspace', 'status', 'messages_detected',
+            'messages_imported', 'attachments_imported', 'errors', 'duration_ms',
+            'started_at', 'completed_at', 'created_at'
+        ]
+
+
+class EmailAccountConnectionSerializer(serializers.ModelSerializer):
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    workspace_name = serializers.CharField(source='workspace.name', read_only=True)
+
+    class Meta:
+        model = EmailAccountConnection
+        fields = [
+            'id', 'organization', 'workspace', 'workspace_name', 'user', 'user_username',
+            'provider', 'email_address', 'account_name', 'status', 'scopes',
+            'last_sync_at', 'last_sync_status', 'last_error', 'total_messages_synced',
+            'created_at', 'updated_at'
+        ]
+        # Notice: encrypted_access_token and encrypted_refresh_token are NEVER in fields!
+
+

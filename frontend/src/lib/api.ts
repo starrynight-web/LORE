@@ -156,6 +156,41 @@ export interface ZipImportJob {
   completed_at: string | null;
 }
 
+export interface EmailAccountConnection {
+  id: string;
+  organization: string;
+  workspace: string;
+  workspace_name: string;
+  user: number;
+  user_username: string;
+  provider: 'gmail' | 'outlook';
+  email_address: string;
+  account_name: string;
+  status: 'connected' | 'syncing' | 'error' | 'disconnected';
+  scopes: string[];
+  last_sync_at: string | null;
+  last_sync_status: string;
+  last_error: string;
+  total_messages_synced: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailSyncJob {
+  id: string;
+  connection: string;
+  workspace: string;
+  status: 'queued' | 'running' | 'completed' | 'partial_success' | 'failed' | 'cancelled';
+  messages_detected: number;
+  messages_imported: number;
+  attachments_imported: number;
+  errors: string[];
+  duration_ms: number;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
 export interface Citation {
   citation_id: string;
   document_id: string;
@@ -674,6 +709,41 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ token })
     });
+  }
+
+  // Email Connectors & OAuth API
+  async getEmailConnections(workspaceId: string): Promise<EmailAccountConnection[]> {
+    const res = await this.request<any>(`/sources/email/connections/?workspace=${workspaceId}`);
+    return Array.isArray(res) ? res : res.results || [];
+  }
+
+  async getEmailOAuthAuthorizeUrl(workspaceId: string, provider: string = 'gmail'): Promise<{
+    provider: string;
+    authorization_url: string;
+    state: string;
+    scope: string;
+    redirect_uri: string;
+  }> {
+    return this.request(`/sources/email/oauth/authorize/?workspace=${workspaceId}&provider=${provider}`);
+  }
+
+  async triggerEmailSync(connectionId: string, fullSync: boolean = false, maxMessages: number = 50): Promise<any> {
+    return this.request(`/sources/email/connections/${connectionId}/sync/`, {
+      method: 'POST',
+      body: JSON.stringify({ full_sync: fullSync, max_messages: maxMessages })
+    });
+  }
+
+  async disconnectEmailConnection(connectionId: string, retainContent: boolean = true): Promise<any> {
+    return this.request(`/sources/email/connections/${connectionId}/disconnect/`, {
+      method: 'POST',
+      body: JSON.stringify({ retain_content: retainContent })
+    });
+  }
+
+  async getEmailConnectionJobs(connectionId: string): Promise<EmailSyncJob[]> {
+    const res = await this.request<any>(`/sources/email/connections/${connectionId}/jobs/`);
+    return Array.isArray(res) ? res : res.results || [];
   }
 
   async logout(): Promise<void> {

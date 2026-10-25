@@ -99,9 +99,14 @@ class EvidencePresentationEngine:
 
             # Check if this chunk is a duplicate/near-duplicate of an already accepted chunk from the same doc
             is_dup = False
+            chk_nums = set(re.findall(r'\$\s*\d+(?:\.\d{2})?|\b\d+\b', raw_text))
             for existing in unique_chunks:
                 if str(existing.get('document_id', '')) == doc_id or (doc_title and existing.get('document_title') == doc_title):
                     ex_clean = re.sub(r'\s+', ' ', (existing.get('text') or '').lower().strip())
+                    ex_nums = set(re.findall(r'\$\s*\d+(?:\.\d{2})?|\b\d+\b', ex_clean))
+                    # If chunks contain distinct financial amounts, they prove different facts and are not duplicates
+                    if chk_nums and ex_nums and chk_nums != ex_nums:
+                        continue
                     if cleaned_prefix == ex_clean[:60] and len(cleaned_prefix) > 25:
                         is_dup = True
                     elif len(chk_tokens) >= 5:
@@ -490,15 +495,6 @@ class EvidencePresentationEngine:
             p_text = (cit.get('shortest_passage') or cit.get('passage', '')).lower()
             status = cit.get('document_status', '')
 
-            # Do not duplicate citations for the same document unless proving an unrepresented value
-            is_same_doc = any(
-                (cit.get('document_id') and cit.get('document_id') == n.get('document_id')) or
-                cit['document_title'] == n['document_title']
-                for n in necessary
-            )
-            if is_same_doc:
-                continue
-
             # Condition A: Involved in genuine conflict or supersession
             is_conflict_source = any(
                 title in cr.get('informal_claim', '') or title in cr.get('authoritative_source', '')
@@ -534,6 +530,15 @@ class EvidencePresentationEngine:
             if covers_unrepresented_entity:
                 necessary.append(cit)
                 covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
+                continue
+
+            # Do not duplicate citations for the same document unless proving an unrepresented value (handled above in C & D)
+            is_same_doc = any(
+                (cit.get('document_id') and cit.get('document_id') == n.get('document_id')) or
+                cit['document_title'] == n['document_title']
+                for n in necessary
+            )
+            if is_same_doc:
                 continue
 
             # Otherwise: Exclude unrelated or redundant documents (Requirement 6)

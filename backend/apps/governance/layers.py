@@ -422,17 +422,20 @@ class AuthorityLayer:
         is_condition2 = any(w in t2_lower for w in ['provided that', 'subject to', 'receipt required', 'receipts required', 'itemized receipt', 'prior approval'])
 
         if (pos1 and not neg1 and neg2 and not is_condition2) or (pos2 and not neg2 and neg1 and not is_condition1):
-            # Domain alignment check: both passages must address the same operational domain
             domain_terms = [
                 'travel', 'flight', 'airfare', 'hotel', 'meal', 'lodging', 'expense', 'per diem', 'reimburse',
                 'procurement', 'purchase', 'spend', 'vendor', 'supplier', 'rfp', 'bid',
                 'access', 'login', 'credential', 'password', 'mfa', 'privileged', 'permission',
                 'leave', 'vacation', 'sick', 'parental',
-                'retention', 'records', 'schedule', 'audit', 'ledger', 'log', 'logging', 'destroy'
+                'retention', 'records', 'schedule', 'audit', 'ledger', 'log', 'logging', 'destroy',
+                'data', 'transfer', 'cloud', 'storage', 'export', 'security', 'governance', 'compliance',
+                'cross-border', 'aws', 'infrastructure'
             ]
+            shared_keywords = set(re.findall(r'\b[a-z]{4,}\b', t1_lower)) & set(re.findall(r'\b[a-z]{4,}\b', t2_lower))
+            shared_keywords -= {'this', 'that', 'with', 'from', 'have', 'been', 'will', 'must', 'should', 'would', 'shall', 'under', 'into'}
             d1 = {w for w in domain_terms if w in t1_lower or w in title1}
             d2 = {w for w in domain_terms if w in t2_lower or w in title2}
-            if not (d1 & d2):
+            if not ((d1 & d2) or len(shared_keywords) >= 2):
                 return None  # Unrelated operational domains do not contradict each other
 
             return {
@@ -878,9 +881,7 @@ class TemporalValidityLayer:
             user_asking_draft = True
         elif query:
             q_lower = query.lower()
-            if any(p in q_lower for p in ['what does the draft say', 'draft policy', 'in draft', 'proposed policy', 'draft allowance', 'draft says', 'draft specifies', 'policy approved', 'is it approved', 'approval status']):
-                user_asking_draft = True
-            elif 'draft' in q_lower and any(w in q_lower for w in ['what', 'show', 'tell', 'says', 'quote', 'value', 'is', 'status']):
+            if any(p in q_lower for p in ['what does the draft say', 'draft say', 'draft says', 'draft specifies', 'draft allowance', 'proposed policy', 'policy approved', 'is it approved', 'approval status']):
                 user_asking_draft = True
             elif re.search(r'\b(?:is|are)\s+.*approved\b', q_lower):
                 user_asking_draft = True
@@ -951,14 +952,15 @@ class TemporalValidityLayer:
                     superseded_identifiers.add(str(target))
 
         # 5. Evaluate each chunk against all separate governance attributes (Requirements 1-10)
-        for chk in chunks:
+        for raw_chk in chunks:
+            chk = dict(raw_chk)
             doc_id = str(chk.get('document_id', ''))
             doc = docs_map.get(doc_id)
             doc_title = chk.get('document_title') or (doc.title if doc else 'Policy Document')
             doc_code = str(chk.get('document_code') or '').upper()
 
             # Separate attributes (Requirement 1)
-            raw_status = (chk.get('document_status') or chk.get('status') or (doc.status if doc else '') or '').lower()
+            raw_status = (raw_chk.get('status') or (doc.status if doc else '') or raw_chk.get('document_status') or '').lower()
             auth_rank = chk.get('authority_level') if chk.get('authority_level') is not None else (doc.authority_level if doc else 3)
             eff_date = cls._parse_date(chk.get('effective_date') or (doc.effective_date if doc else None))
             exp_date = cls._parse_date(chk.get('expiration_date') or (doc.expiration_date if doc else None))
@@ -1038,7 +1040,7 @@ class TemporalValidityLayer:
                                 has_approved_alternative = True
                                 break
 
-                if user_asking_draft or not has_approved_alternative:
+                if user_asking_draft or (query and not has_approved_alternative and chk_has_direct_answer):
                     valid_chunks.append(chk)
                     temporal_notes.append(
                         f"Document '{doc_title}' is an unapproved draft. Draft terms remain non-binding."
@@ -1048,7 +1050,7 @@ class TemporalValidityLayer:
                     val_m = re.search(r'\$\s*(\d+(?:\.\d{2})?)', chk.get('text', ''))
                     rate_str = f" proposing ${val_m.group(1)}" if val_m else ""
                     temporal_notes.append(
-                        f"Lifecycle Exclusion (P1 §6): Document '{doc_title}' is in draft status{rate_str} and cannot serve as governing policy when approved policy exists. Draft terms remain non-binding."
+                        f"Lifecycle Exclusion (P1 §6): Document '{doc_title}' is in draft status{rate_str} and cannot serve as governing policy. Draft terms remain non-binding."
                     )
                     reason_codes.append(GovernanceReasonCode.L5_LIFECYCLE_EXCLUSION.value)
                     continue
