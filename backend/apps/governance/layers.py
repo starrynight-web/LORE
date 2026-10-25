@@ -447,6 +447,33 @@ class AuthorityLayer:
                             'claim_b': f"${val2} ({c2.get('document_title')})"
                         }
 
+        # Check for duration / time-period numerical contradiction (e.g. retention periods: 365 days vs 7 years)
+        dur_pattern = r'\b(\d+)\s*(days?|months?|years?|weeks?|hours?)\b'
+        dur1 = re.findall(dur_pattern, t1_lower)
+        dur2 = re.findall(dur_pattern, t2_lower)
+        if dur1 and dur2:
+            time_subjects = ['retention', 'retained', 'retain', 'preserve', 'storage', 'audit', 'ledger', 'record', 'log', 'notice', 'review period']
+            common_time = [s for s in time_subjects if s in t1_lower and s in t2_lower]
+            if common_time:
+                def _to_days(num_str, unit):
+                    n = float(num_str)
+                    u = unit.lower()
+                    if 'day' in u: return n
+                    if 'week' in u: return n * 7
+                    if 'month' in u: return n * 30
+                    if 'year' in u: return n * 365
+                    if 'hour' in u: return n / 24.0
+                    return n
+
+                d1_norm = _to_days(dur1[0][0], dur1[0][1])
+                d2_norm = _to_days(dur2[0][0], dur2[0][1])
+                if abs(d1_norm - d2_norm) > 1.0:
+                    return {
+                        'type': 'duration_contradiction',
+                        'claim_a': f"{dur1[0][0]} {dur1[0][1]} ({c1.get('document_title')})",
+                        'claim_b': f"{dur2[0][0]} {dur2[0][1]} ({c2.get('document_title')})"
+                    }
+
         # Check if chunks describe distinct commercial entities or suppliers (e.g. Supplier Alpha vs Supplier Beta)
         ent_pattern = r'\b(?:supplier|vendor|provider|contractor)\s+([a-z0-9_-]+)\b|\b(cloudbox|aws|azure|gcp|alpha|beta|gamma|delta)\b'
         raw_ent1 = re.findall(ent_pattern, t1_lower + " " + c1.get('document_title', '').lower())
@@ -758,6 +785,7 @@ class TemporalValidityLayer:
 
         # 2. Check if the user is explicitly inquiring what the draft says or its approval status (Requirement 3)
         user_asking_draft = False
+        user_asking_older_version = False
         if policy_context.get('is_draft'):
             user_asking_draft = True
         elif query:
@@ -768,6 +796,10 @@ class TemporalValidityLayer:
                 user_asking_draft = True
             elif re.search(r'\b(?:is|are)\s+.*approved\b', q_lower):
                 user_asking_draft = True
+
+            is_version_comparison = any(p in q_lower for p in ['compare', 'difference between', 'changed between', 'versus', ' vs ']) and any(p in q_lower for p in ['version', 'v1', 'v2'])
+            if is_version_comparison or any(p in q_lower for p in ['version 1', 'v1', 'older version', 'prior version', 'previous version', 'historical version', 'in version 1', 'under version 1', 'v1 of', 'version 1 of', 'what was the']):
+                user_asking_older_version = True
 
         # 3. Load DB records for candidate chunks if available
         doc_ids = list({c.get('document_id') for c in chunks if c.get('document_id')})
@@ -896,8 +928,10 @@ class TemporalValidityLayer:
                     )
                     continue
                 else:
+                    val_m = re.search(r'\$\s*(\d+(?:\.\d{2})?)', chk.get('text', ''))
+                    rate_str = f" proposing ${val_m.group(1)}" if val_m else ""
                     temporal_notes.append(
-                        f"Lifecycle Exclusion (P1 §6): Document '{doc_title}' is in draft status and cannot serve as governing policy."
+                        f"Lifecycle Exclusion (P1 §6): Document '{doc_title}' is in draft status{rate_str} and cannot serve as governing policy. Draft terms remain non-binding."
                     )
                     reason_codes.append(GovernanceReasonCode.L5_LIFECYCLE_EXCLUSION.value)
                     continue
@@ -914,11 +948,18 @@ class TemporalValidityLayer:
 
             # Step C: Supersession check (Requirements 4, 6, 7)
             if is_superseded_now:
-                temporal_notes.append(
-                    f"Supersession Exclusion: Document '{doc_title}' is superseded as of {ref_time.strftime('%Y-%m-%d')}. Excluded."
-                )
-                reason_codes.append(GovernanceReasonCode.L5_SUPERSEDED_DOCUMENT_EXCLUSION.value)
-                continue
+                if user_asking_older_version:
+                    valid_chunks.append(chk)
+                    temporal_notes.append(
+                        f"Notice: Document '{doc_title}' is an older version superseded by subsequent policy."
+                    )
+                    continue
+                else:
+                    temporal_notes.append(
+                        f"Supersession Exclusion: Document '{doc_title}' is superseded as of {ref_time.strftime('%Y-%m-%d')}. Excluded."
+                    )
+                    reason_codes.append(GovernanceReasonCode.L5_SUPERSEDED_DOCUMENT_EXCLUSION.value)
+                    continue
 
             # Step D: Expiration check (Requirements 6 & 7)
             if exp_date and exp_date < ref_time:
@@ -974,10 +1015,16 @@ class ExceptionLayer:
         as_of: Optional[datetime] = None,
         policy_context: Optional[Dict[str, Any]] = None
     ) -> ExceptionEvaluationTuple:
-        active_exceptions = ScopedException.objects.filter(
-            workspace_id=workspace_id,
-            status='active'
-        )
+        active_exceptions = []
+        if workspace_id:
+            try:
+                uuid.UUID(workspace_id)
+                active_exceptions = list(ScopedException.objects.filter(
+                    workspace_id=workspace_id,
+                    status='active'
+                ))
+            except (ValueError, TypeError):
+                active_exceptions = []
         matched_exceptions = []
         exception_notes = []
         reason_codes = []
@@ -1175,8 +1222,8 @@ class EvidenceSufficiencyLayer:
 
         # 6. Informational / Comparative Sufficiency Check (Requirement 8)
         # Ensure fact-bearing sources exist for informational, comparison, or policy interpretation questions
-        if not is_action_gate and not evidence_missing:
-            has_factual_content = len(retrieved_chunks) > 0 and any(len(c.get('text', '').strip()) > 10 for c in retrieved_chunks)
+        if not is_action_gate and not evidence_missing and len(retrieved_chunks) > 0:
+            has_factual_content = any(len(c.get('text', '').strip()) > 10 for c in retrieved_chunks)
             if not has_factual_content:
                 evidence_missing.append({
                     'requirement': 'relevant_fact',
@@ -1692,6 +1739,7 @@ class EnterpriseGovernanceEngine:
             'state': state,
             'directive': directive,
             'answer': answer,
+            'answer_text': answer,
             'decision_type': dt,
             'escalation_target': escalation_target,
             'risk_level': decision_info.risk_level,

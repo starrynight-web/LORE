@@ -63,10 +63,20 @@ class ContextReranker:
         stop_words = {
             'what', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of',
             'and', 'or', 'by', 'with', 'from', 'as', 'be', 'can', 'we', 'it', 'this',
-            'that', 'do', 'does', 'all', 'any', 'my', 'your', 'our'
+            'that', 'do', 'does', 'all', 'any', 'my', 'your', 'our', 'under', 'according',
+            'tell', 'show', 'please', 'would', 'could', 'how', 'much', 'many'
         }
         content_tokens = [w for w in all_q_tokens if w not in stop_words]
         eval_q_tokens = set(content_tokens if content_tokens else all_q_tokens)
+
+        # Requirement 1 & 2: Identify specific fact requirements from query
+        is_amount_inquiry = bool(re.search(r'\b(allowance|rate|threshold|limit|ceiling|cost|price|fee|budget|amount|total)\b', q_clean))
+        is_duration_inquiry = bool(re.search(r'\b(days?|hours?|months?|years?|delivery|turnaround|retention|schedule|period|timeline|timeout)\b', q_clean))
+        doc_code_targets = [t.lower() for t in re.findall(r'\b[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+\b|\bdoc-\d+\b|\bpol-[a-z0-9-]+\b', q_clean)]
+        section_target_m = re.search(r'\bsection\s+(\d+(?:\.\d+)?)\b', q_clean)
+        section_target = section_target_m.group(0).lower() if section_target_m else None
+        ver_target_m = re.search(r'\b(?:version\s*(\d+)|v(\d+))\b', q_clean)
+        ver_target = int(ver_target_m.group(1) or ver_target_m.group(2)) if ver_target_m else None
 
         scored_candidates = []
         raw_scores = []
@@ -88,6 +98,8 @@ class ContextReranker:
                 doc = getattr(chk, 'document', None)
                 title = (getattr(doc, 'title', '') or '').lower() if doc else ''
                 auth_rank = getattr(doc, 'authority_level', 3) if doc else 3
+                ver_obj = getattr(chk, 'document_version', None)
+                ver_num = ver_obj.version_number if ver_obj else (getattr(doc, 'current_version_number', 1) if doc else 1)
             elif isinstance(item, dict):
                 is_tuple = False
                 chk = item
@@ -97,6 +109,7 @@ class ContextReranker:
                 heading = (item.get('heading_path', '') or item.get('heading', '') or '').lower()
                 title = (item.get('document_title', '') or '').lower()
                 auth_rank = item.get('authority_level', 3)
+                ver_num = item.get('document_version', 1)
             else:
                 continue
 
@@ -123,11 +136,42 @@ class ContextReranker:
             if header and any(t in header for t in eval_q_tokens):
                 header_bonus = 0.15
 
-            # 5. Pure relevance score (CRITICAL: DO NOT MULTIPLY BY AUTHORITY!)
-            if token_coverage == 0.0 and phrase_bonus == 0.0 and header_bonus == 0.0:
+            # 5. Document Target alignment bonus (Requirement 3 & 7)
+            doc_match_bonus = 0.0
+            if doc_code_targets and any(dc in title for dc in doc_code_targets):
+                doc_match_bonus = 0.25
+
+            # 6. Section target bonus (Requirement 3)
+            section_bonus = 0.0
+            if section_target and (section_target in header or section_target in heading or section_target in text):
+                section_bonus = 0.15
+
+            # 7. Version target bonus (Requirement 3 & 7)
+            version_bonus = 0.0
+            if ver_target is not None and ver_num == ver_target:
+                version_bonus = 0.20
+
+            # 8. Fact-bearing content relevance bonus (Requirement 2)
+            fact_bonus = 0.0
+            if is_amount_inquiry and bool(re.search(r'\$\s*\d+|\b\d+\s*(?:dollars?|usd|taka|bdt)\b', text)):
+                fact_bonus += 0.15
+            if is_duration_inquiry and bool(re.search(r'\b\d+\s*(?:days?|hours?|months?|years?|business days?)\b', text)):
+                fact_bonus += 0.15
+
+            # 9. Pure relevance score (CRITICAL: DO NOT MULTIPLY BY AUTHORITY!)
+            if token_coverage == 0.0 and phrase_bonus == 0.0 and header_bonus == 0.0 and doc_match_bonus == 0.0:
                 relevance_score = 0.0
             else:
-                relevance_score = (0.45 * norm_rrf) + (0.35 * token_coverage) + phrase_bonus + header_bonus
+                relevance_score = (
+                    (0.40 * norm_rrf) +
+                    (0.35 * token_coverage) +
+                    phrase_bonus +
+                    header_bonus +
+                    doc_match_bonus +
+                    section_bonus +
+                    version_bonus +
+                    fact_bonus
+                )
 
             # Threshold gating: completely irrelevant chunks are not promoted
             if relevance_score < min_relevance_threshold:
@@ -141,6 +185,10 @@ class ContextReranker:
                 'phrase_match': phrase_bonus > 0,
                 'phrase_bonus': round(phrase_bonus, 2),
                 'header_bonus': round(header_bonus, 2),
+                'doc_match_bonus': round(doc_match_bonus, 2),
+                'section_bonus': round(section_bonus, 2),
+                'version_bonus': round(version_bonus, 2),
+                'fact_bonus': round(fact_bonus, 2),
                 'authority_level': auth_rank
             }
 
@@ -334,11 +382,18 @@ class HybridRetrievalService:
         if document_id:
             chunks_qs = chunks_qs.filter(document_id=document_id)
 
+        # Check if query explicitly asks about older/historical versions (Requirement 7)
+        is_historical_or_version_query = bool(
+            as_of or
+            re.search(r'\b(?:v\d+|version\s*\d+|older\s+version|prior\s+version|previous\s+version|historical)\b', query_clean.lower())
+        )
+
         chunks_map = {}
         for c in chunks_qs:
-            # Exclude superseded older versions
-            if c.document_version and c.document_version.version_number < c.document.current_version_number:
-                continue
+            # Exclude superseded older versions unless query explicitly asks for older/historical versions
+            if not is_historical_or_version_query:
+                if c.document_version and c.document_version.version_number < c.document.current_version_number:
+                    continue
             chunks_map[str(c.id)] = c
 
         rrf_candidates = []
@@ -536,6 +591,34 @@ class HybridRetrievalService:
                 c_ranks = cand.get('candidate_ranks', {})
                 r_vec = c_ranks.get('vector_rank')
                 r_lex = c_ranks.get('lexical_rank')
+
+            # Requirement 4: Deduplicate identical and overlapping chunks while retaining strongest provenance
+            clean_text_cand = re.sub(r'\s+', ' ', (text or '').lower().strip())
+            cand_tokens = set(re.findall(r'\b\w{4,}\b', clean_text_cand))
+            is_dup = False
+            for existing in final_results:
+                if existing.get('document_id') == doc_id or existing.get('document_title') == doc_title:
+                    ex_clean = re.sub(r'\s+', ' ', (existing.get('text') or '').lower().strip())
+                    if clean_text_cand[:60] == ex_clean[:60] and len(clean_text_cand) > 30:
+                        is_dup = True
+                    elif cand_tokens and len(cand_tokens) >= 5:
+                        ex_tokens = set(re.findall(r'\b\w{4,}\b', ex_clean))
+                        if ex_tokens:
+                            inter = len(cand_tokens.intersection(ex_tokens))
+                            union = len(cand_tokens.union(ex_tokens))
+                            if union > 0 and (inter / union) >= 0.75:
+                                is_dup = True
+                    if is_dup:
+                        # Retain the strongest source location and provenance (Requirement 4)
+                        if (existing.get('page_number') is None or existing.get('page_number') == 0) and page_num:
+                            existing['page_number'] = page_num
+                        if (not existing.get('heading_path') or existing.get('heading_path') == 'General') and heading_path:
+                            existing['heading_path'] = heading_path
+                        if auth_level > existing.get('authority_level', 0):
+                            existing['authority_level'] = auth_level
+                        break
+            if is_dup:
+                continue
 
             if accumulated_tokens + chk_tokens > budget and final_results:
                 truncated_count += 1

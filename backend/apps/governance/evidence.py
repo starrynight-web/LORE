@@ -14,7 +14,7 @@ import re
 import uuid
 import logging
 from typing import List, Dict, Any, Optional, Set, Tuple
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -54,11 +54,11 @@ class EvidencePresentationEngine:
             cit = cls._build_citation_entry(chk, query, answer, ref_time, conflicts_resolved)
             candidate_citations.append(cit)
 
-        # Sort candidate citations: approved governing policy comes first, then by relevance score
+        # Sort candidate citations: approved governing policy comes first, then by authority level, then by relevance score (Requirement 9)
         def _sort_key(c):
             st = c.get('document_status', 'unknown')
             is_gov = 2 if st == 'approved' else (1 if st not in ['draft', 'superseded', 'future-effective'] else 0)
-            return (is_gov, float(c.get('score', 0.0) or 0.0), int(c.get('authority_level', 0) or 0))
+            return (is_gov, int(c.get('authority_level', 0) or 0), float(c.get('score', 0.0) or 0.0))
 
         candidate_citations.sort(key=_sort_key, reverse=True)
 
@@ -72,14 +72,12 @@ class EvidencePresentationEngine:
     @classmethod
     def _deduplicate_chunks(cls, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Removes exact duplicates and near-duplicate chunks.
-        Chunks from the same document and page with high token overlap (>80%)
-        or identical core proof sentences are merged, keeping the higher-scored one.
+        Removes exact duplicates and near-duplicate chunks while retaining
+        the strongest source location and provenance (Requirement 4).
         """
         unique_chunks: List[Dict[str, Any]] = []
-        seen_keys: Set[Tuple[str, Any, str]] = set()
 
-        # Sort by relevance score descending so we keep the best representation
+        # Sort by relevance score descending
         sorted_chunks = sorted(
             chunks,
             key=lambda c: (float(c.get('score', 0.0) or 0.0), int(c.get('authority_level', 0) or 0)),
@@ -88,37 +86,42 @@ class EvidencePresentationEngine:
 
         for chk in sorted_chunks:
             doc_id = str(chk.get('document_id', ''))
-            page = chk.get('page_number')
+            doc_title = chk.get('document_title', '')
             raw_text = (chk.get('text') or '').strip()
             if not raw_text:
                 continue
 
-            # Normalized fingerprint: doc_id + page + first 60 chars of cleaned text
             cleaned_prefix = re.sub(r'\s+', ' ', raw_text.lower())[:60]
-            key = (doc_id, page, cleaned_prefix)
-
-            if key in seen_keys:
-                continue
-
-            # Check near-duplicate Jaccard overlap against already accepted chunks from same doc
-            is_near_dup = False
             chk_tokens = set(re.findall(r'\b\w{4,}\b', raw_text.lower()))
-            if len(chk_tokens) >= 5:
-                for existing in unique_chunks:
-                    if str(existing.get('document_id', '')) == doc_id and existing.get('page_number') == page:
-                        ex_tokens = set(re.findall(r'\b\w{4,}\b', (existing.get('text') or '').lower()))
-                        if ex_tokens:
-                            intersection = len(chk_tokens.intersection(ex_tokens))
-                            union = len(chk_tokens.union(ex_tokens))
-                            if union > 0 and (intersection / union) >= 0.75:
-                                is_near_dup = True
-                                break
 
-            if is_near_dup:
+            # Check if this chunk is a duplicate/near-duplicate of an already accepted chunk from the same doc
+            is_dup = False
+            for existing in unique_chunks:
+                if str(existing.get('document_id', '')) == doc_id or (doc_title and existing.get('document_title') == doc_title):
+                    ex_clean = re.sub(r'\s+', ' ', (existing.get('text') or '').lower().strip())
+                    if cleaned_prefix == ex_clean[:60] and len(cleaned_prefix) > 25:
+                        is_dup = True
+                    elif len(chk_tokens) >= 5:
+                        ex_tokens = set(re.findall(r'\b\w{4,}\b', ex_clean))
+                        if ex_tokens:
+                            inter = len(chk_tokens.intersection(ex_tokens))
+                            union = len(chk_tokens.union(ex_tokens))
+                            if union > 0 and (inter / union) >= 0.75:
+                                is_dup = True
+                    if is_dup:
+                        # Retain the strongest source location and provenance (Requirement 4)
+                        if (existing.get('page_number') is None or existing.get('page_number') == 0) and chk.get('page_number'):
+                            existing['page_number'] = chk.get('page_number')
+                        if (not existing.get('heading_path') or existing.get('heading_path') == 'General') and chk.get('heading_path'):
+                            existing['heading_path'] = chk.get('heading_path')
+                        if int(chk.get('authority_level', 0) or 0) > int(existing.get('authority_level', 0) or 0):
+                            existing['authority_level'] = chk.get('authority_level')
+                        break
+
+            if is_dup:
                 continue
 
-            seen_keys.add(key)
-            unique_chunks.append(chk)
+            unique_chunks.append(dict(chk))
 
         return unique_chunks
 
@@ -266,7 +269,7 @@ class EvidencePresentationEngine:
                 else:
                     eff_dt = eff
                 if timezone.is_naive(eff_dt):
-                    eff_dt = timezone.make_aware(eff_dt, timezone.utc)
+                    eff_dt = timezone.make_aware(eff_dt, dt_timezone.utc)
                 if eff_dt > ref_time:
                     return 'future-effective'
             except Exception:
@@ -284,7 +287,7 @@ class EvidencePresentationEngine:
                 else:
                     exp_dt = exp
                 if timezone.is_naive(exp_dt):
-                    exp_dt = timezone.make_aware(exp_dt, timezone.utc)
+                    exp_dt = timezone.make_aware(exp_dt, dt_timezone.utc)
                 if exp_dt < ref_time:
                     return 'archived'
             except Exception:
@@ -418,15 +421,30 @@ class EvidencePresentationEngine:
         necessary: List[Dict[str, Any]] = [citations[0]]
         covered_facts = set(re.findall(r'\b[a-z0-9$]{3,}\b', citations[0]['shortest_passage'].lower()))
 
-        # Check multi-part query requirements
         q_lower = query.lower()
         ans_lower = answer.lower()
-        is_multipart = any(w in q_lower for w in ['breakfast', 'lunch', 'dinner', 'total', 'compare', 'difference'])
+
+        # The primary source is always necessary
+        necessary: List[Dict[str, Any]] = [citations[0]]
+        covered_facts = set(re.findall(r'\b[a-z0-9$]{3,}\b', citations[0]['shortest_passage'].lower()))
+
+        # Extract answer numerical/financial values and entities (Requirements 5 & 8)
+        ans_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b|\b\d+\b', ans_lower))
+
+        # Check multi-part query requirements
+        multi_entities = re.findall(r'\b(?:supplier\s+[a-z0-9_-]+|vendor\s+[a-z0-9_-]+|tier\s*\d+|level\s*\d+|breakfast|lunch|dinner|micro-purchase|small procurement|major contract)\b', q_lower)
+
+        user_asks_draft = bool(re.search(r'\b(draft|proposed|in draft)\b', q_lower))
 
         for cit in citations[1:]:
             title = cit['document_title']
             doc_id = str(cit.get('document_id', ''))
-            p_text = cit['shortest_passage'].lower()
+            p_text = (cit.get('shortest_passage') or cit.get('passage', '')).lower()
+            status = cit.get('document_status', '')
+
+            # Draft documents must NOT be included in citations unless user asks about the draft (Requirement 3)
+            if status == 'draft' and not user_asks_draft:
+                continue
 
             # Condition A: Involved in genuine conflict or supersession
             is_conflict_source = any(
@@ -442,18 +460,33 @@ class EvidencePresentationEngine:
                 necessary.append(cit)
                 continue
 
-            # Condition C: Multi-part question where this source adds new necessary facts
-            if is_multipart:
-                cit_tokens = set(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
-                new_tokens = cit_tokens - covered_facts
-                # Does it cover an unanswered entity?
-                has_distinct_fact = any(
-                    (entity in p_text and entity not in citations[0]['shortest_passage'].lower())
-                    for entity in ['lunch', 'dinner', 'breakfast', 'total', 'version 1', 'version 2']
-                )
-                if has_distinct_fact or len(new_tokens) >= 5:
-                    necessary.append(cit)
-                    covered_facts.update(cit_tokens)
-                    continue
+            # Condition C: Proves an answer fact or table value not covered by already-selected citations (Requirement 5)
+            cit_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b|\b\d+\b', p_text))
+            already_covered_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b|\b\d+\b', " ".join(n['shortest_passage'].lower() for n in necessary)))
+            new_values = cit_values.intersection(ans_values) - already_covered_values
+            if new_values:
+                necessary.append(cit)
+                covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
+                continue
+
+            # Condition D: Multi-entity question where this source covers an unrepresented entity (Requirement 8)
+            covers_unrepresented_entity = any(
+                (ent in p_text and not any(ent in n['shortest_passage'].lower() for n in necessary))
+                for ent in multi_entities
+            )
+            if covers_unrepresented_entity:
+                necessary.append(cit)
+                covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
+                continue
+
+            # Condition E: Significant distinct substantive factual tokens
+            cit_tokens = set(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
+            new_tokens = cit_tokens - covered_facts
+            if len(new_tokens) >= 8 and any(k in p_text for k in re.findall(r'\b\w{4,}\b', q_lower)):
+                necessary.append(cit)
+                covered_facts.update(cit_tokens)
+                continue
+
+            # Otherwise: Exclude unrelated or redundant documents (Requirement 6)
 
         return necessary

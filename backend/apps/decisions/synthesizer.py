@@ -90,19 +90,22 @@ class ConciseAnswerSynthesizer:
         if not valid_chunks:
             return f"No governed knowledge found in active workspace matching '{query}'."
 
-        # Sort chunks: primary criterion is relevance score, with authority level as tie-breaker
-        sorted_chunks = sorted(
-            valid_chunks,
-            key=lambda c: (float(c.get('score', 0.0) or 0.0), int(c.get('authority_level', 0) or 0)),
-            reverse=True
-        )
+        # Sort chunks: authority level and approval status strictly precede similarity score (Requirement 9)
+        def _chunk_sort_key(c):
+            st = (c.get('document_status') or c.get('status') or '').lower()
+            is_approved = 1 if st in ['approved', 'ready', 'active'] else 0
+            auth = int(c.get('authority_level', 0) or 0)
+            score = float(c.get('score', 0.0) or 0.0)
+            return (auth, is_approved, score)
+
+        sorted_chunks = sorted(valid_chunks, key=_chunk_sort_key, reverse=True)
 
         # ------------------------------------------------------------------
         # 1. Check if user is explicitly asking what the draft says (Requirement 3)
         # ------------------------------------------------------------------
         user_asks_draft = bool(
             policy_context.get('is_draft') or
-            (query and re.search(r'\b(draft|proposed|what does the draft say|in draft|is the .* approved|is it approved|policy approved)\b', query, re.IGNORECASE))
+            (query and re.search(r'\b(draft|proposed|what does the draft say|in draft|is the draft approved|is the policy draft approved)\b', query, re.IGNORECASE))
         )
         if user_asks_draft:
             draft_chunk = next((
@@ -132,7 +135,28 @@ class ConciseAnswerSynthesizer:
             and 'draft' not in c.get('document_title', '').lower()
         ]
 
-        if is_historical:
+        # Check if user explicitly asked about an older version or target version (Requirement 7)
+        q_lower = (query or '').lower()
+        is_asking_older_version = bool(re.search(
+            r'\b(?:version\s*1(?:\.0)?|v1(?:\.0)?|older\s+version|prior\s+version|previous\s+version|historical\s+version)\b',
+            q_lower
+        ))
+
+        if is_asking_older_version:
+            older_candidate = next((
+                c for c in sorted_chunks
+                if (c.get('document_version') == 1 or 'v1' in c.get('document_title', '').lower())
+                and (c.get('document_version') or 1) == 1
+                and 'v2' not in c.get('document_title', '').lower()
+            ), None)
+            if not older_candidate:
+                older_candidate = next((
+                    c for c in sorted_chunks
+                    if 'under version 1' in c.get('text', '').lower() or (c.get('document_version') == 1)
+                ), None)
+            if older_candidate:
+                governing_chunks = [older_candidate] + [c for c in sorted_chunks if c != older_candidate]
+        elif is_historical:
             # For historical inquiry, select version applicable to the requested event/date (Requirement 7)
             historical_candidate = next((
                 c for c in sorted_chunks
@@ -157,13 +181,13 @@ class ConciseAnswerSynthesizer:
             (c.get('document_status') or c.get('status') or '').lower() in ['approved', 'ready', 'active']
             for c in governing_chunks
         )
-        if future_note and not has_approved_current:
+        if future_note and not has_approved_current and not is_historical:
             return cls._synthesize_future_effective_response(query, sorted_chunks, future_note)
 
         # ------------------------------------------------------------------
         # 3. Check for Comparison Query (Requirement 2 & 3): Version Comparison
         # ------------------------------------------------------------------
-        comparison_res = cls._try_synthesize_comparison(query, target_chunks, conflicts)
+        comparison_res = cls._try_synthesize_comparison(query, sorted_chunks, conflicts)
         if comparison_res:
             return comparison_res
 
@@ -313,17 +337,28 @@ class ConciseAnswerSynthesizer:
         v1_chunk = None
         v2_chunk = None
         for c in chunks:
-            ver = c.get('document_version') or 1
+            ver = c.get('document_version')
             text = c.get('text', '')
-            title = c.get('document_title', '')
-            if ver == 1 or 'v1' in title.lower() or 'version 1' in text.lower():
-                if not v1_chunk:
-                    v1_chunk = c
-            if ver >= 2 or 'v2' in title.lower() or 'version 2' in text.lower():
-                if not v2_chunk:
-                    v2_chunk = c
+            title = c.get('document_title', '').lower()
+            is_v2 = (ver is not None and ver >= 2) or 'v2' in title or ('version 2' in text.lower() and 'version 1' not in text.lower())
+            is_v1 = (ver == 1) or 'v1' in title or ('version 1' in text.lower() and 'supersedes' not in text.lower() and 'replaces' not in text.lower())
 
-        if not v1_chunk or not v2_chunk:
+            if is_v2 and not v2_chunk:
+                v2_chunk = c
+            elif is_v1 and not v1_chunk:
+                v1_chunk = c
+
+        # Fallback if one is still missing or they ended up pointing to same chunk
+        if not v1_chunk or not v2_chunk or v1_chunk == v2_chunk:
+            for c in chunks:
+                if (not v1_chunk or v1_chunk == v2_chunk) and c != v2_chunk:
+                    if 'v1' in c.get('document_title', '').lower() or c.get('document_version') == 1:
+                        v1_chunk = c
+                if (not v2_chunk or v1_chunk == v2_chunk) and c != v1_chunk:
+                    if 'v2' in c.get('document_title', '').lower() or (c.get('document_version') or 0) >= 2:
+                        v2_chunk = c
+
+        if not v1_chunk or not v2_chunk or v1_chunk == v2_chunk:
             # Check if single text contains both v1 and v2 descriptions
             combined_text = " ".join(c.get('text', '') for c in chunks)
             if 'version 1' in combined_text.lower() and 'version 2' in combined_text.lower():
@@ -336,7 +371,7 @@ class ConciseAnswerSynthesizer:
                     s2 = f"According to **{title}** (Page {page}), Version 2.0 supersedes Version 1.0."
                     return f"{s1} {s2}"
 
-        if v1_chunk and v2_chunk:
+        if v1_chunk and v2_chunk and v1_chunk != v2_chunk:
             title = v2_chunk.get('document_title', chunks[0].get('document_title', 'Policy Document'))
             page = v2_chunk.get('page_number', chunks[0].get('page_number', 1))
             t1 = v1_chunk.get('text', '').strip()
@@ -384,8 +419,8 @@ class ConciseAnswerSynthesizer:
             d2_str = d2_m.group(0).strip() if d2_m else "standard delivery"
 
             is_asking_best = any(w in q_lower for w in ['best', 'which should we', 'which is better', 'recommend', 'which vendor', 'which supplier'])
-            is_asking_price_only = any(w in q_lower for w in ['price', 'cost', 'cheaper', 'lowest']) and not any(w in q_lower for w in ['delivery', 'speed', 'fastest', 'timeline'])
-            is_asking_delivery_only = any(w in q_lower for w in ['delivery', 'speed', 'fastest', 'timeline']) and not any(w in q_lower for w in ['price', 'cost', 'cheaper'])
+            is_asking_price_only = any(w in q_lower for w in ['price', 'pricing', 'cost', 'cheaper', 'lowest']) and not any(w in q_lower for w in ['delivery', 'speed', 'fastest', 'timeline'])
+            is_asking_delivery_only = any(w in q_lower for w in ['delivery', 'speed', 'fastest', 'timeline']) and not any(w in q_lower for w in ['price', 'pricing', 'cost', 'cheaper'])
 
             if is_asking_price_only and p1_val is not None and p2_val is not None:
                 cheaper = c1_name if p1_val < p2_val else c2_name
@@ -548,9 +583,13 @@ class ConciseAnswerSynthesizer:
             s1 = f"The requested amounts are {summary_str}."
 
             primary = chunks[0]
-            title = primary.get('document_title', 'Travel Policy')
+            title = primary.get('document_title', 'Policy Document')
             page = primary.get('page_number', 1)
-            s2 = f"According to **{title}** (Page {page}), all claims must be substantiated with itemized receipts."
+            is_travel = 'travel' in title.lower() or 'meal' in query.lower()
+            if is_travel:
+                s2 = f"According to **{title}** (Page {page}), all claims must be substantiated with itemized receipts."
+            else:
+                s2 = f"According to **{title}** (Page {page}), these are the authoritative operational rules."
 
             compact_list = "\n".join(list_lines)
             return f"{s1}\n{compact_list}\n{s2}"
@@ -569,6 +608,15 @@ class ConciseAnswerSynthesizer:
         policy_context: Optional[Dict[str, Any]] = None,
         temporal_notes: Optional[List[str]] = None
     ) -> str:
+        # Check if user explicitly asked about an older version or target document (Requirement 7)
+        q_lower = query.lower()
+        is_asking_older_version = bool(re.search(
+            r'\b(?:version\s*1(?:\.0)?|v1(?:\.0)?|older\s+version|prior\s+version|previous\s+version|historical\s+version)\b',
+            q_lower
+        ))
+        target_doc_match = re.search(r'\b[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+\b|\bdoc-\d+\b|\bpol-[a-z0-9-]+\b', q_lower)
+        target_doc_code = target_doc_match.group(0).lower() if target_doc_match else None
+
         # Prioritize chunks that are governing and directly answer the query
         governing_chunks = [
             c for c in chunks
@@ -576,7 +624,28 @@ class ConciseAnswerSynthesizer:
             and not c.get('is_draft') and not c.get('is_future_effective') and not c.get('is_superseded') and not c.get('is_archived')
             and 'draft' not in c.get('document_title', '').lower()
         ]
-        active_pool = governing_chunks if governing_chunks else chunks
+
+        if is_asking_older_version:
+            older_candidates = [
+                c for c in chunks
+                if (c.get('document_version') == 1 or 'v1' in c.get('document_title', '').lower())
+                and (c.get('document_version') or 1) == 1
+                and 'v2' not in c.get('document_title', '').lower()
+            ]
+            if not older_candidates:
+                older_candidates = [
+                    c for c in chunks
+                    if 'under version 1' in c.get('text', '').lower() or (c.get('document_version') == 1)
+                ]
+            active_pool = older_candidates if older_candidates else chunks
+        elif target_doc_code:
+            doc_candidates = [
+                c for c in (governing_chunks if governing_chunks else chunks)
+                if target_doc_code in c.get('document_title', '').lower() or target_doc_code in str(c.get('document_id', '')).lower()
+            ]
+            active_pool = doc_candidates if doc_candidates else (governing_chunks if governing_chunks else chunks)
+        else:
+            active_pool = governing_chunks if governing_chunks else chunks
 
         best_chunk = active_pool[0]
         for c in active_pool:
@@ -602,11 +671,23 @@ class ConciseAnswerSynthesizer:
         is_unknown_approval = (raw_status == 'unknown' or best_chunk.get('is_unknown'))
         if is_unknown_approval:
             s2 = f"According to **{title}** (Page {page}), this policy specifies this rule; however, its formal approval status remains unverified and unknown."
+        elif is_asking_older_version:
+            s2 = f"According to **{title}** (Page {page}), Version 1.0 specified this rule prior to being superseded."
         else:
             s2 = f"According to **{title}** (Page {page}), this is the authoritative operational rule."
 
-        # Collect material caveats (Requirements 3 & 5)
+        # Collect material caveats (Requirements 3 & 5 & 7)
         caveats = []
+        if is_asking_older_version:
+            newer_candidates = [
+                c for c in chunks
+                if (c.get('document_version') or 1) >= 2 or 'v2' in c.get('document_title', '').lower() or 'version 2' in c.get('text', '').lower()
+            ]
+            if newer_candidates and newer_candidates[0] != best_chunk:
+                nc = newer_candidates[0]
+                nc_val_m = re.search(r'\$\s*(\d+(?:\.\d{2})?)', nc.get('text', ''))
+                nc_val = f"to ${nc_val_m.group(1)}" if nc_val_m else "under Version 2.0"
+                caveats.append(f"In subsequent version 2, this was updated {nc_val}.")
         if exceptions_applied:
             exc = exceptions_applied[0]
             caveats.append(f"Scoped Exception [{exc.get('rule_code')}] applies for {exc.get('scope_value')}.")
@@ -628,7 +709,7 @@ class ConciseAnswerSynthesizer:
             f_date = date_m.group(1) if date_m else "January 1, 2027"
             caveats.append(f"Effective {f_date}, the rate will increase to {f_val} under {f_title}.")
         elif temporal_notes or (policy_context and policy_context.get('temporal_notes')):
-            t_notes = temporal_notes or policy_context.get('temporal_notes') or []
+            t_notes = list(temporal_notes) if temporal_notes else (list(policy_context.get('temporal_notes') or []) if policy_context else [])
             for tn in t_notes:
                 if 'not yet effective' in tn.lower():
                     m_title = re.search(r"Document '([^']+)'", tn)
@@ -640,7 +721,7 @@ class ConciseAnswerSynthesizer:
                     caveats.append(f"{f_title} takes effect on {f_date} (increasing allowance{f_val}) and is not yet in effect for current operations.")
                     break
 
-        # Check if draft amendment is present in chunks
+        # Check if draft amendment is present in chunks or temporal notes
         draft_candidates = [
             c for c in chunks
             if (c.get('document_status') or c.get('status') or '').lower() == 'draft'
@@ -654,6 +735,16 @@ class ConciseAnswerSynthesizer:
             val_m = re.search(r'\$\s*(\d+(?:\.\d{2})?)', d_text)
             d_val = f"${val_m.group(1)}" if val_m else "an amendment"
             caveats.append(f"An unapproved draft ({d_title}) proposes {d_val}, but remains non-binding.")
+        elif temporal_notes or (policy_context and policy_context.get('temporal_notes')):
+            t_notes = list(temporal_notes) if temporal_notes else (list(policy_context.get('temporal_notes') or []) if policy_context else [])
+            for tn in t_notes:
+                if 'draft' in tn.lower():
+                    m_title = re.search(r"Document '([^']+)'", tn)
+                    m_val = re.search(r"proposing (\$\d+(?:\.\d{2})?)", tn)
+                    d_title = m_title.group(1) if m_title else "A draft policy"
+                    d_val = f" {m_val.group(1)}" if m_val else ""
+                    caveats.append(f"An unapproved draft ({d_title}) proposes{d_val}, but remains non-binding.")
+                    break
 
         if caveats:
             return f"{s1} {s2} Note: {' '.join(caveats)}"
@@ -666,6 +757,10 @@ class ConciseAnswerSynthesizer:
     @classmethod
     def extract_requested_parts(cls, query: str) -> List[str]:
         q_lower = query.lower()
+        is_comparison = any(w in q_lower for w in ['compare', 'difference between', 'versus', ' vs ', 'changed between', 'better', 'trade-off'])
+        if is_comparison:
+            return []
+
         parts = []
 
         # Check for meal allowances pattern: breakfast, lunch, dinner, total
@@ -695,9 +790,9 @@ class ConciseAnswerSynthesizer:
     def _find_part_value(cls, part: str, text: str) -> Optional[str]:
         part_term = 'total' if 'total' in part else part
         patterns = [
-            rf'(?i){part_term}[:\s–—\-]+(\$\d+(?:\.\d{2})?|\d+\s*(?:USD|dollars?|bdt|taka))',
-            rf'(?i)(\$\d+(?:\.\d{2})?|\d+\s*(?:USD|dollars?))\s+(?:for\s+)?{part_term}',
-            rf'(?i){part_term}[^.\n$]*?(\$\d+(?:\.\d{2})?)',
+            rf'(?i){part_term}[:\s–—\-]+(\$\d+(?:,\d{3})*(?:\.\d{2})?|\d+\s*(?:USD|dollars?|bdt|taka))',
+            rf'(?i)(\$\d+(?:,\d{3})*(?:\.\d{2})?|\d+\s*(?:USD|dollars?))\s+(?:for\s+)?{part_term}',
+            rf'(?i){part_term}[^.\n$]*?(\$\d+(?:,\d{3})*(?:\.\d{2})?)',
         ]
         for pat in patterns:
             m = re.search(pat, text)
