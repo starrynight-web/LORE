@@ -1,4 +1,4 @@
-"""`lore-solo install`, `setup`, `connect`, and `mcp`."""
+"""`lore-solo install`, `setup`, `uninstall`, `connect`, and `mcp`."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
-        print("usage: lore-solo install|setup|connect|mcp", file=sys.stderr)
+        print("usage: lore-solo install|setup|uninstall|connect|mcp", file=sys.stderr)
         return 0
     command, rest = args[0], args[1:]
     if command == "install":
@@ -20,6 +20,11 @@ def main(argv: list[str] | None = None) -> int:
         from lore.setup_cmd import run as run_setup
 
         run_setup(rest)
+        return 0
+    if command == "uninstall":
+        from lore.uninstall_cmd import run as run_uninstall
+
+        run_uninstall(rest)
         return 0
     if command == "connect":
         from lore.connect import register_agents
@@ -35,7 +40,10 @@ def main(argv: list[str] | None = None) -> int:
 
         run_mcp(rest)
         return 0
-    print(f"unknown command {command!r}; use install, setup, connect, or mcp", file=sys.stderr)
+    print(
+        f"unknown command {command!r}; use install, setup, uninstall, connect, or mcp",
+        file=sys.stderr,
+    )
     return 2
 
 

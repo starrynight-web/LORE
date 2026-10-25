@@ -29,16 +29,18 @@ flowchart LR
 | `uvx lore-solo setup` | You, while setting up | Prints `http://127.0.0.1:3000/?key=...` and serves the site until Ctrl+C |
 | `uvx lore-solo connect` | You, or the agent from the prompt | Writes Lore into editors already installed on this computer |
 | `uvx lore-solo mcp` | The editor, for the session | Reads and writes `.lore/` over stdio. No port. No setup key. |
+| `uvx lore-solo uninstall` | You, when you want the command gone | Removes the `lore-solo` command from `~/.lore`. Personas, skills, and editor registrations stay. |
 
-A clone uses the same four verbs: `./scripts/lore-solo install`, `setup`, `connect`, and `mcp`. On Windows those are `.\scripts\lore-solo.ps1 install`, `setup`, `connect`, and `mcp`.
+A clone uses the same verbs: `./scripts/lore-solo install`, `setup`, `connect`, `mcp`, and `uninstall`. On Windows those are `.\scripts\lore-solo.ps1 install`, `setup`, `connect`, `mcp`, and `uninstall`.
 
-The program entry is `lore-solo`, with `install`, `setup`, `connect`, or `mcp` as the first argument. `python -m lore` reaches the same program.
+The program entry is `lore-solo`, with `install`, `setup`, `uninstall`, `connect`, or `mcp` as the first argument. `python -m lore` reaches the same program.
 
 ```mermaid
 flowchart TD
   entry["lore-solo"]
   entry --> install["install"]
   entry --> setup["setup"]
+  entry --> uninstall["uninstall"]
   entry --> mcp["mcp"]
   entry --> connect["connect"]
   setup --> django["Django on 127.0.0.1:7421"]

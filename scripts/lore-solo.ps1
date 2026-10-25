@@ -27,6 +27,13 @@ function Install-Lore {
   exit $LASTEXITCODE
 }
 
+function Uninstall-Lore {
+  Need-Uv
+  $env:LORE_CHECKOUT = $Root
+  uv run --python 3.12 --project $Root python -m lore uninstall
+  exit $LASTEXITCODE
+}
+
 function Require-Lore {
   if (-not (Test-Path $Bin)) {
     throw "Lore Solo is not installed. Run scripts/lore-solo.ps1 install"
@@ -38,6 +45,7 @@ if ($args.Count -gt 0) { $Command = $args[0] }
 
 switch ($Command) {
   "install" { Install-Lore }
+  "uninstall" { Uninstall-Lore }
   { $_ -in "setup", "up" } {
     Require-Lore
     $env:LORE_COMMAND = $Bin
@@ -61,7 +69,7 @@ switch ($Command) {
     exit $LASTEXITCODE
   }
   default {
-    Write-Error "usage: scripts/lore-solo.ps1 install|setup|mcp|connect"
+    Write-Error "usage: scripts/lore-solo.ps1 install|setup|uninstall|mcp|connect"
     exit 2
   }
 }

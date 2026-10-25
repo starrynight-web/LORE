@@ -12,7 +12,7 @@ Team and Enterprise are later sections on this same Python engine. They are not 
 
 The phases below are the build record. A few of their lines describe an earlier setup site. The running program matches this section and [HOW_IT_WORKS.md](HOW_IT_WORKS.md). The page layout is in [UI.md](UI.md).
 
-- `lore-solo install` puts the command on this computer. `lore-solo setup` prints `http://127.0.0.1:3000/?key=...` and serves until Ctrl+C. The editor starts `lore-solo mcp` as a local process. Docker is not used. There is no LAN address. `uvx lore-solo install` and `uvx lore-solo setup` are the same commands on macOS, Linux, and Windows.
+- `lore-solo install` puts the command on this computer. `lore-solo setup` prints `http://127.0.0.1:3000/?key=...` and serves until Ctrl+C. `lore-solo uninstall` removes the command and leaves personas, skills, and editor registrations in place. The editor starts `lore-solo mcp` as a local process. Docker is not used. There is no LAN address. `uvx lore-solo install` and `uvx lore-solo setup` are the same commands on macOS, Linux, and Windows.
 - Personas live in the operating system’s application-data folder, or in a project that already has `.lore`. The site does not ask you to pick a folder.
 - Setup is four steps: a provider key, skills, a persona, then adding Lore to an editor. The codebase map is the Codebase page.
 - Settings lists models from the saved provider. Drafts use the model saved there. Defaults until then: Groq `llama-3.3-70b-versatile`, OpenRouter `openai/gpt-4o-mini`, Gemini `gemini-2.5-flash`, OpenAI `gpt-4o-mini`, Anthropic `claude-haiku-4-5`.

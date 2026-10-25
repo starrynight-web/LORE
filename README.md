@@ -17,18 +17,19 @@ uvx lore-solo install
 uvx lore-solo setup
 ```
 
-`install` puts the `lore-solo` command on this computer, in `~/.lore/bin`. `setup` prints an address and keeps running until you press Ctrl+C. Open that link. Run `uvx lore-solo setup` again whenever you want the website back. Save a provider key, add skills, create a persona, then give the connect prompt to your agent. Personas you write stay drafts until you approve them.
+`install` puts the `lore-solo` command on this computer, in `~/.lore/bin`. `setup` prints an address and keeps running until you press Ctrl+C. Open that link. Run `uvx lore-solo setup` again whenever you want the website back. Save a provider key, add skills, create a persona, then give the connect prompt to your agent. Personas you write stay drafts until you approve them. `uvx lore-solo uninstall` removes that command. Personas, skills, and editor registrations stay.
 
 The other commands are the same shape:
 
 ```bash
 uvx lore-solo connect
 uvx lore-solo mcp
+uvx lore-solo uninstall
 ```
 
 `connect` registers Lore with the editors already installed. The editor then starts `lore-solo mcp` on its own.
 
-From a clone of the `solo` branch, the same four commands are:
+From a clone of the `solo` branch, the same commands are:
 
 ```bash
 git clone -b solo https://github.com/starrynight-web/LORE.git lore-solo
@@ -36,6 +37,7 @@ cd lore-solo
 ./scripts/lore-solo install
 ./scripts/lore-solo setup
 ./scripts/lore-solo connect
+./scripts/lore-solo uninstall
 ```
 
 On Windows, from that clone:
@@ -44,6 +46,7 @@ On Windows, from that clone:
 .\scripts\lore-solo.ps1 install
 .\scripts\lore-solo.ps1 setup
 .\scripts\lore-solo.ps1 connect
+.\scripts\lore-solo.ps1 uninstall
 ```
 
 The agent calls Lore from any project. A project with its own `.lore` directory uses that. Every other project uses the personas saved from setup.
