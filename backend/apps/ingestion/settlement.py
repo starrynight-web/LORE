@@ -383,6 +383,22 @@ class DeduplicationService:
                 f"[Stale Worker] doc={doc.id} version={fresh_doc.current_version_number} "
                 f"> job_version={doc_version.version_number}. Aborting."
             )
+            try:
+                from apps.audit.models import AuditEvent
+                AuditEvent.objects.create(
+                    organization=doc.organization,
+                    workspace=doc.workspace,
+                    event_type='stale_worker_aborted',
+                    target_type='document',
+                    target_id=str(doc.id),
+                    details={
+                        'current_version': fresh_doc.current_version_number,
+                        'job_version': doc_version.version_number,
+                        'reason': 'STALE_VERSION_OVERWRITE_PREVENTED'
+                    }
+                )
+            except Exception as ex:
+                logger.warning(f"Failed to record stale_worker_aborted audit event: {ex}")
             elapsed = int((time.time() - t0) * 1000)
             return SettlementStageResult(
                 stage_number=4,

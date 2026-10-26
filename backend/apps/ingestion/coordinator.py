@@ -290,6 +290,11 @@ class SequentialPipelineCoordinator:
 
         # Sync stage_timings on job
         timings = dict(settlement.get('stages', {}))
+        for stage_data in list(timings.values()):
+            if isinstance(stage_data, dict) and 'details' in stage_data:
+                for k in ('chunking_ms', 'embedding_ms', 'indexing_ms', 'ocr_ms', 'extraction_ms'):
+                    if k in stage_data['details'] and k not in timings:
+                        timings[k] = stage_data['details'][k]
         job.stage_timings = timings
         job.save(update_fields=['stage_timings'])
 
@@ -297,9 +302,16 @@ class SequentialPipelineCoordinator:
         err_cat = ""
         if run_status == 'failed':
             failed_stage = settlement.get('failed_stage', 0)
-            stage_details = settlement.get('stages', {}).get(f'stage_{failed_stage}', {}).get('details', {})
+            stages_dict = settlement.get('stages', {})
+            stage_entry = stages_dict.get(f'stage_{failed_stage}')
+            if not stage_entry:
+                for k, v in stages_dict.items():
+                    if k.startswith(f'stage_{failed_stage}'):
+                        stage_entry = v
+                        break
+            stage_details = (stage_entry or {}).get('details', {})
             err_msg = stage_details.get('error', f"Initial ingestion failed at stage {failed_stage}.")
-            err_cat = f"SETTLEMENT_STAGE_{failed_stage}_FAILED"
+            err_cat = stage_details.get('error') or f"SETTLEMENT_STAGE_{failed_stage}_FAILED"
 
         return {
             'status': run_status,

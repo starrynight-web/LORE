@@ -12,6 +12,7 @@ Enforces:
 """
 
 from enum import Enum
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import uuid
@@ -66,6 +67,36 @@ CANONICAL_VERDICT_DIRECTIVE_MAP: Dict[Verdict, Directive] = {
     Verdict.SUPPORTED: Directive.PROCEED_AND_CITE,
     Verdict.NO_KNOWLEDGE: Directive.PROCEED,
 }
+
+
+class AnswerStatus(str, Enum):
+    """Predictable Answer Contract Status (Section 5)."""
+    ANSWERED = "answered"
+    PARTIALLY_ANSWERED = "partially_answered"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+
+@dataclass
+class StructuredAnswerContract:
+    """Predictable answer contract adhering to Section 5."""
+    answer: str
+    reasoning_summary: str
+    citations: List[Dict[str, Any]] = field(default_factory=list)
+    applicable_rules: List[Dict[str, Any]] = field(default_factory=list)
+    conflicts: List[Dict[str, Any]] = field(default_factory=list)
+    uncertainties: List[str] = field(default_factory=list)
+    status: str = AnswerStatus.ANSWERED.value
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'answer': self.answer,
+            'reasoning_summary': self.reasoning_summary,
+            'citations': self.citations,
+            'applicable_rules': self.applicable_rules,
+            'conflicts': self.conflicts,
+            'uncertainties': self.uncertainties,
+            'status': self.status
+        }
 
 
 class GovernanceReasonCode(str, Enum):
@@ -262,6 +293,38 @@ def validate_canonical_envelope(data: Dict[str, Any]) -> Dict[str, Any]:
     if not data.get("decision_id"):
         data["decision_id"] = f"dec-{uuid.uuid4().hex[:8]}"
 
+    # Predictable answer contract fields (Section 5)
+    if "status" in data:
+        st_val = str(data["status"]).lower()
+        valid_statuses = {s.value for s in AnswerStatus} | {"supported", "qualified", "denied", "insufficient", "violation", "conflicting"}
+        if st_val not in valid_statuses:
+            raise ContractValidationError(f"Invalid answer contract status: '{st_val}'.")
+        # Normalize to Section 5 statuses if currently a verdict string
+        if st_val in ("supported", "qualified"):
+            data["status"] = AnswerStatus.ANSWERED.value if not data.get("evidence_missing") else AnswerStatus.PARTIALLY_ANSWERED.value
+        elif st_val in ("denied", "insufficient", "violation", "conflicting", "no_knowledge", "abstain"):
+            data["status"] = AnswerStatus.INSUFFICIENT_EVIDENCE.value
+    else:
+        if state == Verdict.SUPPORTED.value:
+            data["status"] = AnswerStatus.ANSWERED.value
+        elif state == Verdict.QUALIFIED.value:
+            data["status"] = AnswerStatus.PARTIALLY_ANSWERED.value if data.get("evidence_missing") else AnswerStatus.ANSWERED.value
+        else:
+            data["status"] = AnswerStatus.INSUFFICIENT_EVIDENCE.value
+
+    if "reasoning_summary" not in data:
+        notes = data.get("notes", [])
+        data["reasoning_summary"] = " ".join(notes) if notes else "Direct conclusion synthesized from authoritative evidence."
+
+    if "applicable_rules" not in data:
+        data["applicable_rules"] = []
+
+    if "conflicts" not in data:
+        data["conflicts"] = data.get("conflicts_resolved", [])
+
+    if "uncertainties" not in data:
+        data["uncertainties"] = [m.get("description", "") for m in data.get("evidence_missing", []) if m.get("description")]
+
     if "reason_codes" not in data:
         data["reason_codes"] = [GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value]
     elif GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value not in data["reason_codes"]:
@@ -290,7 +353,9 @@ def fail_closed_envelope(
         "schema": "lore.result/2",
         "state": Verdict.INSUFFICIENT.value,
         "directive": Directive.ASK_USER.value,
+        "status": AnswerStatus.INSUFFICIENT_EVIDENCE.value,
         "answer": f"Governance gate closed due to internal verification error ({error_category}). No unverified conclusion can be returned.",
+        "reasoning_summary": f"Evaluation failed closed due to {error_category}: {error_message}",
         "decision_type": decision_type,
         "escalation_target": "compliance_auditor",
         "risk_level": "high",
@@ -302,6 +367,9 @@ def fail_closed_envelope(
             "description": f"Internal governance evaluation failed closed: {error_message}"
         }],
         "conflicts_resolved": [],
+        "conflicts": [],
+        "applicable_rules": [],
+        "uncertainties": [error_message],
         "exceptions_applied": [],
         "citations": [],
         "notes": [f"Fail-closed governance invoked: {error_category}"],

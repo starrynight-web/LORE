@@ -17,6 +17,7 @@ from apps.governance.layers import PermissionLayer
 from apps.audit.models import AuditEvent
 from apps.subscriptions.services import QuotaEnforcementService
 from apps.ingestion.tasks import process_ingestion_pipeline, process_document_job
+from apps.ingestion.models import IngestionJob
 from django.conf import settings
 
 logger = logging.getLogger(__name__)

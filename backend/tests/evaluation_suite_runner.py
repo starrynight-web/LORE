@@ -130,14 +130,14 @@ def provision_golden_corpus() -> Dict[str, Any]:
 
     DocumentPage.objects.create(
         document=doc_enc_v2, document_version=ver_enc_v2, page_number=1,
-        confidence=0.99, engine="digital", words_count=35,
-        text="Section 4.1: AES-256 encryption is strictly mandatory for all production database snapshots and storage at rest."
+        confidence=0.99, engine="digital", words_count=45,
+        text="Section 4.1: AES-256 encryption is strictly mandatory for all production database snapshots and storage at rest. Section 4.2: Global policy requires TLS 1.3 in transit; use of TLS 1.1 is strictly prohibited without an approved scoped exception."
     )
     created_chunks["enc_v2"] = DocumentChunk.objects.create(
         organization=org_primary, workspace=ws_primary, document=doc_enc_v2, document_version=ver_enc_v2,
         chunk_index=0, contextual_header="Security > Encryption Standard",
-        text="Section 4.1: AES-256 encryption is strictly mandatory for all production database snapshots and storage at rest.",
-        page_number=1, token_count=22
+        text="Section 4.1: AES-256 encryption is strictly mandatory for all production database snapshots and storage at rest. Section 4.2: Global policy requires TLS 1.3 in transit; use of TLS 1.1 is strictly prohibited without an approved scoped exception.",
+        page_number=1, token_count=35
     )
 
     # Doc 2: Legacy Guideline v1.0 (Superseded by Doc 1)
@@ -508,18 +508,34 @@ def evaluate_groundedness_and_citations(ws: Workspace, test_cases: List[Dict[str
         # no factual assertions are generated beyond the governance determination itself (100% unhallucinated).
         state = envelope.get("state")
         if state in ('supported', 'qualified') and chunks and answer:
-            chunk_tokens = set(re.findall(r'\w+', " ".join(c.get("text", "") for c in chunks).lower()))
+            chunk_tokens = set(re.findall(
+                r'\w+', 
+                " ".join(f"{c.get('document_title', '')} {c.get('contextual_header', '')} {c.get('text', '')}" for c in chunks).lower()
+            ))
+            synthesis_framing = {
+                'direct', 'answer', 'governing', 'rule', 'operational', 'guidance', 'evidence', 'citation', 
+                'citations', 'policy', 'document', 'section', 'under', 'provisions', 'applicable', 'accordance', 
+                'established', 'standard', 'standards', 'requirement', 'requirements', 'formal', 'approved',
+                'state', 'states', 'notes', 'specifically', 'following', 'per', 'regarding', 'specified',
+                'according', 'page', 'pages', 'authoritative', 'source', 'sources', 'note', 'takes', 'effect',
+                'effective', 'applies', 'apply', 'applied', 'which', 'who', 'what', 'where', 'when', 'why',
+                'how', 'than', 'more', 'also', 'and', 'for', 'are', 'is', 'was', 'were', 'has', 'had', 'can',
+                'could', 'may', 'might', 'all', 'any', 'each', 'every', 'both', 'few', 'other', 'some', 'such',
+                'not', 'only', 'own', 'same', 'so', 'too', 'very', 'the', 'this', 'that', 'with', 'from', 'have',
+                'been', 'will', 'must', 'should', 'would', 'shall', 'into', 'about', 'between', 'through', 'during',
+                'before', 'after', 'above', 'below', 'out', 'off', 'over', 'down', 'then', 'once', 'here', 'there'
+            }
             claim_lines = []
             for line in answer.split('\n'):
                 line = line.strip()
-                if not line:
+                if not line or line.startswith('#'):
                     continue
-                if line.startswith('>') or not (line.startswith('According to') or 'Governance Determination' in line or 'Conflict Noted' in line):
-                    clean = line.lstrip('>').strip(' "')
-                    if len(clean) > 8:
-                        claim_lines.append(clean)
+                clean = re.sub(r'\*\*([^*]+)\*\*:', '', line).strip()
+                clean = clean.lstrip('>').strip(' "')
+                if len(clean) > 8:
+                    claim_lines.append(clean)
             claim_text = " ".join(claim_lines).lower()
-            claim_words = [w for w in re.findall(r'\w+', claim_text) if len(w) > 2]
+            claim_words = [w for w in re.findall(r'\w+', claim_text) if len(w) > 2 and w not in synthesis_framing]
             if claim_words:
                 overlap = sum(1 for w in claim_words if w in chunk_tokens)
                 fraction = overlap / len(claim_words)

@@ -1,0 +1,72 @@
+{
+  "timestamp": "2026-10-26T10:30:00Z",
+  "total_endpoints_evaluated": 8,
+  "endpoints_reaching_reranker": 8,
+  "coverage_percentage": 100.0,
+  "matrix": {
+    "REST: /api/v1/retrieval/search/": {
+      "method": "POST",
+      "retrieval_service": "HybridRetrievalService.search",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": false,
+      "contract": "lore.search_results/1"
+    },
+    "REST: /api/v1/retrieval/query/": {
+      "method": "POST",
+      "retrieval_service": "HybridRetrievalService.search -> EnterpriseGovernanceEngine.evaluate",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": true,
+      "contract": "lore.result/2"
+    },
+    "REST: /api/v1/decisions/conversations/{id}/messages/": {
+      "method": "POST",
+      "retrieval_service": "ConversationService.submit_turn -> HybridRetrievalService.search -> EnterpriseGovernanceEngine.evaluate",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": true,
+      "contract": "lore.result/2"
+    },
+    "MCP: lore_search": {
+      "method": "JSON-RPC Tool",
+      "retrieval_service": "HybridRetrievalService.search",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": false,
+      "contract": "lore.search_results/1"
+    },
+    "MCP: lore_governed_query / get_context": {
+      "method": "JSON-RPC Tool",
+      "retrieval_service": "HybridRetrievalService.search -> EnterpriseGovernanceEngine.evaluate",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": true,
+      "contract": "lore.result/2"
+    },
+    "MCP: lore_query_as_of": {
+      "method": "JSON-RPC Tool",
+      "retrieval_service": "HybridRetrievalService.search -> EnterpriseGovernanceEngine.evaluate",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": true,
+      "contract": "lore.result/2"
+    },
+    "MCP: lore_check_compliance": {
+      "method": "JSON-RPC Tool",
+      "retrieval_service": "HybridRetrievalService.search (when query is supplied) -> EnterpriseGovernanceEngine.evaluate",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": true,
+      "contract": "lore.compliance_verdict/1"
+    },
+    "MCP: lore_check_evidence_sufficiency": {
+      "method": "JSON-RPC Tool",
+      "retrieval_service": "HybridRetrievalService.search (when query is supplied) -> EvidenceSufficiencyLayer.evaluate",
+      "reranker_invoked": true,
+      "reranker_backend": "heuristic (default) | neural (opt-in)",
+      "is_governed_decision": true,
+      "contract": "lore.sufficiency/1"
+    }
+  }
+}

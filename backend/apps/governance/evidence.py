@@ -176,10 +176,14 @@ class EvidencePresentationEngine:
         # 7. Which answer claim this passage supports (Requirement 5 & 7)
         supported_claim = cls._identify_supported_claim(shortest_passage, answer, query)
 
+        code_match = re.search(r'\b(DOC-\d+|POL-[A-Z0-9-]+)\b', doc_title, re.IGNORECASE)
+        doc_code = chk.get('document_code') or (code_match.group(1).upper() if code_match else None)
+
         entry = {
             'citation_id': chk.get('citation_id') or f"cit-{uuid.uuid4().hex[:6]}",
             'document_id': doc_id,
             'document_title': doc_title,
+            'document_code': doc_code,
             'document_version': version,
             'page_number': page_num,
             'section': heading,
@@ -504,13 +508,18 @@ class EvidencePresentationEngine:
                 necessary.append(cit)
                 continue
 
-            # Draft documents must NOT be included as supplementary citations unless user asks about the draft (Requirement 3)
-            if status == 'draft' and not user_asks_draft:
+            # Condition B: Explicitly cited in answer text (e.g. governing policy or material amendment)
+            doc_code_lower = str(cit.get('document_code') or '').lower()
+            if not doc_code_lower:
+                m_code = re.search(r'\b(doc-\d+|pol-[a-z0-9-]+)\b', title.lower())
+                if m_code:
+                    doc_code_lower = m_code.group(1)
+            if (doc_code_lower and doc_code_lower in ans_lower) or title.lower() in ans_lower or (doc_id and doc_id.lower() in ans_lower):
+                necessary.append(cit)
                 continue
 
-            # Condition B: Explicitly cited in answer text (e.g. governing policy or material amendment)
-            if title.lower() in ans_lower or (doc_id and doc_id.lower() in ans_lower):
-                necessary.append(cit)
+            # Draft documents must NOT be included as supplementary citations unless user asks about the draft or cited in answer (Requirement 3)
+            if status == 'draft' and not user_asks_draft:
                 continue
 
             # Condition C: Proves an answer fact or table value not covered by already-selected citations (Requirement 5)

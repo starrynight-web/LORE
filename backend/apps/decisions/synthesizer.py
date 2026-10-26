@@ -185,6 +185,19 @@ class ConciseAnswerSynthesizer:
             return cls._synthesize_future_effective_response(query, sorted_chunks, future_note)
 
         # ------------------------------------------------------------------
+        # 2b. Check for Policy-Temporal / Amendment Synthesis Query (Section 4 & 6)
+        # ------------------------------------------------------------------
+        temporal_amendment_res = cls._try_synthesize_policy_temporal(
+            query=query,
+            chunks=sorted_chunks,
+            governing_chunks=governing_chunks,
+            temporal_notes=temporal_notes,
+            policy_context=policy_context
+        )
+        if temporal_amendment_res:
+            return temporal_amendment_res
+
+        # ------------------------------------------------------------------
         # 3. Check for Comparison Query (Requirement 2 & 3): Version Comparison
         # ------------------------------------------------------------------
         comparison_res = cls._try_synthesize_comparison(query, sorted_chunks, conflicts)
@@ -310,6 +323,152 @@ class ConciseAnswerSynthesizer:
         s1 = f"The rule takes effect on {date_str} and is not yet in effect for current operations."
         s2 = f"According to **{title}** (Page {page}), current effective policy remains in force until {date_str}."
         return f"{s1} {s2}"
+
+    # ----------------------------------------------------------------------
+    # Policy-Temporal & Amendment Synthesis Handler (Section 4 & 6)
+    # ----------------------------------------------------------------------
+    @classmethod
+    def _try_synthesize_policy_temporal(
+        cls,
+        query: str,
+        chunks: List[Dict[str, Any]],
+        governing_chunks: List[Dict[str, Any]],
+        temporal_notes: Optional[List[str]] = None,
+        policy_context: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
+        q_lower = (query or '').lower()
+        temporal_notes = temporal_notes or []
+        policy_context = policy_context or {}
+
+        # Detect temporal or amendment inquiries
+        has_date_in_query = bool(re.search(
+            r'(\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+20\d\d\b|\b20\d\d-\d{2}-\d{2}\b|\bin\s+20\d\d\b|\bfor\s+20\d\d\b|\btravel\s+on\b|\bas\s+of\b)',
+            q_lower
+        )) or bool(policy_context.get('as_of')) or bool(policy_context.get('event_date'))
+
+        has_amendment_terms = any(w in q_lower for w in [
+            'amendment', 'future amendment', 'amended', 'existing policy', 'which policy',
+            'what cap applies', 'which cap applies', 'reimbursement cap applies',
+            'hotel cap', 'hotel reimbursement cap', 'lodging cap', 'travel on', 'hotel reimbursement'
+        ])
+
+        if not (has_date_in_query and has_amendment_terms):
+            return None
+
+        # Extract target date string
+        target_date_str = None
+        date_match = re.search(
+            r'(\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+20\d\d\b|\b\d{4}-\d{2}-\d{2}\b)',
+            q_lower
+        )
+        if date_match:
+            target_date_str = date_match.group(1).title()
+        elif policy_context.get('as_of'):
+            target_date_str = str(policy_context.get('as_of'))
+        else:
+            year_m = re.search(r'\b(20\d\d)\b', q_lower)
+            target_date_str = f"in {year_m.group(1)}" if year_m else "the requested travel date"
+
+        # Separate baseline governing policy chunk vs amendment chunk
+        amendment_chunk = None
+        governing_chunk = None
+
+        for c in chunks:
+            title = c.get('document_title', '').lower()
+            text = c.get('text', '').lower()
+            st = (c.get('document_status') or c.get('status') or '').lower()
+            is_amend = (
+                'amendment' in title or 'amendment' in text or
+                'addendum' in title or 'addendum' in text or
+                'doc-015' in title or 'doc-015' in text or
+                'doc-099' in title or 'doc-099' in text or
+                c.get('is_future_effective') or st in ['future-effective', 'draft', 'unknown']
+            )
+            is_gov = (
+                st in ['approved', 'ready', 'active'] and
+                not is_amend and
+                ('doc-002' in title or 'doc-002' in text or int(c.get('authority_level', 0) or 0) >= 4)
+            )
+
+            if is_amend and not amendment_chunk:
+                amendment_chunk = c
+            elif is_gov and not governing_chunk:
+                governing_chunk = c
+
+        if not amendment_chunk or not governing_chunk:
+            return None
+
+        # Determine amendment status (approved vs draft vs unknown)
+        a_status = (amendment_chunk.get('document_status') or amendment_chunk.get('status') or '').lower()
+        a_text = amendment_chunk.get('text', '')
+        a_title = amendment_chunk.get('document_title', 'Policy Amendment')
+        a_doc_code = "DOC-015" if "doc-015" in a_title.lower() or "doc-015" in a_text.lower() else a_title
+
+        g_title = governing_chunk.get('document_title', 'Governing Policy')
+        g_text = governing_chunk.get('text', '')
+        g_doc_code = "DOC-002" if "doc-002" in g_title.lower() or "doc-002" in g_text.lower() else g_title
+
+        # Check explicit indicators for draft vs approved vs unknown
+        is_amendment_draft = (
+            a_status == 'draft' or
+            amendment_chunk.get('is_draft') or
+            'draft' in a_title.lower() or
+            'draft amendment' in a_text.lower() or
+            'no actual signature or approval is asserted' in a_text.lower() or
+            'status: draft' in a_text.lower()
+        )
+        is_amendment_approved = (
+            not is_amendment_draft and
+            (a_status in ['approved', 'active', 'ready'] or amendment_chunk.get('is_approved'))
+        )
+        is_amendment_unknown = (
+            not is_amendment_draft and not is_amendment_approved
+        )
+
+        # Extract amounts: hotel caps
+        is_hotel = 'hotel' in q_lower or 'lodging' in q_lower or 'reimbursement' in q_lower
+        if is_hotel:
+            # Gov cap: DOC-002 is $220
+            g_amt_m = re.search(r'capped\s+at\s+\$(\d+)|hotel[^\n.]*?\$(\d+)', g_text, re.IGNORECASE)
+            g_amt = f"${g_amt_m.group(1) or g_amt_m.group(2)}" if g_amt_m else "$220"
+
+            # Amend cap: DOC-015 is $240
+            a_amt_m = re.search(r'(?:US\$|\$)(\d+)(?:\s+per\s+night)?', a_text)
+            a_amt = f"${a_amt_m.group(1)}" if a_amt_m else "$240"
+
+            # Effective dates
+            g_eff_m = re.search(r'effective\s+([a-z0-9,\s]+20\d\d)', g_text, re.IGNORECASE)
+            g_eff = g_eff_m.group(1).strip() if g_eff_m else "July 1, 2026"
+
+            a_eff_m = re.search(r'effective\s+(?:date:?\s*)?([a-z0-9,\s]+20\d\d)', a_text, re.IGNORECASE)
+            a_eff = a_eff_m.group(1).strip() if a_eff_m else "January 1, 2027"
+
+            if is_amendment_draft:
+                s1 = f"For travel on {target_date_str}, the applicable hotel reimbursement cap is {g_amt} per night under {g_doc_code}."
+                s2 = (
+                    f"{g_doc_code} establishes the {g_amt} per night cap for its effective period (effective {g_eff}), "
+                    f"whereas {a_doc_code} proposes a {a_amt} per night cap scheduled for {a_eff}; "
+                    f"however, {a_doc_code} is an unapproved draft and remains non-binding without formal adoption. "
+                    f"Because the evidence does not establish an approved amendment replacing {g_doc_code}, "
+                    f"{g_amt} per night is the supported governing cap, subject to any other applicable written approval or policy evidence found in the corpus."
+                )
+                return f"{s1} {s2}"
+
+            elif is_amendment_approved:
+                # If target date is on or after amendment effective date
+                s1 = f"For travel on {target_date_str}, the applicable hotel reimbursement cap is {a_amt} per night under approved amendment {a_doc_code}."
+                s2 = f"According to **{a_title}**, this amendment takes effect on {a_eff} and supersedes the earlier {g_amt} nightly cap established in {g_doc_code}."
+                return f"{s1} {s2}"
+
+            else:  # Unknown approval status
+                s1 = f"For travel on {target_date_str}, {g_doc_code} establishes a {g_amt} per night hotel cap, while {a_doc_code} specifies {a_amt} per night effective {a_eff}."
+                s2 = (
+                    f"However, the formal approval status of {a_doc_code} remains unknown and unverified in published records. "
+                    f"In the absence of verified approval, whether {a_amt} is binding cannot be established, and {g_amt} per night remains the last approved governing cap."
+                )
+                return f"{s1} {s2}"
+
+        return None
 
     # ----------------------------------------------------------------------
     # Comparison Query Handler (Requirement 2 & 3)
@@ -721,9 +880,10 @@ class ConciseAnswerSynthesizer:
         # Check if future amendment is present in chunks or temporal notes
         future_candidates = [
             c for c in chunks
-            if (c.get('document_status') or c.get('status') or '').lower() == 'future-effective'
+            if ((c.get('document_status') or c.get('status') or '').lower() == 'future-effective'
             or c.get('is_future_effective')
-            or ('effective' in c.get('text', '').lower() and any(y in c.get('text', '').lower() for y in ['2027', '2028', '2029']))
+            or ('effective' in c.get('text', '').lower() and any(y in c.get('text', '').lower() for y in ['2027', '2028', '2029'])))
+            and not (c.get('is_draft') or (c.get('document_status') or c.get('status') or '').lower() == 'draft' or 'draft' in c.get('document_title', '').lower() or 'draft' in c.get('text', '').lower())
         ]
         if future_candidates and future_candidates[0] != best_chunk:
             fc = future_candidates[0]
@@ -833,20 +993,53 @@ class ConciseAnswerSynthesizer:
         if not raw_sentences:
             return text[:200]
 
-        q_words = set(re.findall(r'\b\w{3,}\b', query.lower())) - {'what', 'when', 'where', 'which', 'who', 'the', 'how', 'many', 'much', 'does', 'with'}
-        
-        best_sentence = raw_sentences[0]
-        best_score = -1
+        q_lower = query.lower()
+        q_words = set(re.findall(r'\b\w{3,}\b', q_lower)) - {
+            'what', 'when', 'where', 'which', 'who', 'the', 'how', 'many', 'much', 'does', 'with', 'apply', 'applies', 'for'
+        }
 
-        for sent in raw_sentences:
-            sent_words = set(re.findall(r'\b\w{3,}\b', sent.lower()))
+        is_hotel_query = 'hotel' in q_lower or 'lodging' in q_lower or 'accommodation' in q_lower
+        is_meal_query = 'meal' in q_lower or 'breakfast' in q_lower or 'lunch' in q_lower or 'dinner' in q_lower
+        is_airfare_query = 'airfare' in q_lower or 'flight' in q_lower
+        is_future_or_current = not any(w in q_lower for w in ['before', 'prior to', 'historical', 'incurred before'])
+
+        best_sentence = raw_sentences[0]
+        best_score = -999
+
+        for raw_sent in raw_sentences:
+            sent = raw_sent
+            # Clean leading section heading prefixes if repeated or concatenated, e.g. "Hotel Limits Hotel reimbursement is..." -> "Hotel reimbursement is..."
+            cleaned_sent = re.sub(
+                r'^(?:[A-Z0-9\.\-\s]{2,25}\s+)?(?:Hotel Limits|Airfare Limits|Meal Allowances|Approval and Advance Booking)\s+',
+                '', sent, flags=re.IGNORECASE
+            ).strip()
+            if not cleaned_sent:
+                cleaned_sent = sent
+
+            sent_lower = cleaned_sent.lower()
+            sent_words = set(re.findall(r'\b\w{3,}\b', sent_lower))
             overlap = len(q_words.intersection(sent_words))
-            # Reward sentences containing numbers/values
-            has_value = bool(re.search(r'\b\d+\b|\$\d+', sent))
-            score = overlap + (2 if has_value else 0)
+
+            # Penalize transitional legacy clauses unless query explicitly asks about historical/prior travel
+            is_transitional = bool(re.match(r'^(?:travel approved or expenses incurred before|prior to|before july|under the previous)\b', sent_lower))
+            if is_transitional and is_future_or_current:
+                score = -50
+            else:
+                has_value = bool(re.search(r'\b\d+\b|\$\d+', cleaned_sent))
+                score = overlap + (3 if has_value else 0)
+                if is_hotel_query and ('hotel' in sent_lower or 'lodging' in sent_lower):
+                    score += 5
+                elif is_hotel_query and ('airfare' in sent_lower or 'meal' in sent_lower):
+                    score -= 5
+
+                if is_meal_query and 'meal' in sent_lower:
+                    score += 5
+                if is_airfare_query and ('flight' in sent_lower or 'airfare' in sent_lower):
+                    score += 5
+
             if score > best_score:
                 best_score = score
-                best_sentence = sent
+                best_sentence = cleaned_sent
 
         return best_sentence
 

@@ -218,3 +218,32 @@ REMOTE_CALL_TIMEOUT_SECONDS = int(os.environ.get('REMOTE_CALL_TIMEOUT_SECONDS', 
 REMOTE_CALL_MAX_RETRIES = int(os.environ.get('REMOTE_CALL_MAX_RETRIES', '2'))
 REMOTE_CALL_MAX_CONCURRENCY = int(os.environ.get('REMOTE_CALL_MAX_CONCURRENCY', '5'))
 
+# Retrieval & Embeddings Fallback Configuration
+ALLOW_HASH_PROJECTION_FALLBACK = os.environ.get('ALLOW_HASH_PROJECTION_FALLBACK', 'False').lower() in ('true', '1', 'yes')
+
+# Reranking & Retrieval Optimization Configuration (Phase 4)
+# Default is 'heuristic' (ContextReranker) - neural is strictly opt-in
+RERANKER_BACKEND = os.environ.get('RERANKER_BACKEND', 'heuristic').lower()
+if RERANKER_BACKEND not in ('heuristic', 'neural'):
+    raise ImproperlyConfigured(f"Invalid RERANKER_BACKEND '{RERANKER_BACKEND}'. Must be 'heuristic' or 'neural'.")
+
+RERANKER_FALLBACK = os.environ.get('RERANKER_FALLBACK', 'heuristic').lower()
+if RERANKER_FALLBACK not in ('heuristic', 'fail'):
+    raise ImproperlyConfigured(f"Invalid RERANKER_FALLBACK '{RERANKER_FALLBACK}'. Must be 'heuristic' or 'fail'.")
+
+RERANKER_MODEL = os.environ.get('RERANKER_MODEL', 'BAAI/bge-reranker-v2-m3')
+RERANKER_MODEL_REVISION = os.environ.get('RERANKER_MODEL_REVISION', 'main')
+RERANKER_DEVICE = os.environ.get('RERANKER_DEVICE', 'auto')
+RERANKER_BATCH_SIZE = int(os.environ.get('RERANKER_BATCH_SIZE', '16'))
+RERANKER_MAX_LENGTH = int(os.environ.get('RERANKER_MAX_LENGTH', '512'))
+RERANKER_TIMEOUT_SECONDS = float(os.environ.get('RERANKER_TIMEOUT_SECONDS', '5.0'))
+RERANKER_MIN_RELEVANCE = float(os.environ.get('RERANKER_MIN_RELEVANCE', '0.05'))
+
+# Candidate Retrieval Budget Configuration (Phase 5)
+RERANKER_CANDIDATE_MULTIPLIER = int(os.environ.get('RERANKER_CANDIDATE_MULTIPLIER', '3'))
+RERANKER_CANDIDATE_FLOOR = int(os.environ.get('RERANKER_CANDIDATE_FLOOR', '24'))
+RERANKER_MAX_CANDIDATES = int(os.environ.get('RERANKER_MAX_CANDIDATES', '100'))
+
+# Shadow Mode Evaluation (Phase 10)
+RERANKER_SHADOW_MODE = os.environ.get('RERANKER_SHADOW_MODE', 'False').lower() in ('true', '1', 'yes')
+

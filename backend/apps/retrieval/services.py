@@ -10,6 +10,7 @@ from .vector_store import QdrantVectorStore
 from .embeddings import get_embedding_adapter
 from .lexical import LexicalSearchService
 from .resilience import resilient_vector_search, qdrant_circuit_breaker, CircuitState
+from .reranking import BaseReranker, HeuristicReranker, RerankerFactory
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class ContextReranker:
 
     def __init__(self, min_relevance_threshold: float = 0.05):
         self.min_relevance_threshold = min_relevance_threshold
+        self._heuristic = HeuristicReranker(min_relevance_threshold=min_relevance_threshold)
 
     rerank = _RerankDescriptor()
 
@@ -55,172 +57,15 @@ class ContextReranker:
         top_k: int = 10,
         min_relevance_threshold: float = 0.05
     ) -> List[Any]:
-        if not candidates:
-            return []
+        reranker = HeuristicReranker(min_relevance_threshold=min_relevance_threshold)
+        return reranker.rerank(
+            query=query,
+            candidates=candidates,
+            top_k=top_k,
+            min_relevance_threshold=min_relevance_threshold
+        )
 
-        q_clean = query.strip().lower()
-        all_q_tokens = [w for w in re.findall(r'\w+', q_clean) if len(w) > 1]
-        stop_words = {
-            'what', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of',
-            'and', 'or', 'by', 'with', 'from', 'as', 'be', 'can', 'we', 'it', 'this',
-            'that', 'do', 'does', 'all', 'any', 'my', 'your', 'our', 'under', 'according',
-            'tell', 'show', 'please', 'would', 'could', 'how', 'much', 'many', 'must'
-        }
-        content_tokens = [w for w in all_q_tokens if w not in stop_words]
-        eval_q_tokens = set(content_tokens if content_tokens else all_q_tokens)
 
-        # Requirement 1 & 2: Identify specific fact requirements from query
-        is_amount_inquiry = bool(re.search(r'\b(allowance|rate|threshold|limit|ceiling|cost|price|fee|budget|amount|total)\b', q_clean))
-        is_duration_inquiry = bool(re.search(r'\b(days?|hours?|months?|years?|delivery|turnaround|retention|schedule|period|timeline|timeout)\b', q_clean))
-        is_logging_inquiry = bool(re.search(r'\b(logged|logging|logs|log|audit\s+log|audit\s+logging|record(?:ed|ing)?)\b', q_clean))
-        doc_code_targets = [t.lower() for t in re.findall(r'\b[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+\b|\bdoc-\d+\b|\bpol-[a-z0-9-]+\b', q_clean)]
-        section_target_m = re.search(r'\bsection\s+(\d+(?:\.\d+)?)\b', q_clean)
-        section_target = section_target_m.group(0).lower() if section_target_m else None
-        ver_target_m = re.search(r'\b(?:version\s*(\d+)|v(\d+))\b', q_clean)
-        ver_target = int(ver_target_m.group(1) or ver_target_m.group(2)) if ver_target_m else None
-
-        scored_candidates = []
-        raw_scores = []
-        for item in candidates:
-            if isinstance(item, tuple) and len(item) > 0:
-                raw_scores.append(item[0])
-            elif isinstance(item, dict):
-                raw_scores.append(item.get('rrf_score', 0.5))
-        max_rrf = max(raw_scores) if raw_scores else 1.0
-
-        for item in candidates:
-            if isinstance(item, tuple):
-                is_tuple = True
-                rrf_score = item[0]
-                chk = item[1]
-                text = (getattr(chk, 'text', '') or '').lower()
-                header = (getattr(chk, 'contextual_header', '') or '').lower()
-                heading = (getattr(chk, 'heading_path', '') or '').lower()
-                doc = getattr(chk, 'document', None)
-                title = (getattr(doc, 'title', '') or '').lower() if doc else ''
-                auth_rank = getattr(doc, 'authority_level', 3) if doc else 3
-                ver_obj = getattr(chk, 'document_version', None)
-                ver_num = ver_obj.version_number if ver_obj else (getattr(doc, 'current_version_number', 1) if doc else 1)
-            elif isinstance(item, dict):
-                is_tuple = False
-                chk = item
-                rrf_score = item.get('rrf_score', 0.5)
-                text = (item.get('text', '') or '').lower()
-                header = (item.get('contextual_header', '') or item.get('heading', '') or '').lower()
-                heading = (item.get('heading_path', '') or item.get('heading', '') or '').lower()
-                title = (item.get('document_title', '') or '').lower()
-                auth_rank = item.get('authority_level', 3)
-                ver_num = item.get('document_version', 1)
-            else:
-                continue
-
-            # 1. Normalized RRF component [0, 1]
-            norm_rrf = rrf_score / (max_rrf if max_rrf > 0 else 1.0)
-
-            doc_text = f"{title} {header} {heading} {text}"
-            doc_tokens = set(re.findall(r'\w+', doc_text))
-
-            # 2. Exact phrase match bonus
-            phrase_bonus = 0.0
-            if len(q_clean) > 3 and (q_clean in doc_text):
-                phrase_bonus = 0.35
-
-            # 3. Token coverage score [0, 1] using discrete word boundary tokens & morphological variants
-            if eval_q_tokens:
-                matched_tokens = 0
-                for t in eval_q_tokens:
-                    if t in doc_tokens:
-                        matched_tokens += 1
-                    elif t in ['logged', 'logging', 'logs', 'log'] and any(v in doc_tokens for v in ['log', 'logging', 'logs', 'record', 'audit']):
-                        matched_tokens += 1
-                    elif t == 'actions' and any(v in doc_tokens for v in ['events', 'functions', 'changes', 'attempts', 'activities']):
-                        matched_tokens += 1
-                token_coverage = matched_tokens / len(eval_q_tokens)
-            else:
-                token_coverage = 0.0
-
-            # 4. Contextual header relevance bonus
-            header_bonus = 0.0
-            if header and any(t in header for t in eval_q_tokens):
-                header_bonus = 0.15
-
-            # 5. Document Target alignment bonus (Requirement 3 & 7)
-            doc_match_bonus = 0.0
-            if doc_code_targets and any(dc in title for dc in doc_code_targets):
-                doc_match_bonus = 0.25
-
-            # 6. Section target bonus (Requirement 3)
-            section_bonus = 0.0
-            if section_target and (section_target in header or section_target in heading or section_target in text):
-                section_bonus = 0.15
-
-            # 7. Version target bonus (Requirement 3 & 7)
-            version_bonus = 0.0
-            if ver_target is not None and ver_num == ver_target:
-                version_bonus = 0.20
-
-            # 8. Fact-bearing content relevance bonus (Requirement 2)
-            fact_bonus = 0.0
-            if is_amount_inquiry and bool(re.search(r'\$\s*\d+|\b\d+\s*(?:dollars?|usd|taka|bdt)\b', text)):
-                fact_bonus += 0.15
-            if is_duration_inquiry and bool(re.search(r'\b\d+\s*(?:days?|hours?|months?|years?|business days?)\b', text)):
-                fact_bonus += 0.15
-            if is_logging_inquiry:
-                if 'audit logging' in doc_text or 'security events' in doc_text or ('must record' in doc_text and 'authentication' in doc_text):
-                    fact_bonus += 0.35
-                elif ('workspace_access_request' in title or 'travel_expense' in title) and not any(w in doc_text for w in ['audit logging', 'must record', 'security events']):
-                    # Penalize transactional access request forms and travel policies that contain no logging facts
-                    fact_bonus -= 0.30
-
-            # 9. Pure relevance score (CRITICAL: DO NOT MULTIPLY BY AUTHORITY!)
-            if token_coverage == 0.0 and phrase_bonus == 0.0 and header_bonus == 0.0 and doc_match_bonus == 0.0 and fact_bonus <= 0.0:
-                relevance_score = 0.0
-            else:
-                relevance_score = (
-                    (0.40 * norm_rrf) +
-                    (0.35 * token_coverage) +
-                    phrase_bonus +
-                    header_bonus +
-                    doc_match_bonus +
-                    section_bonus +
-                    version_bonus +
-                    fact_bonus
-                )
-
-            # Threshold gating: completely irrelevant chunks are not promoted
-            if relevance_score < min_relevance_threshold:
-                continue
-
-            meta = {
-                'relevance_score': round(relevance_score, 4),
-                'rrf_score': round(rrf_score, 4),
-                'norm_rrf': round(norm_rrf, 4),
-                'token_coverage': round(token_coverage, 2),
-                'phrase_match': phrase_bonus > 0,
-                'phrase_bonus': round(phrase_bonus, 2),
-                'header_bonus': round(header_bonus, 2),
-                'doc_match_bonus': round(doc_match_bonus, 2),
-                'section_bonus': round(section_bonus, 2),
-                'version_bonus': round(version_bonus, 2),
-                'fact_bonus': round(fact_bonus, 2),
-                'authority_level': auth_rank
-            }
-
-            if is_tuple:
-                scored_candidates.append((relevance_score, chk, meta))
-            else:
-                res_dict = dict(item)
-                res_dict['score'] = round(relevance_score, 4)
-                res_dict.update(meta)
-                scored_candidates.append(res_dict)
-
-        # Sort descending purely by relevance score
-        if scored_candidates and isinstance(scored_candidates[0], tuple):
-            scored_candidates.sort(key=lambda x: x[0], reverse=True)
-        else:
-            scored_candidates.sort(key=lambda x: x.get('score', 0.0), reverse=True)
-
-        return scored_candidates[:top_k]
 
 
 class HybridRetrievalService:
@@ -239,11 +84,13 @@ class HybridRetrievalService:
         self,
         vector_store: Optional[QdrantVectorStore] = None,
         lexical_service: Optional[LexicalSearchService] = None,
-        embedder: Optional[Any] = None
+        embedder: Optional[Any] = None,
+        reranker: Optional[BaseReranker] = None
     ):
         self.vector_store = vector_store or QdrantVectorStore()
         self.lexical_service = lexical_service or LexicalSearchService
         self.embedder = embedder or get_embedding_adapter()
+        self.reranker = reranker or RerankerFactory.get_reranker()
         self.last_diagnostics: Dict[str, Any] = {}
 
     def search(
@@ -303,6 +150,7 @@ class HybridRetrievalService:
                 pass
 
         budget = context_budget_tokens or getattr(settings, 'RETRIEVAL_CONTEXT_BUDGET_TOKENS', 800)
+        candidate_budget = RerankerFactory.get_candidate_budget(limit=limit)
         query_clean = query.strip()
         q_tokens = [w.lower() for w in re.findall(r'\w+', query_clean) if len(w) > 1]
 
@@ -323,7 +171,7 @@ class HybridRetrievalService:
             collection_name="lore_chunks",
             query_vector=query_vec,
             filter_dict=qdrant_filter,
-            limit=30,
+            limit=candidate_budget,
             workspace_id=workspace_id if workspace_id else None,
             query_text=query_clean
         )
@@ -349,7 +197,7 @@ class HybridRetrievalService:
             organization_id=organization_id,
             collection_id=collection_id,
             document_id=document_id,
-            limit=30
+            limit=candidate_budget
         )
         t_lex_end = time.time()
 
@@ -564,15 +412,32 @@ class HybridRetrievalService:
                 }
                 merged_candidates.append(exp_item)
 
-        # ---------------- Stage 4: Context Reranking ----------------
+        # ---------------- Stage 4: Pluggable Reranking (Phase 2-5) ----------------
         t_rerank_start = time.time()
-        reranked_candidates = ContextReranker.rerank(
+        active_reranker = self.reranker
+        reranked_candidates = active_reranker.rerank(
             query=query_clean,
             candidates=merged_candidates,
-            top_k=max(limit * 3, 24),
+            top_k=candidate_budget,
             min_relevance_threshold=min_relevance_threshold
         )
         t_rerank_end = time.time()
+
+        # Shadow evaluation mode if enabled (Phase 10)
+        shadow_diag = None
+        if getattr(settings, 'RERANKER_SHADOW_MODE', False) and active_reranker.backend_name == 'heuristic':
+            try:
+                from .reranking.shadow import ShadowRerankerEvaluator
+                from .reranking.neural import NeuralCrossEncoderReranker
+                shadow_diag = ShadowRerankerEvaluator.evaluate(
+                    query=query_clean,
+                    eligible_candidates=merged_candidates,
+                    primary_results=reranked_candidates,
+                    shadow_reranker=NeuralCrossEncoderReranker(),
+                    top_k=candidate_budget
+                )
+            except Exception as se:
+                logger.debug(f"[ShadowReranker] Shadow evaluation skipped: {se}")
 
         # ---------------- Stage 5: Configurable Context Budgeting ----------------
         accumulated_tokens = 0
@@ -768,6 +633,17 @@ class HybridRetrievalService:
                 'dependencies': graph_res.get('surfaced_dependencies', []) if graph_res else [],
                 'supersessions': graph_res.get('surfaced_supersessions', []) if graph_res else [],
                 'lineage': graph_res.get('surfaced_lineage', []) if graph_res else [],
+            },
+            'reranker': {
+                'backend': active_reranker.backend_name,
+                'model_name': active_reranker.model_name,
+                'model_revision': active_reranker.model_revision,
+                'device': getattr(active_reranker, 'device', getattr(getattr(active_reranker, '_last_diagnostics', None), 'device', None)),
+                'candidate_budget': candidate_budget,
+                'is_fallback': getattr(getattr(active_reranker, '_last_diagnostics', None), 'is_fallback', False),
+                'fallback_reason': getattr(getattr(active_reranker, '_last_diagnostics', None), 'fallback_reason', None),
+                'rerank_duration_ms': max(1, int((t_rerank_end - t_rerank_start) * 1000)),
+                'shadow_evaluation': shadow_diag
             },
             'lexical_backend': self.lexical_service.get_backend_info(),
             'embedding_provider': self.embedder.provider_name,

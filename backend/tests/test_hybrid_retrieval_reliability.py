@@ -155,6 +155,10 @@ class TestHybridRetrievalReliability(TestCase):
 
     def test_01_embedding_compatibility_and_explicit_fallback_policy(self):
         """Verifies 384-dim normalized embeddings and checks that silent hash fallback is rejected."""
+        try:
+            import sentence_transformers
+        except ImportError:
+            pytest.skip("sentence_transformers package not installed in environment")
         diag = validate_embedding_configuration()
         assert diag['dimension'] == 384
         assert diag['expected_dimension'] == 384

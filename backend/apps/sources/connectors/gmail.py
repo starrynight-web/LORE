@@ -6,7 +6,10 @@ import urllib.parse
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, Tuple, Generator
 import requests
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 from django.conf import settings
 from django.utils import timezone as dj_timezone
 
@@ -400,6 +403,9 @@ class GmailConnector(BaseEmailConnector):
         """Strips scripts, styles, and extracts readable markdown from HTML email bodies."""
         if not html_str:
             return ""
+        if not BeautifulSoup:
+            import re
+            return re.sub(r'<[^>]+>', ' ', html_str).strip()
         try:
             soup = BeautifulSoup(html_str, 'html.parser')
             # Remove scripts, styles, objects, and iframes for security
