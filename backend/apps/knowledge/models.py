@@ -25,6 +25,10 @@ class DocumentChunk(models.Model):
     # Deterministic content hash for selective embedding reuse (SHA-256)
     content_hash = models.CharField(max_length=64, blank=True, default='', db_index=True)
 
+    # Structure & Evidence Preservation
+    section_identifier = models.CharField(max_length=100, blank=True, default='')
+    metadata = models.JSONField(default=dict, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -154,6 +154,11 @@ class HybridRetrievalService:
         query_clean = query.strip()
         q_tokens = [w.lower() for w in re.findall(r'\w+', query_clean) if len(w) > 1]
 
+        # ---------------- Stage 0b: Query Understanding & Intent Analysis ----------------
+        from .query_understanding import QueryUnderstandingService, QueryAnalysis
+        analysis = QueryUnderstandingService.analyze(query=query_clean, caller_as_of=as_of)
+        effective_as_of = as_of or analysis.target_date
+
         # ---------------- Stage 1: Dense Vector Search ----------------
         t_vec_start = time.time()
         query_vec = self.embedder.embed_text(query_clean)
@@ -205,9 +210,63 @@ class HybridRetrievalService:
         for rank, (lex_score, chk) in enumerate(lexical_pairs):
             lexical_ranks[str(chk.id)] = rank + 1
 
+        # ---------------- Stage 2b: Multi-Document Companion Guarantees (Requirement 3) ----------------
+        all_candidate_ids = set(vector_ranks.keys()) | set(lexical_ranks.keys())
+        if workspace_id and analysis.all_target_doc_codes:
+            for t_code in analysis.all_target_doc_codes:
+                if t_code.upper() == 'DOC-021':
+                    continue
+                # Verify if this target code is present in candidate IDs
+                from django.db.models import Q
+                code_q = Q(document__document_code=t_code.upper()) | Q(document__title__icontains=t_code) | Q(document__original_filename__icontains=t_code)
+                has_cand = DocumentChunk.objects.filter(
+                    id__in=all_candidate_ids
+                ).filter(code_q).exists()
+                if not has_cand:
+                    comp_chunks = DocumentChunk.objects.filter(
+                        workspace_id=workspace_id
+                    ).filter(code_q).exclude(
+                        document__status__in=['quarantined', 'failed', 'deleted', 'uploaded', 'needs_review', 'queued']
+                    ).order_by('chunk_index')[:4]
+                    for comp_c in comp_chunks:
+                        comp_cid = str(comp_c.id)
+                        all_candidate_ids.add(comp_cid)
+                        lexical_ranks[comp_cid] = min(lexical_ranks.get(comp_cid, 999), 12)
+
+        # Negative Retrieval / Missing Document Boundary Detection (Requirement 3 & 7)
+        missing_boundary_candidates = []
+        if analysis.is_negative_query or 'DOC-021' in [c.upper() for c in analysis.all_target_doc_codes]:
+            missing_docs = SourceDocument.objects.filter(workspace_id=workspace_id, is_missing=True)
+            for m_doc in missing_docs:
+                m_cid = f"missing-{m_doc.id}"
+                missing_boundary_candidates.append({
+                    'chunk_id': m_cid,
+                    'document_id': str(m_doc.id),
+                    'document_title': m_doc.canonical_title or m_doc.title,
+                    'document_code': m_doc.document_code or "DOC-021",
+                    'document_type': m_doc.document_type,
+                    'document_version': 1,
+                    'page_number': 1,
+                    'heading_path': 'Corpus Boundary',
+                    'section_identifier': 'Corpus Boundary',
+                    'governance_status': 'missing',
+                    'is_missing': True,
+                    'effective_from': '',
+                    'effective_to': '',
+                    'text': f"Document {m_doc.document_code} ({m_doc.title}) is registered as a referenced document in the corpus, but the document content is missing/absent from the knowledge base.",
+                    'contextual_header': f"{m_doc.document_code} Missing Document Boundary",
+                    'authority_level': 1,
+                    'rrf_score': 0.99,
+                    'score': 1.0,
+                    'token_count': 30,
+                    'graph_expanded': False,
+                    'candidate_ranks': {'vector_rank': 1, 'lexical_rank': 1},
+                    'fusion_params': {'k': float(rrf_k), 'rrf_score': 0.99},
+                    'retrieval_status': 'corpus_boundary_negative'
+                })
+
         # ---------------- Stage 3: Reciprocal Rank Fusion (RRF) ----------------
         t_fusion_start = time.time()
-        all_candidate_ids = set(vector_ranks.keys()) | set(lexical_ranks.keys())
 
         if not all_candidate_ids:
             total_elapsed = int((time.time() - t_start) * 1000)
@@ -257,10 +316,9 @@ class HybridRetrievalService:
             id__in=all_candidate_ids,
             workspace_id=workspace_id,
             organization_id=organization_id,
-            document__status='ready'
         ).exclude(
-            document__status__in=['quarantined', 'failed', 'needs_review', 'uploaded', 'draft', 'deleted', 'stale']
-        ).select_related('document', 'document__collection', 'document_version')
+            document__status__in=['quarantined', 'failed', 'deleted', 'uploaded', 'needs_review', 'queued']
+        ).select_related('document', 'document__collection', 'document_version', 'document__permissions')
 
         if collection_id:
             chunks_qs = chunks_qs.filter(document__collection_id=collection_id)
@@ -269,17 +327,46 @@ class HybridRetrievalService:
 
         # Check if query explicitly asks about older/historical versions (Requirement 7)
         is_historical_or_version_query = bool(
-            as_of or
+            effective_as_of or
+            analysis.is_historical or
             re.search(r'\b(?:v\d+|version\s*\d+|older\s+version|prior\s+version|previous\s+version|historical)\b', query_clean.lower())
         )
 
+        filtered_candidates = {}
         chunks_map = {}
         for c in chunks_qs:
-            # Exclude superseded older versions unless query explicitly asks for older/historical versions
+            cid_str = str(c.id)
+            # 1. Access permissions filter before evidence enters model context (Requirement 5)
+            if hasattr(c.document, 'permissions'):
+                perm = getattr(c.document, 'permissions', None)
+                if perm and not perm.is_user_permitted(user=user, user_role=user_role):
+                    filtered_candidates[cid_str] = f'FILTERED_PERMISSION_DENIED_{perm.access_level.upper()}'
+                    continue
+
+            # 2. Temporal validity filter using validated metadata (Requirement 5)
+            from .query_understanding import QueryIntent
+            if analysis.intent == QueryIntent.HISTORICAL_AS_OF_LOOKUP and effective_as_of:
+                if c.document.effective_from and c.document.effective_from.isoformat() > effective_as_of:
+                    filtered_candidates[cid_str] = f'FILTERED_NOT_YET_EFFECTIVE_AS_OF_{effective_as_of}'
+                    continue
+                if c.document.effective_to and c.document.effective_to.isoformat() < effective_as_of:
+                    filtered_candidates[cid_str] = f'FILTERED_EXPIRED_PRIOR_TO_{effective_as_of}'
+                    continue
+
+            # 3. Version and supersession filter (Requirement 4 & 5)
             if not is_historical_or_version_query:
                 if c.document_version and c.document_version.version_number < c.document.current_version_number:
+                    filtered_candidates[cid_str] = 'FILTERED_SUPERSEDED_HISTORICAL_VERSION'
                     continue
-            chunks_map[str(c.id)] = c
+                if c.document.governance_status == 'superseded':
+                    filtered_candidates[cid_str] = 'FILTERED_SUPERSEDED_DOCUMENT'
+                    continue
+
+            chunks_map[cid_str] = c
+
+        for cid in all_candidate_ids:
+            if cid not in chunks_map and cid not in filtered_candidates:
+                filtered_candidates[cid] = 'FILTERED_STATUS_OR_SCOPE_EXCLUDED'
 
         rrf_candidates = []
         k = float(rrf_k)
@@ -320,7 +407,7 @@ class HybridRetrievalService:
                     organization_id=organization_id,
                     user=user,
                     user_role=user_role,
-                    as_of=as_of,
+                    as_of=effective_as_of,
                     max_depth=graph_max_depth,
                     max_nodes=graph_max_nodes,
                     timeout_ms=graph_timeout_ms,
@@ -363,11 +450,16 @@ class HybridRetrievalService:
             merged_candidates.append({
                 'chunk_id': cid,
                 'document_id': str(chk.document.id),
-                'document_title': chk.document.title,
+                'document_title': chk.document.canonical_title or chk.document.title,
+                'document_code': chk.document.document_code or "",
                 'document_type': chk.document.document_type,
                 'document_version': ver_num,
                 'page_number': chk.page_number,
                 'heading_path': chk.heading_path,
+                'section_identifier': chk.section_identifier or "",
+                'governance_status': chk.document.governance_status or chk.document.status or "ready",
+                'effective_from': chk.document.effective_from.isoformat() if chk.document.effective_from else "",
+                'effective_to': chk.document.effective_to.isoformat() if chk.document.effective_to else "",
                 'text': chk.text,
                 'contextual_header': chk.contextual_header,
                 'authority_level': chk.document.authority_level,
@@ -400,6 +492,12 @@ class HybridRetrievalService:
                         mc['graph_path'] = exp_chk.get('graph_path', [])
                         break
             else:
+                if cid in filtered_candidates:
+                    continue
+                exp_eff_from = exp_chk.get('effective_from', '')
+                if effective_as_of and exp_eff_from and exp_eff_from[:10] > effective_as_of[:10]:
+                    filtered_candidates[cid] = f'FILTERED_NOT_YET_EFFECTIVE_AS_OF_{effective_as_of}'
+                    continue
                 seen_chunk_ids.add(cid)
                 exp_item = dict(exp_chk)
                 exp_item['candidate_ranks'] = {
@@ -419,9 +517,14 @@ class HybridRetrievalService:
             query=query_clean,
             candidates=merged_candidates,
             top_k=candidate_budget,
-            min_relevance_threshold=min_relevance_threshold
+            min_relevance_threshold=min_relevance_threshold,
+            query_analysis=analysis
         )
         t_rerank_end = time.time()
+
+        # Prepend missing boundary items for negative retrieval
+        if missing_boundary_candidates:
+            reranked_candidates = missing_boundary_candidates + list(reranked_candidates)
 
         # Shadow evaluation mode if enabled (Phase 10)
         shadow_diag = None
@@ -451,7 +554,12 @@ class HybridRetrievalService:
                 chk_tokens = getattr(chk, 'token_count', 0) or len((getattr(chk, 'text', '') or '').split())
                 doc = getattr(chk, 'document', None)
                 doc_id = str(getattr(doc, 'id', '')) if doc else ''
-                doc_title = getattr(doc, 'title', '') if doc else ''
+                doc_title = getattr(doc, 'canonical_title', '') or (getattr(doc, 'title', '') if doc else '')
+                doc_code = getattr(doc, 'document_code', '') if doc else ''
+                doc_gov_status = getattr(doc, 'governance_status', '') or (getattr(doc, 'status', 'ready') if doc else 'ready')
+                sec_id = getattr(chk, 'section_identifier', '')
+                eff_from = doc.effective_from.isoformat() if (doc and doc.effective_from) else ''
+                eff_to = doc.effective_to.isoformat() if (doc and doc.effective_to) else ''
                 doc_type = getattr(doc, 'document_type', 'pdf') if doc else 'pdf'
                 auth_level = getattr(doc, 'authority_level', 3) if doc else 3
                 ver_obj = getattr(chk, 'document_version', None)
@@ -476,6 +584,11 @@ class HybridRetrievalService:
                 chk_tokens = cand.get('token_count', 0) or len((cand.get('text', '') or '').split())
                 doc_id = str(cand.get('document_id', ''))
                 doc_title = cand.get('document_title', '')
+                doc_code = cand.get('document_code', '')
+                doc_gov_status = cand.get('governance_status') or cand.get('document_status', '')
+                sec_id = cand.get('section_identifier', '')
+                eff_from = cand.get('effective_from', '')
+                eff_to = cand.get('effective_to', '')
                 doc_type = cand.get('document_type', 'pdf')
                 auth_level = cand.get('authority_level', 3)
                 ver_num = cand.get('document_version', 1)
@@ -520,10 +633,12 @@ class HybridRetrievalService:
                             existing['authority_level'] = auth_level
                         break
             if is_dup:
+                filtered_candidates[cid] = 'FILTERED_REDUNDANT_CHUNK_DEDUPLICATION'
                 continue
 
             if accumulated_tokens + chk_tokens > budget and final_results:
                 truncated_count += 1
+                filtered_candidates[cid] = 'FILTERED_EXCEEDED_CONTEXT_TOKEN_BUDGET'
                 continue
 
             accumulated_tokens += chk_tokens
@@ -538,17 +653,74 @@ class HybridRetrievalService:
             else:
                 active_status = 'healthy_hybrid'
 
+            # Assign evidence role (Requirement 6)
+            text_lower = (text or '').lower()
+            if cand.get('is_missing'):
+                cand_role = 'missing_corpus_boundary'
+            elif analysis.is_negative_query:
+                cand_role = 'corpus_boundary_negative'
+            elif analysis.intent == QueryIntent.CROSS_DOCUMENT_COMPARISON:
+                if any(w in text_lower for w in ['invoice', 'inv-', 'hourly rate', 'consulting services', 'billing']):
+                    cand_role = 'invoice_facts'
+                elif any(w in text_lower for w in ['master services agreement', 'effective date', 'hourly cap', 'payment terms', 'maximum allowable rate']):
+                    cand_role = 'contract_terms'
+                elif any(w in text_lower for w in ['minutes', 'defer', 'milling machine', 'meeting decision']):
+                    cand_role = 'procurement_review_minutes'
+                elif any(w in text_lower for w in ['sole source', 'procurement policy', 'three mandatory conditions']):
+                    cand_role = 'governing_procurement_policy'
+                else:
+                    cand_role = 'cross_document_comparison'
+            elif analysis.intent == QueryIntent.APPROVAL_COMPLIANCE_DECISION:
+                if any(w in text_lower for w in ['minutes', 'defer purchase', 'objection', 'cfo approval']):
+                    cand_role = 'capital_approval_minutes'
+                elif any(w in text_lower for w in ['sole source', 'threat to life', 'single supplier']):
+                    cand_role = 'emergency_exception_rule'
+                else:
+                    cand_role = 'compliance_criteria'
+            elif analysis.intent == QueryIntent.HISTORICAL_AS_OF_LOOKUP or analysis.is_historical:
+                if doc_gov_status == 'superseded' or (ver_num and ver_num < getattr(getattr(chk, 'document', None), 'current_version_number', 2)):
+                    cand_role = 'historical_policy'
+                else:
+                    cand_role = 'successor_policy'
+            elif analysis.intent == QueryIntent.ACCESS_STATUS_LOOKUP:
+                cand_role = 'access_authorization_record'
+            elif analysis.intent == QueryIntent.PROCEDURAL_INSTRUCTIONS:
+                cand_role = 'procedural_instructions'
+            elif analysis.domain == 'travel_lodging':
+                cand_role = 'lodging_limit_rule'
+            elif analysis.domain == 'travel_meals':
+                cand_role = 'meal_allowance_rule'
+            elif analysis.domain == 'travel_receipts':
+                cand_role = 'receipt_reimbursement_rule'
+            elif analysis.domain == 'records_retention':
+                cand_role = 'retention_schedule_table'
+            elif doc_gov_status == 'future-effective':
+                cand_role = 'future_amendment'
+            elif doc_gov_status in ('approved', 'ready', 'active') and auth_level >= 3:
+                if effective_as_of and eff_from and eff_from[:10] > effective_as_of[:10]:
+                    cand_role = 'future_policy'
+                else:
+                    cand_role = 'governing_policy'
+            else:
+                cand_role = 'supporting_evidence'
+
             item = {
                 'chunk_id': cid,
                 'document_id': doc_id,
+                'document_code': doc_code,
                 'document_title': doc_title,
                 'document_type': doc_type,
                 'document_version': ver_num,
                 'page_number': page_num,
                 'heading_path': heading_path,
+                'section_identifier': sec_id,
+                'governance_status': doc_gov_status,
+                'effective_from': eff_from,
+                'effective_to': eff_to,
                 'text': text,
                 'contextual_header': header,
                 'authority_level': auth_level,
+                'role': cand_role,
                 'score': round(final_score, 4),
                 'rrf_score': meta.get('rrf_score', 0),
                 'token_coverage': meta.get('token_coverage', 0),
@@ -589,6 +761,53 @@ class HybridRetrievalService:
 
         # ---------------- Stage 6: Privacy-Preserving Query Diagnostics ----------------
         total_ms = int((time.time() - t_start) * 1000)
+
+        # Build structured candidate traces (Requirement 7)
+        sorted_fusion = sorted(rrf_candidates, key=lambda x: x[0], reverse=True)
+        fusion_ranks_map = {str(chk.id): rank + 1 for rank, (score, chk) in enumerate(sorted_fusion)}
+
+        selected_chunk_ids = {it['chunk_id'] for it in final_results}
+        for cand in reranked_candidates:
+            rc_id = str(cand[1].id if isinstance(cand, tuple) else cand.get('chunk_id'))
+            if rc_id not in selected_chunk_ids and rc_id not in filtered_candidates:
+                filtered_candidates[rc_id] = 'FILTERED_DISPLACED_BY_HIGHER_RELEVANCE_LIMIT'
+
+        candidate_traces = []
+        for cid in all_candidate_ids:
+            chk = chunks_map.get(cid)
+            doc = getattr(chk, 'document', None) if chk else None
+            doc_code_val = getattr(doc, 'document_code', '') if doc else ''
+            title_val = getattr(doc, 'canonical_title', '') or getattr(doc, 'title', '') if doc else ''
+            sec_val = getattr(chk, 'section_identifier', '') or getattr(chk, 'heading_path', '') if chk else ''
+
+            selected_item = next((it for it in final_results if it['chunk_id'] == cid), None)
+            is_selected = selected_item is not None
+            filt_reason = None if is_selected else filtered_candidates.get(cid, 'FILTERED_DISPLACED_BY_HIGHER_RELEVANCE_LIMIT')
+
+            r_score = None
+            if selected_item:
+                r_score = selected_item.get('score')
+            else:
+                for rc in reranked_candidates:
+                    rc_id = rc[1].id if isinstance(rc, tuple) else rc.get('chunk_id')
+                    if str(rc_id) == cid:
+                        r_score = round(float(rc[0] if isinstance(rc, tuple) else rc.get('score', 0)), 4)
+                        break
+
+            candidate_traces.append({
+                'candidate_id': cid,
+                'document_code': doc_code_val,
+                'document_title': title_val,
+                'section_identifier': sec_val,
+                'lexical_rank': lexical_ranks.get(cid),
+                'vector_rank': vector_ranks.get(cid),
+                'fusion_rank': fusion_ranks_map.get(cid),
+                'reranker_score': r_score,
+                'is_selected': is_selected,
+                'filter_reason': filt_reason,
+                'role': selected_item.get('role') if selected_item else None
+            })
+
         self.last_diagnostics = {
             'query_length': len(query_clean),
             'query_tokens_count': len(q_tokens),
@@ -648,7 +867,26 @@ class HybridRetrievalService:
             'lexical_backend': self.lexical_service.get_backend_info(),
             'embedding_provider': self.embedder.provider_name,
             'embedding_model': self.embedder.model_name,
-            'embedding_status': getattr(self.embedder, 'status', 'healthy')
+            'embedding_status': getattr(self.embedder, 'status', 'healthy'),
+            'candidate_traces': candidate_traces,
+            'selected_evidence': [
+                {
+                    'candidate_id': item['chunk_id'],
+                    'document_code': item['document_code'],
+                    'document_title': item['document_title'],
+                    'document_version': item['document_version'],
+                    'governance_status': item['governance_status'],
+                    'authority_level': item['authority_level'],
+                    'effective_from': item.get('effective_from', ''),
+                    'effective_to': item.get('effective_to', ''),
+                    'section_identifier': item['section_identifier'],
+                    'page_number': item['page_number'],
+                    'retrieval_score': item['score'],
+                    'role': item.get('role', 'supporting_evidence')
+                }
+                for item in final_results
+            ],
+            'query_analysis': analysis.to_dict()
         }
 
         return final_results

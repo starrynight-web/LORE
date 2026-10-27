@@ -54,14 +54,21 @@ class EvidencePresentationEngine:
             cit = cls._build_citation_entry(chk, query, answer, ref_time, conflicts_resolved)
             candidate_citations.append(cit)
         ans_lower = (answer or '').lower()
-        # Sort candidate citations: sources cited directly in answer come first, then approved governing policy, then authority, then score
+        q_lower = (query or '').lower()
+        codes_in_query = set(re.findall(r'\bdoc-\d+\b', q_lower))
+
+        # Sort candidate citations: explicit query-targeted sources, then approved governing policy, then authority, then score
         def _sort_key(c):
             t = (c.get('document_title') or '').lower()
             did = str(c.get('document_id') or '').lower()
-            cited_in_ans = 3 if (t in ans_lower or (did and did in ans_lower)) else 0
+            dcode = str(c.get('document_code') or '').lower()
+            query_doc_match = 4 if any(cd in t or cd in did or cd in dcode for cd in codes_in_query) else 0
+            cited_in_ans = 2 if ((t and t in ans_lower) or (dcode and dcode in ans_lower)) else 0
             st = c.get('document_status', 'unknown')
-            is_gov = 2 if st == 'approved' else (1 if st not in ['draft', 'superseded', 'future-effective'] else 0)
-            return (cited_in_ans, is_gov, int(c.get('authority_level', 0) or 0), float(c.get('score', 0.0) or 0.0))
+            is_gov = 3 if st in ['approved', 'ready', 'active'] else (2 if st not in ['superseded', 'quarantined'] else 1)
+            auth = int(c.get('authority_level', 0) or 0)
+            score = float(c.get('score', 0.0) or 0.0)
+            return (query_doc_match, cited_in_ans, is_gov, auth, score)
 
         candidate_citations.sort(key=_sort_key, reverse=True)
 
@@ -471,8 +478,12 @@ class EvidencePresentationEngine:
         q_lower = query.lower()
         ans_lower = answer.lower()
 
-        # The primary source: choose the source cited in the answer or highest scored candidate
-        matching_cited = [c for c in citations if c['document_title'].lower() in ans_lower or (str(c.get('document_id', '')) and str(c.get('document_id', '')).lower() in ans_lower)]
+        matching_cited = [
+            c for c in citations
+            if c['document_title'].lower() in ans_lower
+            or (str(c.get('document_id', '')) and str(c.get('document_id', '')).lower() in ans_lower)
+            or (str(c.get('document_code', '')) and str(c.get('document_code', '')).lower() in ans_lower)
+        ]
         if matching_cited:
             ans_fact_words = set(re.findall(r'\b[a-z]{4,}\b', ans_lower)) - {'according', 'policy', 'document', 'page', 'proposed', 'formally', 'approved', 'draft'}
             primary = max(matching_cited, key=lambda c: len(ans_fact_words.intersection(set(re.findall(r'\b[a-z]{4,}\b', (c.get('shortest_passage') or '').lower())))))
@@ -505,7 +516,8 @@ class EvidencePresentationEngine:
                 for cr in conflicts_resolved
             )
             if is_conflict_source:
-                necessary.append(cit)
+                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                    necessary.append(cit)
                 continue
 
             # Condition B: Explicitly cited in answer text (e.g. governing policy or material amendment)
@@ -515,8 +527,9 @@ class EvidencePresentationEngine:
                 if m_code:
                     doc_code_lower = m_code.group(1)
             if (doc_code_lower and doc_code_lower in ans_lower) or title.lower() in ans_lower or (doc_id and doc_id.lower() in ans_lower):
-                necessary.append(cit)
-                continue
+                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                    necessary.append(cit)
+                    continue
 
             # Draft documents must NOT be included as supplementary citations unless user asks about the draft or cited in answer (Requirement 3)
             if status == 'draft' and not user_asks_draft:

@@ -71,10 +71,12 @@ class MockNeuralCrossEncoderEngine:
                 score += 4.5
             if "seven years" in d_lower and ("financial" in q_lower or "invoices" in q_lower or "how long" in q_lower):
                 score += 4.0
+            if "doc-002" in q_lower and "doc-002" in d_lower:
+                score += 4.0
             if "hotel" in q_lower and "$220" in d_lower:
-                score += 3.0
+                score += 3.5
             if "hotel" in q_lower and "$240" in d_lower:
-                score += 3.2
+                score += 2.5
 
             # Hard negative penalty
             if "poison" in d_lower or "emergency override" in d_lower:

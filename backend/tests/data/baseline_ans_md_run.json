@@ -1,0 +1,133 @@
+{
+  "run_name": "LORE Enterprise Unrepaired Baseline (ans.md)",
+  "recorded_at": "2026-10-23T19:15:00Z",
+  "app_version": "2.0.0-unrepaired",
+  "metrics": {
+    "retrieval_recall": 0.38,
+    "retrieval_precision": 0.42,
+    "correct_source_selection": 0.417,
+    "required_evidence_completeness": 0.333,
+    "source_authority_correctness": 0.50,
+    "temporal_correctness": 0.333,
+    "numerical_reasoning": 0.167,
+    "final_factual_correctness": 0.083,
+    "answer_completeness": 0.167,
+    "citation_precision": 0.30,
+    "hallucination_rate": 0.75,
+    "correct_abstention_rate": 0.00,
+    "clarity_and_conciseness": 0.25,
+    "governance_false_positive_rate": 0.417,
+    "benchmark_12_cases_passed": 0,
+    "benchmark_12_cases_total": 12
+  },
+  "results": [
+    {
+      "question_id": "LORE-BENCH-01",
+      "query": "What is the maximum number of unused annual leave days an employee can carry forward, and when do they expire?",
+      "passed": false,
+      "answer": "The annual leave allowance is 20 days of paid leave per calendar year. According to DOC-008 — Records_Retention_Schedule.xlsx (Page 1), this is the authoritative operational rule.",
+      "citations": ["DOC-008 — Records_Retention_Schedule.xlsx"],
+      "earliest_failing_stage": "STAGE_2_RETRIEVAL_CANDIDATE_GENERATION",
+      "failure_category": "Wrong document retrieved and wrong factual claims (cited DOC-008 instead of DOC-005, stated 20 days instead of 5 days / March 31)."
+    },
+    {
+      "question_id": "LORE-BENCH-02",
+      "query": "According to the Records Retention Schedule, how long must \"Audit events\" (security logs, access events) be retained, and what is the trigger?",
+      "passed": false,
+      "answer": "Systems that process confidential or business-critical information must record relevant security events, including: - Successful and failed authentication attempts... According to DOC-007 — Information_Security_Policy.pdf",
+      "citations": ["DOC-007 — Information_Security_Policy.pdf"],
+      "earliest_failing_stage": "STAGE_2_RETRIEVAL_CANDIDATE_GENERATION",
+      "failure_category": "Missed core question (retrieved DOC-007 event listing instead of DOC-008 retention period of 2 years and event timestamp trigger)."
+    },
+    {
+      "question_id": "LORE-BENCH-03",
+      "query": "Can the $32,000 CNC vertical milling machine purchase be authorized based on the Procurement Review Minutes ? Why or why not?",
+      "passed": false,
+      "answer": "A $32,000 purchase exceeds the $25,000 threshold and falls into Tier 3 (Major Contracts), which requires a formal competitive Request for Proposals (RFP), Legal review, and VP approval. According to DOC-018_Capital_Purchase_Decision_Pack",
+      "citations": ["DOC-018_Capital_Purchase_Decision_Pack"],
+      "earliest_failing_stage": "STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING",
+      "failure_category": "Severe hallucination (invented Tier 3 RFP requirements, omitted committee deferral and Finance objection / CFO approval)."
+    },
+    {
+      "question_id": "LORE-BENCH-04",
+      "query": "An employee submits an expense claim for a $450 hotel stay for 2 nights in August 2026. They have manager approval but no written exception from Finance. Is this compliant?",
+      "passed": false,
+      "answer": "After approval, airfare and lodging should be booked as early as practical and no later than 14 calendar days before departure... According to DOC-002 — Travel_Expense_Policy_v2.pdf",
+      "citations": ["DOC-002 — Travel_Expense_Policy_v2.pdf"],
+      "earliest_failing_stage": "STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING",
+      "failure_category": "Irrelevant retrieval focus (discussed 14-day booking timeline instead of $225/night vs $200 cap and missing Finance exception)."
+    },
+    {
+      "question_id": "LORE-BENCH-05",
+      "query": "What is the maximum reimbursable hotel accommodation cost per night for business travel occurring on November 15, 2026?",
+      "passed": false,
+      "answer": "Daily maximum $70 Reduce claims for meals provided by a hotel, airline, event, or host. According to DOC-002 — Travel_Expense_Policy_v2.pdf",
+      "citations": ["DOC-002 — Travel_Expense_Policy_v2.pdf"],
+      "earliest_failing_stage": "STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING",
+      "failure_category": "Context confusion (confused meals daily maximum of $70 with hotel rate, dismissed future amendment without acknowledging active cap)."
+    },
+    {
+      "question_id": "LORE-BENCH-06",
+      "query": "Which document supersedes the Archived Travel Policy 2024 , and what was its lodging cap?",
+      "passed": false,
+      "answer": "DOC-016 lodging cap | The archived 2024 travel policy states a lodging cap of USD $150 per night per room and is marked expired/superseded. According to DOC-020_Master_Document_Register",
+      "citations": ["DOC-020_Master_Document_Register"],
+      "earliest_failing_stage": "STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING",
+      "failure_category": "Incomplete answer (found $150 cap in DOC-020, but failed to name superseding document DOC-021)."
+    },
+    {
+      "question_id": "LORE-BENCH-07",
+      "query": "An internal memo states the hotel nightly cap is $250. Should a travel coordinator use this figure to approve a booking?",
+      "passed": false,
+      "answer": "Cannot authorize request for 'An internal memo states the hotel nightly cap is $250...'. Mandatory governance evidence is missing: [formal_security_assessment_report]... Route to Security Team.",
+      "citations": [],
+      "earliest_failing_stage": "STAGE_4_EVIDENCE_SUFFICIENCY_GATING",
+      "failure_category": "False escalation & overbroad action gate (triggered vendor approval requirement and security escalation for travel question)."
+    },
+    {
+      "question_id": "LORE-BENCH-08",
+      "query": "Review the Atlas Services Invoice 2026-041 . Is there any discrepancy between this invoice and the Vendor Contract ?",
+      "passed": false,
+      "answer": "ATLAS SERVICES INVOICE Vendor services Invoice No.: 2026-041 Invoice Date: 15 October 2026 Due Date: 14 November 2026... Note: An unapproved draft (DOC-009 — Vendor_Contract_Atlas_Services.pdf) proposes $48, but remains non-binding.",
+      "citations": ["DOC-010 — Atlas_Invoice_2026_041.pdf"],
+      "earliest_failing_stage": "STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING",
+      "failure_category": "Missed discrepancies (timing and quarterly fee math) and hallucinated that DOC-009 proposes $48."
+    },
+    {
+      "question_id": "LORE-BENCH-09",
+      "query": "What are the specific workspace access permissions currently granted to Carla Reyes?",
+      "passed": false,
+      "answer": "Request ID / Person | Requested role | Workspace membership | Approval status | Effective date | Revocation / end date AR-2024-041 Alice Morgan... AR-2024-042 Ben Carter... AR-2024-043 Carla Reyes...",
+      "citations": ["DOC-017_Workspace_Access_Request"],
+      "earliest_failing_stage": "STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING",
+      "failure_category": "Table dump (dumped entire access table including unrelated employees Alice Morgan and Ben Carter)."
+    },
+    {
+      "question_id": "LORE-BENCH-10",
+      "query": "What is the exact text of the Travel & Expense Policy (2025) that replaced the 2024 policy?",
+      "passed": false,
+      "answer": "Document ID DOC-016 Owner People Operations & Finance Version 1.0 Authority level Historical reference Status Expired / Superseded Workspace Corporate Policies Archive Effective date January 1, 2024 Expiration date December 31, 2024 Superseded on January 1, 2025 Replaced by DOC-021...",
+      "citations": ["DOC-016_Archived_Travel_Policy_2024"],
+      "earliest_failing_stage": "STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING",
+      "failure_category": "Failed to abstain truthfully on missing document (dumped metadata without stating body text was absent from corpus)."
+    },
+    {
+      "question_id": "LORE-BENCH-11",
+      "query": "What are the three mandatory conditions that must be satisfied to use the Emergency Procurement Exception?",
+      "passed": false,
+      "answer": "Meeting date | October 22, 2024 | Time | 10:00–10:45 AM Location | Conference Room B / virtual dial-in | Chair | Morgan Lee, Procurement Manager Minutes prepared by | Jamie Chen... According to DOC-019_Procurement_Review_Minutes",
+      "citations": ["DOC-019_Procurement_Review_Minutes"],
+      "earliest_failing_stage": "STAGE_2_RETRIEVAL_CANDIDATE_GENERATION",
+      "failure_category": "Wrong document retrieved (retrieved and dumped DOC-019 meeting minutes instead of DOC-004 Emergency Procurement Exception)."
+    },
+    {
+      "question_id": "LORE-BENCH-12",
+      "query": "An employee loses a $30 receipt for a business dinner. What is the required process to attempt reimbursement?",
+      "passed": false,
+      "answer": "for eligible business travel during the 2024 policy period. According to DOC-016_Archived_Travel_Policy_2024 (Page 1), this is the authoritative operational rule.",
+      "citations": ["DOC-016_Archived_Travel_Policy_2024"],
+      "earliest_failing_stage": "STAGE_2_RETRIEVAL_CANDIDATE_GENERATION",
+      "failure_category": "Broken generation and wrong retrieval (fragmented sentence, retrieved archived 2024 policy DOC-016 instead of DOC-002)."
+    }
+  ]
+}

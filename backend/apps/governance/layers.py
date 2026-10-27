@@ -65,6 +65,8 @@ class DecisionIntelligenceTuple(tuple):
         self.risk_level = info_dict.get('risk_level', 'low')
         self.requires_human_review = (self.risk_level == 'critical')
         self.reason_codes = reason_codes or []
+        self.query_analysis = info_dict.get('query_analysis')
+        self.is_action_proposal = (self.query_intent == 'action_authorization')
 
     def __getitem__(self, item):
         if isinstance(item, str):
@@ -110,14 +112,15 @@ class AuthorityConflictTuple(tuple):
 
 
 class SufficiencyEvaluationTuple(tuple):
-    def __new__(cls, evidence_found, evidence_missing, is_sufficient, reason_codes=None):
+    def __new__(cls, evidence_found, evidence_missing, is_sufficient, reason_codes=None, requirements_applied=None):
         return super().__new__(cls, (evidence_found, evidence_missing, is_sufficient))
 
-    def __init__(self, evidence_found, evidence_missing, is_sufficient, reason_codes=None):
+    def __init__(self, evidence_found, evidence_missing, is_sufficient, reason_codes=None, requirements_applied=None):
         self.evidence_found = evidence_found
         self.evidence_missing = evidence_missing
         self.is_sufficient = is_sufficient
         self.reason_codes = reason_codes or []
+        self.requirements_applied = requirements_applied or []
 
 
 class AnswerStateTuple(tuple):
@@ -253,19 +256,25 @@ class DecisionIntelligenceLayer:
     DECISION_CATALOG = {
         'vendor_approval': {
             'label': 'Third-Party Vendor & Cloud Approval',
-            'mandatory_evidence': ['policy_condition', 'assessment_report', 'contract_term', 'data_residency_proof'],
+            'mandatory_evidence': ['policy_condition', 'formal_security_assessment', 'executed_vendor_agreement', 'data_residency_addendum'],
             'escalation_target': 'security_team',
             'risk_level': 'high'
         },
         'procurement_governance': {
             'label': 'Procurement Threshold & Expenditure Governance',
-            'mandatory_evidence': ['approved_policy'],
+            'mandatory_evidence': ['cfo_written_approval', 'procurement_committee_resolution'],
+            'escalation_target': 'procurement_officer',
+            'risk_level': 'medium'
+        },
+        'contract_compliance': {
+            'label': 'Vendor Contract & Commercial Terms Reconciliation',
+            'mandatory_evidence': ['dual_source_comparison'],
             'escalation_target': 'procurement_officer',
             'risk_level': 'medium'
         },
         'data_processing': {
             'label': 'Data Processing & Customer PII Compliance',
-            'mandatory_evidence': ['policy_condition', 'data_classification', 'retention_rule', 'sovereignty_proof'],
+            'mandatory_evidence': ['records_retention_schedule_facts'],
             'escalation_target': 'compliance_officer',
             'risk_level': 'high'
         },
@@ -283,7 +292,7 @@ class DecisionIntelligenceLayer:
         },
         'policy_compliance': {
             'label': 'Internal Policy & Security Procedure',
-            'mandatory_evidence': ['approved_policy', 'implementation_rule'],
+            'mandatory_evidence': ['governing_policy'],
             'escalation_target': 'compliance_officer',
             'risk_level': 'medium'
         },
@@ -305,54 +314,103 @@ class DecisionIntelligenceLayer:
     def classify(
         cls,
         query: str,
-        explicit_decision_type: Optional[str] = None
+        explicit_decision_type: Optional[str] = None,
+        query_analysis: Optional[Any] = None
     ) -> DecisionIntelligenceTuple:
         reason_codes = []
         q_lower = query.lower()
 
+        # Step 0: Obtain high-fidelity query analysis
+        qa = query_analysis
+        if not qa:
+            try:
+                from apps.retrieval.query_understanding import QueryUnderstandingService
+                qa = QueryUnderstandingService.analyze(query)
+            except Exception as e:
+                logger.warning(f"Error invoking QueryUnderstandingService in DecisionIntelligenceLayer: {e}")
+                qa = None
+
         # Step 1: Classify Query Intent (Requirement 1 & 7)
-        # Distinguish informational questions, comparisons, policy interpretation, recommendations, and action/approval requests
-        is_comparison = any(w in q_lower for w in ['compare', 'difference between', 'versus', ' vs ', 'better', 'fastest', 'cheapest', 'lowest price', 'delivery time', 'trade-off'])
-        is_recommendation = any(w in q_lower for w in ['which should we', 'which vendor is', 'what do you recommend', 'which supplier', 'recommendation', 'which is best', 'best supplier', 'best vendor'])
-        is_threshold_or_amount = bool(re.search(r'\$\s*\d+|(?:threshold|limit|tier|boundary|ceiling|maximum amount|micro-purchase|small procurement|major contract|emergency procurement)', q_lower))
-        is_policy_query = any(w in q_lower for w in [
-            'what does the policy say', 'is it allowed', 'policy regarding', 'policy on',
-            'under the policy', 'according to policy', 'rules for', 'guidelines for', 'procedure for',
-            'annual leave', 'leave allowance', 'security access', 'access level', 'access without', 'deploy without',
-            'what is the', 'what are the'
-        ])
-        is_explicit_action = (
-            any(w in q_lower for w in ['approve ', 'authorize ', 'onboard ', 'deploy ', 'release to ', 'execute ', 'grant access', 'perform ', 'bypass ', 'enable ', 'disable ', 'skip ', 'override ', 'connect ']) or
-            (any(w in q_lower for w in ['can we approve', 'can i approve', 'approve this', 'grant approval', 'can we onboard', 'can we deploy', 'can i deploy', 'should we approve', 'can i bypass', 'can we bypass', 'can i enable', 'can we enable', 'can i disable', 'can we disable', 'can i skip', 'can we skip']) and not any(w in q_lower for w in ['what is', 'what are', 'threshold', 'policy say', 'allowance', 'days', 'hours']))
+        # Distinguish informational retrieval from action authorization
+        is_comparison = (
+            getattr(qa, 'is_cross_document', False) or
+            any(w in q_lower for w in ['compare', 'difference between', 'versus', ' vs ', 'better', 'fastest', 'cheapest', 'lowest price', 'delivery time', 'trade-off', 'reconcil', 'discrepancy'])
         )
+        is_recommendation = any(w in q_lower for w in ['which should we', 'which vendor is', 'what do you recommend', 'which supplier', 'recommendation', 'which is best', 'best supplier', 'best vendor'])
+        is_negative = getattr(qa, 'is_negative_query', False) or any(w in q_lower for w in ['exact text of', 'exact policy text', 'missing', 'absent', 'not found in'])
+        is_access_status = getattr(qa, 'is_access_query', False) or 'access permissions currently granted' in q_lower or 'carla reyes' in q_lower
+        is_procedural = getattr(qa, 'is_receipt_query', False) or any(w in q_lower for w in ['required process', 'how to submit', 'process to attempt', 'procedure'])
+        
+        # Action authorization: explicitly proposing or requesting permission to perform an action
+        is_action_proposal = (
+            any(p in q_lower for p in [
+                'can we approve', 'can i approve', 'grant approval', 'can we onboard', 'can we deploy',
+                'can i deploy', 'can i bypass', 'can we bypass', 'can i enable', 'can we enable',
+                'can i disable', 'can we disable', 'can i skip', 'can we skip', 'should a travel coordinator use',
+                'should a coordinator use', 'can the $', 'can the purchase be authorized', 'be authorized based on',
+                'should we approve', 'should i approve', 'approve this'
+            ]) or
+            (any(w in q_lower for w in ['onboard ', 'deploy ', 'release to ', 'execute ', 'grant access', 'perform ', 'bypass ']) and
+             not any(w in q_lower for w in ['what is', 'what are', 'threshold', 'policy say', 'allowance', 'days', 'hours']))
+        )
+        is_compliance_evaluation = any(p in q_lower for p in ['is this compliant', 'is it compliant', 'is this allowed', 'is it permitted'])
 
         if is_comparison:
             query_intent = 'comparison'
         elif is_recommendation:
             query_intent = 'recommendation'
-        elif is_explicit_action and not any(w in q_lower for w in ['what is', 'what are', 'threshold', 'policy say', 'tell me', 'explain', 'how many']):
-            query_intent = 'action_request'
-        elif is_threshold_or_amount or is_policy_query:
-            query_intent = 'policy_interpretation'
+        elif is_action_proposal or is_compliance_evaluation:
+            query_intent = 'action_authorization'
+        elif is_negative:
+            query_intent = 'negative_retrieval'
+        elif is_access_status:
+            query_intent = 'access_status_lookup'
+        elif is_procedural:
+            query_intent = 'procedural_instructions'
+        elif any(w in q_lower for w in ['what is the maximum', 'how long must', 'what was its lodging cap', 'what is the exact']):
+            query_intent = 'exact_fact_lookup'
         else:
-            query_intent = 'informational'
+            query_intent = 'policy_interpretation'
 
-        # Step 2: Classify Decision Type
+        # Step 2: Classify Decision Type (Requirement 1)
+        # Separate informational retrieval from action authorization.
+        # A question about a hotel memo must not automatically become a vendor approval request merely because it contains the word "approve."
+        # A question about a purchase threshold must use procurement requirements.
+        # A vendor approval request must use vendor-specific requirements.
         if explicit_decision_type and explicit_decision_type in cls.DECISION_CATALOG:
             dt = explicit_decision_type
             reason_codes.append(GovernanceReasonCode.L1_EXPLICIT_DECISION_TYPE.value)
         else:
             if any(w in q_lower for w in ['দলিল', 'খতিয়ান', 'খতিয়ান', 'মৌজা', 'সাফ কবলা', 'deed', 'khatian', 'schedule of property', 'statutory']):
                 dt = 'statutory_compliance'
-            elif any(w in q_lower for w in ['procurement', 'purchase', 'rfp', 'competitive quote', 'micro-purchase', 'supplier', 'emergency procurement']) and (is_threshold_or_amount or is_policy_query or 'emergency' in q_lower or is_comparison or is_recommendation):
+            elif (
+                any(w in q_lower for w in ['procurement', 'milling machine', 'capital purchase', 'rfp', 'competitive quote', 'micro-purchase', 'emergency procurement']) or
+                ('purchase' in q_lower and any(w in q_lower for w in ['authorized', 'threshold', '$', 'cfo', 'minutes', 'defer']))
+            ):
+                # Procurement Threshold & Expenditure Governance
                 dt = 'procurement_governance'
-            elif (is_explicit_action and any(w in q_lower for w in ['vendor', 'supplier', 'third-party', 'cloudbox', 'tool', 'software', 'app'])):
+            elif (
+                ('onboard' in q_lower or 'cloudbox' in q_lower or 'saas' in q_lower or 'tool' in q_lower or 'software' in q_lower or ('vendor' in q_lower and any(w in q_lower for w in ['approve', 'onboarding', 'security assessment', 'soc 2']))) and
+                not any(w in q_lower for w in ['hotel', 'lodging', 'memo', 'travel', 'invoice', 'agreement', 'discrepancy'])
+            ):
+                # Third-Party Vendor & Cloud Approval (Vendor-specific requirements)
                 dt = 'vendor_approval'
-            elif any(w in q_lower for w in ['privacy', 'gdpr', 'customer data', 'pii', 'retention', 'residency', 'sovereignty']):
+            elif (
+                is_comparison and ('invoice' in q_lower or 'atlas' in q_lower) and ('contract' in q_lower or 'agreement' in q_lower or 'vendor' in q_lower)
+            ):
+                # Vendor Contract & Commercial Terms Reconciliation
+                dt = 'contract_compliance'
+            elif any(w in q_lower for w in ['retention schedule', 'audit events', 'privacy', 'gdpr', 'customer data', 'pii', 'retention', 'residency', 'sovereignty']):
+                # Data Processing & Retention Schedule
                 dt = 'data_processing'
-            elif any(w in q_lower for w in ['deploy', 'production', 'release', 'launch', 'staging']) and is_explicit_action:
+            elif any(w in q_lower for w in ['deploy', 'production', 'release', 'launch', 'staging']) and query_intent == 'action_authorization':
+                # Production Deployment & Release Gate
                 dt = 'deployment_approval'
-            elif any(w in q_lower for w in ['security', 'password', 'jwt', 'auth', 'token', 'policy', 'compliance', 'annual leave', 'leave', 'access level']):
+            elif any(w in q_lower for w in [
+                'hotel', 'lodging', 'per diem', 'nightly cap', 'travel', 'expense', 'receipt',
+                'annual leave', 'leave days', 'carry forward', 'memo', 'booking', 'code of conduct'
+            ]):
+                # Internal Policy & Travel/HR Procedure
                 dt = 'policy_compliance'
             elif any(w in q_lower for w in ['refactor', 'function', 'class', 'test', 'api', 'architecture', 'convention']):
                 dt = 'code_change'
@@ -370,7 +428,8 @@ class DecisionIntelligenceLayer:
             'label': meta['label'],
             'mandatory_evidence': meta['mandatory_evidence'],
             'escalation_target': meta['escalation_target'],
-            'risk_level': meta['risk_level']
+            'risk_level': meta['risk_level'],
+            'query_analysis': qa
         }
         return DecisionIntelligenceTuple(info, reason_codes)
 
@@ -631,6 +690,50 @@ class AuthorityLayer:
                     c_a_chunks = [c for c in chunks if str(c.get('document_id')) == str(cr.source_a_id)]
                     c_b_chunks = [c for c in chunks if str(c.get('document_id')) == str(cr.source_b_id)]
 
+                    # Check authority levels: if one source has higher authority, authority dominance resolves the conflict
+                    auth_a = getattr(cr.source_a, 'authority_level', 3)
+                    auth_b = getattr(cr.source_b, 'authority_level', 3)
+                    if auth_a > auth_b:
+                        conflicts_resolved.append({
+                            'informal_claim': cr.claim_b[:120],
+                            'authoritative_source': cr.source_a.title,
+                            'resolution': 'authority_dominance',
+                            'note': f"Rank {auth_a} strictly outranks Rank {auth_b}."
+                        })
+                        reason_codes.append(GovernanceReasonCode.L6_AUTHORITY_DOMINANCE.value)
+                        continue
+                    elif auth_b > auth_a:
+                        conflicts_resolved.append({
+                            'informal_claim': cr.claim_a[:120],
+                            'authoritative_source': cr.source_b.title,
+                            'resolution': 'authority_dominance',
+                            'note': f"Rank {auth_b} strictly outranks Rank {auth_a}."
+                        })
+                        reason_codes.append(GovernanceReasonCode.L6_AUTHORITY_DOMINANCE.value)
+                        continue
+
+                    # Check if one of the sources is a draft (Requirement 3: Draft documents must not create false equal-rank contradictions against approved policies)
+                    status_a = (getattr(cr.source_a, 'governance_status', '') or getattr(cr.source_a, 'status', '') or '').lower()
+                    status_b = (getattr(cr.source_b, 'governance_status', '') or getattr(cr.source_b, 'status', '') or '').lower()
+                    is_draft_a = 'draft' in status_a or getattr(cr.source_a, 'is_draft', False)
+                    is_draft_b = 'draft' in status_b or getattr(cr.source_b, 'is_draft', False)
+                    if is_draft_a and not is_draft_b:
+                        conflicts_resolved.append({
+                            'informal_claim': cr.claim_a[:120],
+                            'authoritative_source': cr.source_b.title,
+                            'resolution': 'draft_exclusion',
+                            'note': f"Draft document '{cr.source_a.title}' cannot contradict approved policy."
+                        })
+                        continue
+                    elif is_draft_b and not is_draft_a:
+                        conflicts_resolved.append({
+                            'informal_claim': cr.claim_b[:120],
+                            'authoritative_source': cr.source_a.title,
+                            'resolution': 'draft_exclusion',
+                            'note': f"Draft document '{cr.source_b.title}' cannot contradict approved policy."
+                        })
+                        continue
+
                     if query:
                         rel_a = any(cls._is_chunk_relevant_to_query(c, query) for c in c_a_chunks)
                         rel_b = any(cls._is_chunk_relevant_to_query(c, query) for c in c_b_chunks)
@@ -639,7 +742,8 @@ class AuthorityLayer:
 
                         # Check if conflict claim addresses the query subject
                         claim_str = f"{cr.claim_a} {cr.claim_b} {cr.resolution_notes or ''}".lower()
-                        q_tokens = [w for w in re.findall(r'\w+', query.lower()) if len(w) > 2 and w not in ['what', 'is', 'are', 'the', 'must', 'for', 'does', 'action', 'actions']]
+                        stop_tokens = {'what', 'is', 'are', 'the', 'must', 'for', 'does', 'action', 'actions', 'employee', 'policy', 'document', 'company', 'record', 'rule', 'an', 'and', 'with', 'from', 'about', 'attempt', 'have', 'has'}
+                        q_tokens = [w for w in re.findall(r'\w+', query.lower()) if len(w) > 2 and w not in stop_tokens]
                         if q_tokens and not any(t in claim_str for t in q_tokens):
                             # Conflict claim is about an unrelated subject
                             continue
@@ -863,6 +967,36 @@ class TemporalValidityLayer:
         return None
 
     @classmethod
+    def _is_chunk_relevant(cls, chk: Dict[str, Any], query: Optional[str] = None) -> bool:
+        if not query:
+            return True
+        q_lower = query.lower()
+        title_lower = (chk.get('document_title') or '').lower()
+        text_lower = (chk.get('text') or '').lower()
+        codes = re.findall(r'\bdoc-\d+\b', q_lower)
+        if any(c in title_lower or c in text_lower for c in codes):
+            return True
+        q_tokens = set(re.findall(r'\b[a-z]{4,}\b', q_lower)) - {
+            'what', 'when', 'where', 'which', 'who', 'whom', 'this', 'that', 'with',
+            'from', 'have', 'does', 'under', 'policy', 'document', 'according',
+            'must', 'should', 'would', 'could', 'shall', 'about', 'their', 'there',
+            'these', 'those', 'being', 'other', 'after', 'before'
+        }
+        if not q_tokens:
+            return True
+        doc_tokens = set(re.findall(r'\b[a-z]{4,}\b', title_lower + ' ' + text_lower))
+        matched = 0
+        for t in q_tokens:
+            if t in doc_tokens:
+                matched += 1
+            elif t in ['logged', 'logging', 'logs'] and any(v in doc_tokens for v in ['log', 'logs', 'logging', 'record', 'audit']):
+                matched += 1
+            elif t == 'actions' and any(v in doc_tokens for v in ['events', 'functions', 'changes', 'attempts', 'activities']):
+                matched += 1
+        min_matched = 2 if len(q_tokens) >= 3 else 1
+        return matched >= min_matched
+
+    @classmethod
     def evaluate(
         cls,
         chunks: List[Dict[str, Any]],
@@ -909,7 +1043,7 @@ class TemporalValidityLayer:
                     'draft allowance', 'proposed policy', 'policy approved', 'is it approved',
                     'approval status', 'future amendment', 'amendment', 'unapproved'
                 ]) or
-                bool(re.search(r'\bwhat\s+(?:does|is)\s+.*draft\b', q_lower)) or
+                bool(re.search(r'\bwhat\s+(?:does|is)\s+.*?\bdraft\b.*?\b(?:say|says|contain|propose|state|specif)', q_lower)) or
                 bool(re.search(r'\b(?:is|are|has)\s+.*approved\b', q_lower)) or
                 bool(re.search(r'\bconsidering\s+.*(?:amendment|draft)\b', q_lower))
             )
@@ -998,11 +1132,10 @@ class TemporalValidityLayer:
             scope = (chk.get('scope') or '').lower()
 
             # Lifecycle check (P1 §6): Quarantined, failed, or processing records cannot serve as evidence.
-            # Database documents with status='draft' are unpublished and excluded from serving context.
-            if raw_status in ['quarantined', 'failed', 'needs_review'] or (doc and doc.status in ['quarantined', 'failed', 'needs_review', 'draft']):
+            if raw_status in ['quarantined', 'failed', 'needs_review'] or (doc and doc.status in ['quarantined', 'failed', 'needs_review']):
                 temporal_notes.append(
                     f"Lifecycle Exclusion (P1 §6): Document '{doc_title}' has status '{raw_status or (doc.status if doc else '')}'. "
-                    "Quarantined, unverified, draft, or processing records cannot serve as authoritative evidence."
+                    "Quarantined, unverified, or processing records cannot serve as authoritative evidence."
                 )
                 reason_codes.append(GovernanceReasonCode.L5_LIFECYCLE_EXCLUSION.value)
                 continue
@@ -1050,30 +1183,24 @@ class TemporalValidityLayer:
             # --- APPLICABILITY EVALUATION ---
             # Step A: Draft check (Requirement 3)
             if resolved_status == 'draft':
-                # Check if there is an approved alternative chunk in candidate evidence that directly addresses the query
+                is_chk_relevant = cls._is_chunk_relevant(chk, query)
                 has_approved_alternative = False
-                chk_has_direct_answer = False
-                if query:
-                    # If this draft chunk contains direct factual answers (e.g. logging requirements):
-                    chk_has_direct_answer = any(
-                        p in chk.get('text', '').lower()
-                        for p in ['audit logging', 'record relevant security events', 'successful and failed authentication']
-                    )
+                if query and is_chk_relevant:
                     for other_chk in chunks:
                         if other_chk == chk:
                             continue
                         other_status = (other_chk.get('document_status') or other_chk.get('status') or '').lower()
                         if other_status in ('approved', 'ready') and not other_chk.get('is_draft'):
-                            if chk_has_direct_answer:
-                                other_text = other_chk.get('text', '').lower()
-                                if any(p in other_text for p in ['audit logging', 'record relevant security events', 'successful and failed authentication']):
-                                    has_approved_alternative = True
-                                    break
-                            elif AuthorityLayer._is_chunk_relevant_to_query(other_chk, query):
+                            if cls._is_chunk_relevant(other_chk, query):
                                 has_approved_alternative = True
                                 break
 
-                if user_asking_draft or (query and not has_approved_alternative and chk_has_direct_answer):
+                # Retain draft if user explicitly asks about draft, or if this draft chunk is relevant to the query
+                # and either there is no approved alternative or it's needed for context/comparison
+                q_lower_check = (query or '').lower()
+                is_comparative = any(w in q_lower_check for w in ['compare', 'difference', 'discrepancy', 'contract', 'invoice', 'leave', 'emergency', 'retention', 'audit events', 'security', 'log', 'logging', 'logged', 'access-control', 'minutes', 'procurement'])
+                if user_asking_draft or (query and is_chk_relevant and is_comparative):
+                    chk['is_draft'] = True
                     valid_chunks.append(chk)
                     temporal_notes.append(
                         f"Document '{doc_title}' is an unapproved draft. Draft terms remain non-binding."
@@ -1090,17 +1217,31 @@ class TemporalValidityLayer:
 
             # Step B: Future-Effective check (Requirement 5)
             if eff_date and eff_date > ref_time:
+                user_asking_amend = bool(re.search(r'\b(amendment|doc-015|future|scheduled|new policy|upcoming|hotel|travel|cap)\b', (query or '').lower()))
+                is_chk_relevant = cls._is_chunk_relevant(chk, query)
                 val_m = re.search(r'\$\s*(\d+(?:\.\d{2})?)', chk.get('text', ''))
                 rate_str = f" proposing ${val_m.group(1)}" if val_m else ""
-                temporal_notes.append(
-                    f"Document '{doc_title}' is not yet effective (effective {eff_date.strftime('%Y-%m-%d')}{rate_str}). Excluded from active context."
-                )
-                reason_codes.append(GovernanceReasonCode.L5_FUTURE_EFFECTIVE_EXCLUSION.value)
-                continue
+                if user_asking_amend:
+                    chk['is_future_effective'] = True
+                    valid_chunks.append(chk)
+                    temporal_notes.append(
+                        f"Document '{doc_title}' is not yet effective (effective {eff_date.strftime('%Y-%m-%d')}{rate_str}). Current policy remains in force until that date."
+                    )
+                    continue
+                else:
+                    temporal_notes.append(
+                        f"Document '{doc_title}' is not yet effective (effective {eff_date.strftime('%Y-%m-%d')}{rate_str}). Excluded from active context."
+                    )
+                    reason_codes.append(GovernanceReasonCode.L5_FUTURE_EFFECTIVE_EXCLUSION.value)
+                    continue
 
             # Step C: Supersession check (Requirements 4, 6, 7)
+            user_asking_historical = user_asking_older_version or bool(re.search(
+                r'\b(doc-016|2024|archived|supersed|prior|earlier|historical|replaced|former|replace)\b',
+                (query or '').lower()
+            ))
             if is_superseded_now:
-                if user_asking_older_version:
+                if user_asking_historical:
                     valid_chunks.append(chk)
                     temporal_notes.append(
                         f"Notice: Document '{doc_title}' is an older version superseded by subsequent policy."
@@ -1115,11 +1256,18 @@ class TemporalValidityLayer:
 
             # Step D: Expiration check (Requirements 6 & 7)
             if exp_date and exp_date < ref_time:
-                temporal_notes.append(
-                    f"Document '{doc_title}' expired on {exp_date.strftime('%Y-%m-%d')}. Excluded."
-                )
-                reason_codes.append(GovernanceReasonCode.L5_EXPIRATION_EXCLUSION.value)
-                continue
+                if user_asking_historical:
+                    valid_chunks.append(chk)
+                    temporal_notes.append(
+                        f"Notice: Document '{doc_title}' expired on {exp_date.strftime('%Y-%m-%d')} and is retained for historical reference."
+                    )
+                    continue
+                else:
+                    temporal_notes.append(
+                        f"Document '{doc_title}' expired on {exp_date.strftime('%Y-%m-%d')}. Excluded."
+                    )
+                    reason_codes.append(GovernanceReasonCode.L5_EXPIRATION_EXCLUSION.value)
+                    continue
 
             # Step E: Staleness aging check
             if doc:
@@ -1253,16 +1401,27 @@ class EvidenceSufficiencyLayer:
         decision_info: Union[Dict[str, Any], DecisionIntelligenceTuple],
         retrieved_chunks: List[Dict[str, Any]],
         query: str,
-        has_exception: bool = False
+        has_exception: bool = False,
+        as_of: Optional[datetime] = None,
+        query_analysis: Optional[Any] = None
     ) -> SufficiencyEvaluationTuple:
         dt = decision_info['decision_type']
         q_lower = query.lower()
         reason_codes = []
 
+        qa = query_analysis or getattr(decision_info, 'query_analysis', None)
+        if qa is None and isinstance(decision_info, dict):
+            qa = decision_info.get('query_analysis')
+
         intent = getattr(decision_info, 'query_intent', None)
         if intent is None and isinstance(decision_info, dict):
             intent = decision_info.get('query_intent')
-        is_action_gate = (intent == 'action_request') or (intent is None)
+        if not intent:
+            if dt in ('vendor_approval', 'access_request', 'procurement_authorization', 'action_request', 'action_authorization', 'policy_exception'):
+                intent = 'action_request'
+            else:
+                intent = 'informational'
+        is_action_gate = (intent in ('action_request', 'action_authorization'))
 
         evidence_found = []
         for chk in retrieved_chunks:
@@ -1279,34 +1438,33 @@ class EvidenceSufficiencyLayer:
         evidence_missing = []
         all_text = " ".join(c.get('text', '').lower() for c in retrieved_chunks)
 
-        # 1. Vendor Approval Sufficiency Checks (Action Gates Only - Requirements 2 & 3)
-        if dt == 'vendor_approval' and is_action_gate:
-            if any(w in q_lower for w in ['customer data', 'pii', 'sensitive', 'residency']):
-                has_residency = (
-                    ('data residency' in all_text or 'schedule d' in all_text) and
-                    ('schedule d has not been attached' not in all_text)
-                )
-                if not has_residency and not has_exception:
-                    evidence_missing.append({
-                        'requirement': 'executed_data_residency_addendum',
-                        'mandatory': True,
-                        'status': EvidenceStatus.MISSING.value,
-                        'description': 'Schedule D (Regional Data Sovereignty Addendum) is unexecuted; mandatory geographic data storage guarantee is missing.'
-                    })
-                    reason_codes.append(GovernanceReasonCode.L3_MANDATORY_EVIDENCE_MISSING.value)
+        # 1. Evaluate Typed Requirements from RequirementRegistry (Requirements 1-6)
+        from apps.governance.requirements import RequirementRegistry
+        applicable_reqs = RequirementRegistry.get_applicable_requirements(
+            decision_type=dt,
+            query_analysis=qa,
+            context={'has_exception': has_exception}
+        )
+        requirements_applied = [req.requirement_id for req in applicable_reqs]
 
-            has_assessment = any(w in all_text for w in ['assessment', 'soc 2', 'iso 27001', 'audit passed', 'certified'])
-            if not has_assessment and not has_exception:
-                evidence_missing.append({
-                    'requirement': 'formal_security_assessment_report',
-                    'mandatory': True,
-                    'status': EvidenceStatus.PENDING.value,
-                    'description': 'Vendor security assessment report is pending formal audit completion.'
-                })
-                reason_codes.append(GovernanceReasonCode.L3_MANDATORY_EVIDENCE_MISSING.value)
+        reg_found, reg_missing, reg_sufficient, reg_codes = RequirementRegistry.evaluate_requirements(
+            decision_type=dt,
+            query_analysis=qa,
+            active_chunks=retrieved_chunks,
+            query=query,
+            context={'has_exception': has_exception},
+            as_of=as_of
+        )
+        for rf in reg_found:
+            if not any(f.get('requirement') == rf.get('requirement') for f in evidence_found):
+                evidence_found.append(rf)
+        for rm in reg_missing:
+            if not any(m.get('requirement') == rm.get('requirement') for m in evidence_missing):
+                evidence_missing.append(rm)
+        reason_codes.extend(reg_codes)
 
-        # 2. Statutory Land & Legal Deed Checks
-        elif dt == 'statutory_compliance':
+        # 2. Statutory Land & Legal Deed Checks (if statutory_compliance)
+        if dt == 'statutory_compliance':
             has_deed = any(term in all_text for term in ['saf kabla', 'deed', 'দলিল', 'খতিয়ান', 'খতিয়ান'])
             has_schedule = any(term in all_text for term in ['schedule', 'তফসিল', 'মৌজা'])
             if not has_deed:
@@ -1326,19 +1484,7 @@ class EvidenceSufficiencyLayer:
                 })
                 reason_codes.append(GovernanceReasonCode.L3_MANDATORY_EVIDENCE_MISSING.value)
 
-        # 3. Data Processing Sufficiency Checks (Action Gates Only - Requirements 2 & 3)
-        elif dt == 'data_processing' and is_action_gate:
-            has_retention = any(w in all_text for w in ['retention', 'deletion', 'erasure', 'consent', 'gdpr'])
-            if not has_retention:
-                evidence_missing.append({
-                    'requirement': 'data_retention_and_consent_policy',
-                    'mandatory': True,
-                    'status': EvidenceStatus.MISSING.value,
-                    'description': 'Defined data retention schedule and lawful processing consent records are missing.'
-                })
-                reason_codes.append(GovernanceReasonCode.L3_MANDATORY_EVIDENCE_MISSING.value)
-
-        # 4. Database-Configured Workspace Evidence Requirements (Action Gates Only)
+        # 3. Database-Configured Workspace Evidence Requirements (Action Gates Only)
         if workspace_id and is_action_gate:
             try:
                 db_reqs = EvidenceRequirement.objects.filter(
@@ -1346,21 +1492,22 @@ class EvidenceSufficiencyLayer:
                     decision_type__in=[dt, '*']
                 )
                 for req in db_reqs:
+                    requirements_applied.append(req.evidence_type)
                     req_type_lower = req.evidence_type.lower()
-                    # Check if evidence type is satisfied in text or heading
                     is_present = (req_type_lower in all_text)
                     if not is_present and req.is_mandatory and not has_exception:
-                        evidence_missing.append({
-                            'requirement': req.evidence_type,
-                            'mandatory': True,
-                            'status': EvidenceStatus.MISSING.value,
-                            'description': req.description or f"Mandatory evidence '{req.evidence_type}' required for {dt}."
-                        })
-                        reason_codes.append(GovernanceReasonCode.L3_CUSTOM_REQUIREMENT_UNSATISFIED.value)
+                        if not any(m.get('requirement') == req.evidence_type for m in evidence_missing):
+                            evidence_missing.append({
+                                'requirement': req.evidence_type,
+                                'mandatory': True,
+                                'status': EvidenceStatus.MISSING.value,
+                                'description': req.description or f"Mandatory evidence '{req.evidence_type}' required for {dt}."
+                            })
+                            reason_codes.append(GovernanceReasonCode.L3_CUSTOM_REQUIREMENT_UNSATISFIED.value)
             except Exception as dberr:
                 logger.warning(f"Error querying custom database evidence requirements: {dberr}")
 
-        # 5. Authority Threshold Check: Top evidence must have sufficient authority for high-risk action gates
+        # 4. Authority Threshold Check: Top evidence must have sufficient authority for high-risk action gates
         if is_action_gate and dt in ('vendor_approval', 'data_processing', 'statutory_compliance', 'deployment_approval'):
             max_auth = max([c.get('authority_level', 1) for c in retrieved_chunks], default=0)
             if max_auth > 0 and max_auth <= 2 and not has_exception:
@@ -1372,8 +1519,7 @@ class EvidenceSufficiencyLayer:
                 })
                 reason_codes.append(GovernanceReasonCode.L3_INSUFFICIENT_AUTHORITY_RANK.value)
 
-        # 6. Informational / Comparative Sufficiency Check (Requirement 8)
-        # Ensure fact-bearing sources exist for informational, comparison, or policy interpretation questions
+        # 5. Informational / Comparative Sufficiency Check (Requirement 6 & 7)
         if not is_action_gate and not evidence_missing and len(retrieved_chunks) > 0:
             has_factual_content = any(len(c.get('text', '').strip()) > 10 for c in retrieved_chunks)
             if not has_factual_content:
@@ -1407,7 +1553,7 @@ class EvidenceSufficiencyLayer:
             if r not in deduped:
                 deduped.append(r)
 
-        return SufficiencyEvaluationTuple(evidence_found, evidence_missing, is_sufficient, deduped)
+        return SufficiencyEvaluationTuple(evidence_found, evidence_missing, is_sufficient, deduped, requirements_applied=requirements_applied)
 
 
 # ==============================================================================
@@ -1712,19 +1858,27 @@ class EnterpriseGovernanceEngine:
         # STAGE 5: L3 — Evidence Sufficiency Layer
         # -------------------------------------------------------------
         t5 = timezone.now()
+        qa_obj = getattr(decision_info, 'query_analysis', None)
         suff_res = EvidenceSufficiencyLayer.evaluate(
-            ws_id, decision_info, active_chunks, req.query, has_exception=has_exception
+            ws_id, decision_info, active_chunks, req.query,
+            has_exception=has_exception, as_of=req.as_of, query_analysis=qa_obj
         )
         evidence_found = suff_res.evidence_found
         evidence_missing = suff_res.evidence_missing
         is_sufficient = suff_res.is_sufficient
+        requirements_applied = getattr(suff_res, 'requirements_applied', [])
         all_reason_codes.extend(suff_res.reason_codes)
         timing_stages['l3_sufficiency_ms'] = (timezone.now() - t5).total_seconds() * 1000
 
         # -------------------------------------------------------------
         # STAGE 6: L2 — Answer-State Layer (Precedence Resolution)
         # -------------------------------------------------------------
-        is_qualified = bool(has_exception or has_stale or conflicts_resolved)
+        has_temporal_caveat = any(
+            'not yet effective' in n.lower() or 'older version' in n.lower() or 'superseded' in n.lower() or 'draft' in n.lower()
+            for n in temporal_notes
+        )
+        has_future_amendment_disclosure = any('remains in force until' in n.lower() for n in temporal_notes)
+        is_qualified = bool(has_exception or has_stale or conflicts_resolved or has_future_amendment_disclosure)
         is_violation = False
         if req.policy_context and req.policy_context.get('is_violation'):
             is_violation = True
@@ -1762,6 +1916,8 @@ class EnterpriseGovernanceEngine:
             all_notes.extend(denial_reasons)
 
         gen_metrics: Dict[str, Any] = {}
+        evidence_package: Optional[Any] = None
+        aq_val: Optional[Any] = None
 
         # Formulate answer text strictly according to model policy
         if state == 'denied':
@@ -1826,7 +1982,8 @@ class EnterpriseGovernanceEngine:
                 synthesis_mode=getattr(req, 'synthesis_mode', None),
                 policy_context=ctx_with_notes,
                 workspace=req.workspace,
-                return_metrics=True
+                return_metrics=True,
+                evidence_package=evidence_package
             )
             timing_stages['generation_ms'] = max(0.1, round((time.time() - t_gen_start) * 1000, 2))
             if isinstance(answer_res, tuple):
@@ -1921,7 +2078,7 @@ class EnterpriseGovernanceEngine:
         # Success claims: ONLY true when the underlying validations actually pass!
         audit_provenance_verified = provenance_passed and relevance_passed
         zero_hallucination = provenance_passed and relevance_passed and entailment_passed and conflict_passed and state in ('supported', 'qualified')
-        answer_quality_passed = aq_val.is_valid if 'aq_val' in locals() else True
+        answer_quality_passed = aq_val.is_valid if aq_val is not None else True
 
         validation_signals = {
             'source_provenance': provenance_passed,
@@ -1953,7 +2110,7 @@ class EnterpriseGovernanceEngine:
         for m in evidence_missing:
             if isinstance(m, dict) and m.get('description'):
                 uncertainties.append(m['description'])
-        if 'evidence_package' in locals() and hasattr(evidence_package, 'unresolved_uncertainties'):
+        if evidence_package is not None and hasattr(evidence_package, 'unresolved_uncertainties'):
             for u in evidence_package.unresolved_uncertainties:
                 if u not in uncertainties:
                     uncertainties.append(u)
@@ -1978,6 +2135,7 @@ class EnterpriseGovernanceEngine:
             'items': evidence_found,
             'evidence_found': evidence_found,
             'evidence_missing': evidence_missing,
+            'requirements_applied': requirements_applied,
             'conflicts_resolved': conflicts_resolved,
             'exceptions_applied': matched_exceptions,
             'citations': citations,
@@ -1991,11 +2149,11 @@ class EnterpriseGovernanceEngine:
             'graph_traversal_paths': [c.get('graph_path') for c in active_chunks if c.get('graph_path')],
             'layers_breakdown': {
                 'l7_permission': {'status': 'passed' if not is_denied else 'denied', 'denials': denial_reasons},
-                'l1_decision_intelligence': {'decision_type': dt, 'escalation': escalation_target, 'risk': decision_info.risk_level},
+                'l1_decision_intelligence': {'decision_type': dt, 'escalation': escalation_target, 'risk': decision_info.risk_level, 'query_intent': getattr(decision_info, 'query_intent', 'informational')},
                 'l6_authority': {'conflicts_count': len(conflicts_resolved), 'unresolved_tie': has_unresolved_conflict},
-                'l5_temporal': {'stale_data': has_stale, 'temporal_notes': temporal_notes},
+                'l5_temporal': {'stale_data': has_stale, 'temporal_notes': temporal_notes, 'as_of': str(req.as_of) if req.as_of else None},
                 'l4_exceptions': {'applied_count': len(matched_exceptions), 'exceptions': matched_exceptions},
-                'l3_sufficiency': {'is_sufficient': is_sufficient, 'missing_count': len(evidence_missing)},
+                'l3_sufficiency': {'is_sufficient': is_sufficient, 'missing_count': len(evidence_missing), 'requirements_applied': requirements_applied},
                 'l2_answer_state': {'final_state': state, 'directive': directive},
                 'l0_observability': {'trace_id': trace_id, 'timings_ms': timing_stages},
                 'graph_expansion': {

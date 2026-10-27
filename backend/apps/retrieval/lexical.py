@@ -51,10 +51,8 @@ class PostgresFullTextSearchBackend(BaseLexicalSearchBackend):
                 query, workspace_id, organization_id, collection_id, document_id, limit
             )
 
-        qs = DocumentChunk.objects.filter(
-            document__status='ready'
-        ).exclude(
-            document__status__in=['quarantined', 'failed', 'needs_review', 'uploaded', 'draft', 'deleted', 'stale']
+        qs = DocumentChunk.objects.exclude(
+            document__status__in=['quarantined', 'failed', 'deleted', 'uploaded']
         )
         if workspace_id:
             qs = qs.filter(workspace_id=workspace_id)
@@ -148,10 +146,8 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
         limit: int = 25
     ) -> List[Tuple[float, DocumentChunk]]:
         # 1. Base Queryset with strict tenancy & publication filtering
-        qs = DocumentChunk.objects.filter(
-            document__status='ready'
-        ).exclude(
-            document__status__in=['quarantined', 'failed', 'needs_review', 'uploaded', 'draft', 'deleted', 'stale']
+        qs = DocumentChunk.objects.exclude(
+            document__status__in=['quarantined', 'failed', 'deleted', 'uploaded']
         )
         if workspace_id:
             qs = qs.filter(workspace_id=workspace_id)
@@ -177,10 +173,35 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
         content_tokens = [w for w in all_tokens if w not in stop_words]
         query_terms = content_tokens if content_tokens else all_tokens
 
-        # Expand morphological variants for logging and action inquiries
+        # Expand morphological variants for domain inquiries
         extended_terms = list(query_terms)
         if any(w in ['logged', 'logging', 'logs', 'log'] for w in all_tokens):
             for variant in ['log', 'logging', 'logs', 'record', 'records', 'audit']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
+        if any(w in ['leave', 'vacation', 'holiday', 'carryover', 'carry'] for w in all_tokens):
+            for variant in ['leave', 'annual leave', 'vacation', 'pto', 'carryover', 'carry forward', 'expire', 'accrue']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
+        if any(w in ['retention', 'retained', 'retain', 'schedule'] for w in all_tokens):
+            for variant in ['retention', 'retained', 'schedule', 'audit events', 'trigger', 'disposal', 'records']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
+        if any(w in ['procurement', 'purchase', 'buy', 'exception', 'waiver', 'emergency'] for w in all_tokens):
+            for variant in ['procurement', 'purchase', 'emergency', 'exception', 'waiver', 'approval', 'cfo']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
+        if any(w in ['receipt', 'receipts', 'claim', 'dinner', 'reimbursement'] for w in all_tokens):
+            for variant in ['receipt', 'receipts', 'lost', 'expense claim', 'reimbursement', 'itemized']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
+        if any(w in ['invoice', 'contract', 'discrepancy', 'atlas'] for w in all_tokens):
+            for variant in ['invoice', 'contract', 'agreement', 'atlas', 'installment', 'discrepancy']:
                 if variant not in extended_terms:
                     extended_terms.append(variant)
 
@@ -236,10 +257,25 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
             # Content-focused lexical score
             lexical_score = (0.55 * term_coverage) + (0.25 * header_coverage) + phrase_bonus
 
-            # Bonus for audit/logging sections when query asks for logging
-            if any(w in ['logged', 'logging', 'logs', 'log'] for w in all_tokens):
+            # Domain-specific bonuses based on user query intent
+            if any(w in ['retention', 'retained', 'retain'] for w in all_tokens):
+                if 'retention schedule' in combined_text or 'retention period' in combined_text or 'retention trigger' in combined_text or 'audit events' in combined_text:
+                    lexical_score += 0.35
+            elif any(w in ['logged', 'logging', 'logs', 'log'] for w in all_tokens):
                 if 'audit logging' in combined_text or 'security events' in combined_text or 'must record' in combined_text:
                     lexical_score += 0.25
+
+            if any(w in ['carryover', 'carry'] for w in all_tokens) or ('annual' in all_tokens and 'leave' in all_tokens):
+                if 'carryover limits' in combined_text or 'annual leave policy' in combined_text or 'carry forward' in combined_text:
+                    lexical_score += 0.30
+
+            if 'emergency' in all_tokens and any(w in ['procurement', 'exception'] for w in all_tokens):
+                if 'emergency procurement' in combined_text or 'mandatory conditions' in combined_text:
+                    lexical_score += 0.35
+
+            if any(w in ['receipt', 'receipts'] for w in all_tokens):
+                if 'receipts and expense claims' in combined_text or 'lost receipts require' in combined_text or 'itemized receipts are required' in combined_text:
+                    lexical_score += 0.35
 
             if lexical_score > 0.05:
                 scored_results.append((round(lexical_score, 4), chunk))

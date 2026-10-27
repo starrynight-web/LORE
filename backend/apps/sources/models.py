@@ -66,6 +66,19 @@ class SourceDocument(models.Model):
     effective_date = models.DateTimeField(null=True, blank=True)
     expiration_date = models.DateTimeField(null=True, blank=True)
     stale_after_days = models.IntegerField(default=365)
+
+    # Enhanced Document Identity, Status, and Temporal Governance
+    document_code = models.CharField(max_length=50, blank=True, default='', db_index=True)
+    canonical_title = models.CharField(max_length=255, blank=True, default='')
+    owner_name = models.CharField(max_length=255, blank=True, default='')
+    effective_from = models.DateTimeField(null=True, blank=True)
+    effective_to = models.DateTimeField(null=True, blank=True)
+    approval_date = models.DateTimeField(null=True, blank=True)
+    superseded_by = models.CharField(max_length=255, blank=True, default='')
+    source_uri = models.CharField(max_length=500, blank=True, default='')
+    governance_status = models.CharField(max_length=50, blank=True, default='')
+    is_missing = models.BooleanField(default=False)
+    validation_notes = models.JSONField(default=dict, blank=True)
     
     current_version_number = models.PositiveIntegerField(default=1)
     ocr_confidence = models.FloatField(default=0.0)
@@ -83,6 +96,54 @@ class SourceDocument(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Keep effective_date and effective_from synchronized
+        if self.effective_from and not self.effective_date:
+            self.effective_date = self.effective_from
+        elif self.effective_date and not self.effective_from:
+            self.effective_from = self.effective_date
+        # Keep expiration_date and effective_to synchronized
+        if self.effective_to and not self.expiration_date:
+            self.expiration_date = self.effective_to
+        elif self.expiration_date and not self.effective_to:
+            self.effective_to = self.expiration_date
+        super().save(*args, **kwargs)
+
+        # Invalidate workspace cache on document edits/status changes
+        try:
+            from apps.retrieval.cache import TenantSafeCacheService
+            TenantSafeCacheService.invalidate_workspace(str(self.workspace_id))
+        except Exception:
+            pass
+
+    def delete(self, *args, **kwargs):
+        doc_id = str(self.id)
+        ws_id = str(self.workspace_id)
+        # 1. Clean up vector index in Qdrant
+        try:
+            from apps.retrieval.vector_store import QdrantVectorStore
+            QdrantVectorStore().delete_document_chunks("lore_chunks", doc_id)
+        except Exception:
+            pass
+
+        # 2. Clean up SQLite FTS index if applicable
+        try:
+            from django.db import connection
+            if connection.vendor == 'sqlite':
+                with connection.cursor() as cursor:
+                    cursor.execute("DELETE FROM knowledge_documentchunk_fts WHERE document_id = ?", [doc_id])
+        except Exception:
+            pass
+
+        # 3. Invalidate cache
+        try:
+            from apps.retrieval.cache import TenantSafeCacheService
+            TenantSafeCacheService.invalidate_workspace(ws_id)
+        except Exception:
+            pass
+
+        return super().delete(*args, **kwargs)
 
     class Meta:
         ordering = ['-created_at']

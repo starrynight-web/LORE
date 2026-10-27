@@ -217,6 +217,7 @@ ALLOW_REMOTE_MODELS = os.environ.get('ALLOW_REMOTE_MODELS', 'False').lower() in 
 REMOTE_CALL_TIMEOUT_SECONDS = int(os.environ.get('REMOTE_CALL_TIMEOUT_SECONDS', '15'))
 REMOTE_CALL_MAX_RETRIES = int(os.environ.get('REMOTE_CALL_MAX_RETRIES', '2'))
 REMOTE_CALL_MAX_CONCURRENCY = int(os.environ.get('REMOTE_CALL_MAX_CONCURRENCY', '5'))
+MASTER_SYSTEM_PROMPT_PATH = os.environ.get('MASTER_SYSTEM_PROMPT_PATH', str(BASE_DIR.parent / 'system-prompt.md'))
 
 # Retrieval & Embeddings Fallback Configuration
 ALLOW_HASH_PROJECTION_FALLBACK = os.environ.get('ALLOW_HASH_PROJECTION_FALLBACK', 'False').lower() in ('true', '1', 'yes')

@@ -137,7 +137,10 @@ def governed_query_view(request):
         organization_id=str(workspace.organization.id),
         collection_id=collection_id,
         document_id=document_id,
-        limit=10
+        limit=10,
+        user=effective_user,
+        user_role=user_role,
+        as_of=as_of
     )
 
     # 2. Evaluate via Complete 9-Layer Enterprise Governance Engine (L7 -> L0)

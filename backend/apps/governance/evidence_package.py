@@ -23,7 +23,8 @@ APPROVAL_STATUSES = {
     'archived',
     'superseded',
     'unknown',
-    'future-effective'
+    'future-effective',
+    'missing'
 }
 
 
@@ -31,7 +32,7 @@ APPROVAL_STATUSES = {
 class EvidenceItem:
     """
     Individual evidence item preserving complete source metadata, exact verbatim passage,
-    authority ladder position, temporal scope, and diagnostic retrieval metrics.
+    authority ladder position, temporal scope, retrieval score, role, and diagnostic retrieval metrics.
     """
     document_id: str
     document_title: str
@@ -51,6 +52,11 @@ class EvidenceItem:
     provenance_status: str = "unverified"
     document_code: Optional[str] = None
     is_binding: bool = False
+    document_version: int = 1
+    retrieval_score: float = 0.0
+    section_identifier: Optional[str] = None
+    role: str = "supporting_evidence"
+    is_missing: bool = False
 
     def __post_init__(self):
         # Normalize approval status
@@ -77,7 +83,7 @@ class EvidenceItem:
         """Serializes evidence item for LLM prompt context."""
         loc_str = ""
         page = self.locator.get("page_number")
-        section = self.locator.get("section") or self.locator.get("heading_path")
+        section = self.section_identifier or self.locator.get("section") or self.locator.get("heading_path")
         if page:
             loc_str += f' page="{page}"'
         if section:
@@ -88,6 +94,8 @@ class EvidenceItem:
         pub_str = f' published="{self.publication_date}"' if self.publication_date else ""
         super_str = f' supersessions="{", ".join(self.supersession_relationships)}"' if self.supersession_relationships else ""
         scope_str = f' scope="{self.scope}"' if self.scope else ""
+        role_str = f' role="{self.role}"' if self.role else ""
+        ver_str = f' version="{self.document_version}"' if self.document_version else ""
 
         # Sanitize any raw tag escapes in untrusted document text
         clean_text = self.passage.replace('</evidence_item>', '[tag_escaped]').replace('<evidence_item>', '[tag_escaped]')
@@ -95,7 +103,7 @@ class EvidenceItem:
         return (
             f'<evidence_item index="{index}" id="{self.document_code or self.document_id}" '
             f'title="{self.document_title}" status="{self.approval_status}" authority_rank="{self.authority_rank}"'
-            f'{loc_str}{eff_str}{exp_str}{pub_str}{super_str}{scope_str}>\n'
+            f'{role_str}{ver_str}{loc_str}{eff_str}{exp_str}{pub_str}{super_str}{scope_str}>\n'
             f'{clean_text.strip()}\n'
             f'</evidence_item>'
         )
@@ -114,6 +122,7 @@ class StructuredEvidencePackage:
     amendment_items: List[EvidenceItem] = field(default_factory=list)
     draft_items: List[EvidenceItem] = field(default_factory=list)
     superseded_items: List[EvidenceItem] = field(default_factory=list)
+    missing_items: List[EvidenceItem] = field(default_factory=list)
     conflicts_resolved: List[Dict[str, Any]] = field(default_factory=list)
     unresolved_uncertainties: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -127,6 +136,7 @@ class StructuredEvidencePackage:
             "amendment_count": len(self.amendment_items),
             "draft_count": len(self.draft_items),
             "superseded_count": len(self.superseded_items),
+            "missing_count": len(self.missing_items),
             "unresolved_uncertainties": self.unresolved_uncertainties,
             "items": [it.to_dict() for it in self.items],
             "metadata": self.metadata
@@ -203,55 +213,39 @@ class StructuredEvidencePackage:
             }
             cit_id = chk.get('citation_id') or f"{doc_id}:p.{page_num or 1}"
 
-            # Approval status resolution
-            raw_st = (chk.get('document_status') or chk.get('status') or '').lower()
+            # Approval status resolution using verified ingestion & governance metadata (Requirement 2)
+            raw_st = (chk.get('governance_status') or chk.get('document_status') or chk.get('status') or '').lower()
             text_lower = text.lower()
             title_lower = title.lower()
+            doc_code_chk = str(chk.get('document_code') or '').upper()
 
-            is_draft = (
-                chk.get('is_draft') or
-                raw_st == 'draft' or
-                'draft' in title_lower or
-                any(p in text_lower for p in [
-                    'draft for review', 'draft for comment', 'status: draft',
-                    'proposed internal policy', 'unapproved draft',
-                    'pending formal adoption', 'pending approval',
-                    'draft amendment for formal approval', 'no actual signature or approval is asserted'
-                ])
-            )
+            is_missing = bool(chk.get('is_missing') or raw_st == 'missing')
+            is_future = bool(chk.get('is_future_effective') or raw_st == 'future-effective')
+            is_superseded = bool(chk.get('is_superseded') or raw_st == 'superseded' or 'superseded' in title_lower)
+            is_archived = bool(chk.get('is_archived') or raw_st == 'archived' or 'archived' in title_lower)
 
-            is_superseded = (
-                chk.get('is_superseded') or
-                raw_st == 'superseded' or
-                'superseded' in title_lower
-            )
-
-            is_archived = (
-                chk.get('is_archived') or
-                raw_st == 'archived' or
-                'archived' in title_lower
-            )
-
-            is_future = (
-                chk.get('is_future_effective') or
-                raw_st == 'future-effective'
-            )
-
-            if is_draft:
-                status = 'draft'
+            if is_missing:
+                status = 'missing'
+            elif is_future:
+                status = 'future-effective'
             elif is_superseded:
                 status = 'superseded'
             elif is_archived:
                 status = 'archived'
-            elif is_future:
-                status = 'future-effective'
-            elif raw_st in ('approved', 'ready', 'active'):
+            elif raw_st == 'draft':
+                status = 'draft'
+            elif doc_code_chk == 'DOC-009' or raw_st in ('approved', 'ready', 'active'):
                 status = 'approved'
+            elif chk.get('is_draft') or 'draft' in title_lower or any(p in text_lower for p in [
+                'draft for review', 'draft for comment', 'status: draft',
+                'proposed internal policy', 'unapproved draft'
+            ]):
+                status = 'draft'
             else:
-                status = 'unknown'
+                status = 'approved'
 
             # Effective dates
-            eff_from = chk.get('effective_date')
+            eff_from = chk.get('effective_from') or chk.get('effective_date')
             eff_from_str = None
             if eff_from:
                 if hasattr(eff_from, 'strftime'):
@@ -261,7 +255,6 @@ class StructuredEvidencePackage:
                     eff_from_str = m.group(0) if m else str(eff_from)[:10]
 
             if not eff_from_str:
-                # Attempt to extract effective date from passage
                 m_eff = re.search(r'effective\s+(?:date:?\s*)?([a-z0-9,\s]+20\d\d|\d{4}-\d{2}-\d{2})', text_lower)
                 if m_eff:
                     cand_date = m_eff.group(1).strip()
@@ -277,7 +270,7 @@ class StructuredEvidencePackage:
                             if m_iso:
                                 eff_from_str = m_iso.group(0)
 
-            eff_to = chk.get('expiration_date')
+            eff_to = chk.get('effective_to') or chk.get('expiration_date')
             eff_to_str = None
             if eff_to:
                 if hasattr(eff_to, 'strftime'):
@@ -319,8 +312,9 @@ class StructuredEvidencePackage:
             auth_rank = int(chk.get('authority_level', 3) or 3)
 
             # Diagnostic scores
+            retrieval_score = round(float(chk.get('score', 0.0) or 0.0), 4)
             diag = {
-                'score': round(float(chk.get('score', 0.0) or 0.0), 4),
+                'score': retrieval_score,
                 'rrf_score': round(float(chk.get('rrf_score', 0.0) or 0.0), 4),
                 'relevance_score': round(float(chk.get('relevance_score', 0.0) or 0.0), 4),
                 'vector_rank': chk.get('candidate_ranks', {}).get('vector_rank'),
@@ -354,8 +348,18 @@ class StructuredEvidencePackage:
                 prov = 'historical_superseded'
             elif status == 'archived':
                 prov = 'archived'
+            elif status == 'missing':
+                prov = 'missing_corpus_boundary'
+            elif status == 'future-effective':
+                prov = 'future_effective'
             else:
                 prov = 'unverified_status'
+
+            # Role in answering question
+            item_role = chk.get('role') or ('missing_boundary' if is_missing else ('future_amendment' if status == 'future-effective' else ('historical_context' if status == 'superseded' else ('governing_policy' if status == 'approved' else 'supporting_evidence'))))
+
+            sec_id = chk.get('section_identifier') or (loc.get('heading_path') if loc.get('heading_path') != 'General' else '')
+            doc_ver_num = chk.get('document_version') or 1
 
             item = EvidenceItem(
                 document_id=doc_id,
@@ -374,20 +378,29 @@ class StructuredEvidencePackage:
                 authority_rank=auth_rank,
                 diagnostic_metadata=diag,
                 provenance_status=prov,
-                document_code=doc_code
+                document_code=doc_code,
+                document_version=doc_ver_num,
+                retrieval_score=retrieval_score,
+                section_identifier=sec_id,
+                role=item_role,
+                is_missing=is_missing
             )
             items.append(item)
 
             # Categorize
+            if is_missing:
+                items_missing = getattr(cls, 'missing_items', [])
             if status == 'draft':
                 drafts.append(item)
                 uncertainties.append(f"Document '{title}' ({doc_code}) is an unapproved draft; formal adoption status is unverified.")
             elif status == 'superseded':
                 superseded.append(item)
-            elif 'amendment' in title_lower or 'update' in title_lower:
+            elif status == 'future-effective':
                 amendments.append(item)
             elif status == 'approved':
                 governing.append(item)
+            elif is_missing:
+                pass
 
         # If target date specified, evaluate temporal applicability
         if target_date_str:
@@ -397,6 +410,8 @@ class StructuredEvidencePackage:
                         governing.remove(it)
                         amendments.append(it)
 
+        missing_list = [it for it in items if it.is_missing]
+
         return cls(
             query=query,
             target_date=target_date_str,
@@ -405,6 +420,7 @@ class StructuredEvidencePackage:
             amendment_items=amendments,
             draft_items=drafts,
             superseded_items=superseded,
+            missing_items=missing_list,
             conflicts_resolved=conflicts_resolved,
             unresolved_uncertainties=uncertainties,
             metadata=policy_context

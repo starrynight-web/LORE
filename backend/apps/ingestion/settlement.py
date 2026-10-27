@@ -327,6 +327,52 @@ class ExtractionValidationService:
             doc.ocr_confidence = round(avg_conf, 3)
             doc.save(update_fields=['page_count', 'ocr_confidence'])
 
+            # Extract and persist canonical document identity & governance metadata
+            try:
+                from apps.ingestion.metadata import DocumentMetadataExtractor
+                meta = DocumentMetadataExtractor.extract_metadata(
+                    doc_title=doc.title,
+                    filename=doc.original_filename,
+                    pages_data=pages_data,
+                    default_authority=doc.authority_level
+                )
+                update_fields = ['page_count', 'ocr_confidence']
+                if meta.get('document_code'):
+                    doc.document_code = meta['document_code']
+                    update_fields.append('document_code')
+                if meta.get('canonical_title'):
+                    doc.canonical_title = meta['canonical_title']
+                    update_fields.append('canonical_title')
+                if meta.get('owner_name'):
+                    doc.owner_name = meta['owner_name']
+                    update_fields.append('owner_name')
+                if meta.get('governance_status'):
+                    doc.governance_status = meta['governance_status']
+                    update_fields.append('governance_status')
+                if meta.get('effective_from'):
+                    doc.effective_from = meta['effective_from']
+                    doc.effective_date = meta['effective_from']
+                    update_fields.extend(['effective_from', 'effective_date'])
+                if meta.get('effective_to'):
+                    doc.effective_to = meta['effective_to']
+                    doc.expiration_date = meta['effective_to']
+                    update_fields.extend(['effective_to', 'expiration_date'])
+                if meta.get('approval_date'):
+                    doc.approval_date = meta['approval_date']
+                    update_fields.append('approval_date')
+                if meta.get('superseded_by'):
+                    doc.superseded_by = meta['superseded_by']
+                    update_fields.append('superseded_by')
+                if meta.get('authority_level'):
+                    doc.authority_level = meta['authority_level']
+                    update_fields.append('authority_level')
+                if meta.get('notes'):
+                    doc.validation_notes = {'notes': meta['notes']}
+                    update_fields.append('validation_notes')
+                doc.save(update_fields=list(set(update_fields)))
+            except Exception as meta_ex:
+                logger.warning(f"Metadata extraction non-fatal error for doc {doc.id}: {meta_ex}")
+
         elapsed = int((time.time() - t0) * 1000)
 
         # Enforce quality threshold (ocr.md Rule X001)
@@ -570,13 +616,17 @@ class StagedMergeService:
         try:
             # 2. Chunking
             t_chunk_start = time.time()
+            doc_code = getattr(doc, 'document_code', '') or ''
+            doc_gov_status = getattr(doc, 'governance_status', '') or doc.status or 'ready'
             raw_chunks = StructureAwareChunker.chunk_document_pages(
                 doc_id=str(doc.id),
-                doc_title=doc.title,
+                doc_title=doc.canonical_title or doc.title,
                 org_name=doc.organization.name,
                 ws_name=doc.workspace.name,
                 authority_rank=doc.authority_level,
-                pages_data=pages_data
+                pages_data=pages_data,
+                document_code=doc_code,
+                status=doc_gov_status
             )
 
             with transaction.atomic():
@@ -597,10 +647,12 @@ class StagedMergeService:
                         contextual_header=c['contextual_header'],
                         page_number=c['page_number'],
                         heading_path=c['heading_path'],
+                        section_identifier=c.get('section_identifier', ''),
                         char_offset_start=c['char_offset_start'],
                         char_offset_end=c['char_offset_end'],
                         token_count=c['token_count'],
                         content_hash=c_hash,
+                        metadata=c.get('metadata', {}),
                     ))
                 DocumentChunk.objects.bulk_create(created_chunks)
             chunking_ms = max(1, int((time.time() - t_chunk_start) * 1000))
@@ -623,14 +675,19 @@ class StagedMergeService:
                 {
                     'chunk_id': str(c.id),
                     'document_id': str(doc.id),
+                    'document_code': doc_code,
                     'document_version': doc_version.version_number,
-                    'document_title': doc.title,
+                    'document_title': doc.canonical_title or doc.title,
                     'organization_id': str(doc.organization.id),
                     'workspace_id': str(doc.workspace.id),
                     'collection_id': str(doc.collection.id) if doc.collection else "",
                     'page_number': c.page_number,
                     'heading_path': c.heading_path,
+                    'section_identifier': c.section_identifier or "",
                     'authority_level': doc.authority_level,
+                    'document_status': doc_gov_status,
+                    'effective_from': doc.effective_from.isoformat() if doc.effective_from else "",
+                    'effective_to': doc.effective_to.isoformat() if doc.effective_to else "",
                     'text': c.text[:300]
                 }
                 for c in saved_chunks
@@ -647,17 +704,26 @@ class StagedMergeService:
                 c.vector_id = ids[i]
                 c.save(update_fields=['vector_id'])
 
-            # 5. Post-Merge Smoke Test: Verify retrieval of newly merged vectors
-            smoke_hits = vstore.search(
-                collection_name="lore_chunks",
-                query_vector=vectors[0],
-                filter_dict={"workspace_id": str(doc.workspace.id), "document_id": str(doc.id)},
-                limit=3
-            )
+            # Sync to SQLite FTS index for index freshness
+            try:
+                from apps.retrieval.lexical import SqliteFullTextSearchBackend
+                for sc in saved_chunks:
+                    SqliteFullTextSearchBackend.sync_chunk_to_fts(sc)
+            except Exception as fts_ex:
+                logger.debug(f"SQLite FTS sync note: {fts_ex}")
 
-            if not smoke_hits:
-                logger.error(f"[Smoke Test Failed] Document {doc.id} vectors not retrievable immediately after upsert.")
-                raise RuntimeError("Post-merge retrieval smoke test returned zero hits.")
+            # 5. Post-Merge Smoke Test: Verify retrieval of newly merged vectors
+            if vectors:
+                smoke_hits = vstore.search(
+                    collection_name="lore_chunks",
+                    query_vector=vectors[0],
+                    filter_dict={"workspace_id": str(doc.workspace.id), "document_id": str(doc.id)},
+                    limit=3
+                )
+
+                if not smoke_hits:
+                    logger.error(f"[Smoke Test Failed] Document {doc.id} vectors not retrievable immediately after upsert.")
+                    raise RuntimeError("Post-merge retrieval smoke test returned zero hits.")
             indexing_ms = max(1, int((time.time() - t_index_start) * 1000))
 
         except Exception as merge_err:
@@ -854,8 +920,8 @@ class SettlementGateCoordinator:
             doc.status = "needs_review"
             final_status = "needs_review"
         else:
-            doc.status = "ready"
-            final_status = "ready"
+            doc.status = doc.governance_status if doc.governance_status else "ready"
+            final_status = doc.status
         doc.save(update_fields=['status'])
 
         # Invalidate cache

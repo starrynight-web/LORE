@@ -57,13 +57,35 @@ class QdrantVectorStore(BaseVectorStore):
             QdrantVectorStore._shared_client = self.client
 
         except Exception as e:
-            logger.warning(f"Could not initialize QdrantClient: {e}. Falling back to shared in-memory mode.")
-            try:
-                from qdrant_client import QdrantClient
-                self.client = QdrantClient(":memory:")
+            err_msg = str(e)
+            logger.warning(f"Could not initialize primary QdrantClient: {err_msg}.")
+            # When storage folder is locked by another process (e.g. Django runserver in dev/test),
+            # spin up a local snapshot replica in temp directory to avoid degraded empty in-memory search
+            replica_client = None
+            if "already accessed by another instance" in err_msg or "locked" in err_msg.lower():
+                try:
+                    import shutil, tempfile
+                    storage_path = getattr(settings, 'QDRANT_LOCAL_PATH', os.path.join(settings.BASE_DIR, 'qdrant_storage'))
+                    replica_dir = os.path.join(tempfile.gettempdir(), f"lore_qdrant_replica_{os.getpid()}")
+                    shutil.rmtree(replica_dir, ignore_errors=True)
+                    shutil.copytree(storage_path, replica_dir, ignore=shutil.ignore_patterns('*.lock', '.lock'))
+                    from qdrant_client import QdrantClient
+                    replica_client = QdrantClient(path=replica_dir)
+                    logger.info(f"Initialized concurrent Qdrant replica client at {replica_dir}")
+                except Exception as re_err:
+                    logger.warning(f"Could not initialize Qdrant replica: {re_err}")
+
+            if replica_client is not None:
+                self.client = replica_client
                 QdrantVectorStore._shared_client = self.client
-            except Exception:
-                self.client = None
+            else:
+                logger.warning("Falling back to shared in-memory mode.")
+                try:
+                    from qdrant_client import QdrantClient
+                    self.client = QdrantClient(":memory:")
+                    QdrantVectorStore._shared_client = self.client
+                except Exception:
+                    self.client = None
 
     def _ensure_collection(self, collection_name: str):
         if not self.client:
