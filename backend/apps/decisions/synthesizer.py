@@ -92,10 +92,17 @@ class ConciseAnswerSynthesizer:
 
         # Sort chunks: authority level and approval status strictly precede similarity score (Requirement 9)
         def _chunk_sort_key(c):
-            st = (c.get('document_status') or c.get('status') or '').lower()
-            is_approved = 1 if st in ['approved', 'ready', 'active'] else 0
-            auth = int(c.get('authority_level', 0) or 0)
-            score = float(c.get('score', 0.0) or 0.0)
+            if isinstance(c, dict):
+                st = (c.get('document_status') or c.get('status') or '').lower()
+                is_approved = 1 if st in ['approved', 'ready', 'active'] else 0
+                auth = int(c.get('authority_level', 0) or 0)
+                score = float(c.get('score', 0.0) or 0.0)
+            else:
+                doc = getattr(c, 'document', None)
+                st = (getattr(doc, 'governance_status', '') or getattr(doc, 'status', '')).lower() if doc else ''
+                is_approved = 1 if st in ['approved', 'ready', 'active'] else 0
+                auth = int(getattr(doc, 'authority_level', 0) or 0) if doc else 0
+                score = float(getattr(c, 'score', 0.0) or 0.0)
             return (auth, is_approved, score)
 
         sorted_chunks = sorted(valid_chunks, key=_chunk_sort_key, reverse=True)
@@ -1646,9 +1653,22 @@ class AnswerCompletenessValidator:
                 evidence_missing=evidence_missing
             )
 
+        def _extract_text_from_chunk(c):
+            if isinstance(c, dict):
+                return f"{c.get('document_title', '')} {c.get('contextual_header', '')} {c.get('heading_path', '')} {c.get('text', '')}"
+            if isinstance(c, tuple) and len(c) > 1:
+                chk = c[1]
+            else:
+                chk = c
+            doc = getattr(chk, 'document', None)
+            title = (getattr(doc, 'canonical_title', '') or getattr(doc, 'title', '')) if doc else ''
+            header = getattr(chk, 'contextual_header', '') or ''
+            heading = getattr(chk, 'heading_path', '') or ''
+            text = getattr(chk, 'text', '') or ''
+            return f"{title} {header} {heading} {text}"
+
         all_candidate_text = "\n".join(
-            f"{c.get('document_title', '')} {c.get('contextual_header', '')} {c.get('heading_path', '')} {c.get('text', '')}"
-            for c in candidate_chunks if isinstance(c, dict)
+            _extract_text_from_chunk(c) for c in candidate_chunks
         )
 
         # ------------------------------------------------------------------
@@ -1668,8 +1688,6 @@ class AnswerCompletenessValidator:
                         missing_in_evidence.append(fact)
 
             if missing_in_evidence:
-                # One or more required material facts are missing from evidence!
-                # Missing any required material fact MUST prevent a SUPPORTED result!
                 for tm in missing_in_evidence:
                     evidence_missing.append({
                         'requirement': f"required_fact_{tm.fact_id}",
@@ -1678,22 +1696,14 @@ class AnswerCompletenessValidator:
                         'description': f"Authoritative evidence does not contain the required fact for '{tm.label}'."
                     })
 
-                found_labels = [f.label for f in required_facts if f not in missing_in_evidence]
                 missing_labels = [f.label for f in missing_in_evidence]
                 missing_str = ", ".join(f"'{m}'" for m in missing_labels)
 
-                if found_labels:
-                    found_summary = ", ".join(found_labels)
-                    new_ans = (
-                        f"The requested information for '{query}' is incomplete in the authoritative records. "
-                        f"The records provide information for {found_summary}, but {missing_str} is missing from available evidence."
-                    )
-                else:
-                    new_ans = (
-                        f"The requested information for '{query}' could not be established from authoritative records. "
-                        f"Specifically, {missing_str} is missing from available documentation."
-                    )
-
+                # FAIL CLOSED: Do not attempt to repair if core mandatory facts are missing
+                new_ans = (
+                    f"The requested information for '{query}' could not be established from authoritative records. "
+                    f"Specifically, {missing_str} is missing from available documentation."
+                )
                 return ValidationResult(
                     is_valid=False,
                     is_downgraded=True,

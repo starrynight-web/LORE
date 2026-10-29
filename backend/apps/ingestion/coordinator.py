@@ -390,12 +390,14 @@ class SequentialPipelineCoordinator:
                         organization_id=str(doc.organization.id),
                         limit=5
                     )
-                else:
-                    hits = retrieval_service.retrieve(
+                elif hasattr(retrieval_service, 'retrieve'):
+                    hits = getattr(retrieval_service, 'retrieve')(
                         workspace_id=str(doc.workspace.id),
                         query=q,
                         limit=5
                     )
+                else:
+                    hits = []
 
                 hit_doc_ids = []
                 for h in hits:

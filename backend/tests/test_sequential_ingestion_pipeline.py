@@ -23,6 +23,7 @@ Tests:
 
 import os
 import uuid
+from typing import cast, Any
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -48,7 +49,7 @@ User = get_user_model()
 def pipeline_env(db):
     org = Organization.objects.create(name="Pipeline Test Org", slug=f"pipe-org-{uuid.uuid4().hex[:6]}")
     ws = Workspace.objects.create(organization=org, name="Pipeline Test Workspace", slug=f"pipe-ws-{uuid.uuid4().hex[:6]}")
-    admin = User.objects.create_user(
+    admin = cast(Any, User.objects).create_user(
         username=f"pipe_admin_{uuid.uuid4().hex[:6]}",
         email=f"admin_{uuid.uuid4().hex[:6]}@pipeline.test",
         password="Password123!"
@@ -122,9 +123,12 @@ def test_sequential_runs_strict_progression(pipeline_env):
     assert runs_by_stage['run_3_retrieval'].status == 'passed'
     assert runs_by_stage['run_4_decision'].status == 'passed'
 
-    assert runs_by_stage['run_1_ingestion'].started_at <= runs_by_stage['run_2_quality'].started_at
-    assert runs_by_stage['run_2_quality'].started_at <= runs_by_stage['run_3_retrieval'].started_at
-    assert runs_by_stage['run_3_retrieval'].started_at <= runs_by_stage['run_4_decision'].started_at
+    t1 = runs_by_stage['run_1_ingestion'].started_at
+    t2 = runs_by_stage['run_2_quality'].started_at
+    t3 = runs_by_stage['run_3_retrieval'].started_at
+    t4 = runs_by_stage['run_4_decision'].started_at
+    assert t1 is not None and t2 is not None and t3 is not None and t4 is not None
+    assert t1 <= t2 <= t3 <= t4
 
     # Verify pipeline summary payload
     assert 'runs' in summary

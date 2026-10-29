@@ -57,6 +57,7 @@ class EvidenceItem:
     section_identifier: Optional[str] = None
     role: str = "supporting_evidence"
     is_missing: bool = False
+    multi_hop_domain: Optional[str] = None
 
     def __post_init__(self):
         # Normalize approval status
@@ -96,6 +97,7 @@ class EvidenceItem:
         scope_str = f' scope="{self.scope}"' if self.scope else ""
         role_str = f' role="{self.role}"' if self.role else ""
         ver_str = f' version="{self.document_version}"' if self.document_version else ""
+        mhop_str = f' multi_hop_domain="{self.multi_hop_domain}"' if self.multi_hop_domain else ""
 
         # Sanitize any raw tag escapes in untrusted document text
         clean_text = self.passage.replace('</evidence_item>', '[tag_escaped]').replace('<evidence_item>', '[tag_escaped]')
@@ -103,7 +105,7 @@ class EvidenceItem:
         return (
             f'<evidence_item index="{index}" id="{self.document_code or self.document_id}" '
             f'title="{self.document_title}" status="{self.approval_status}" authority_rank="{self.authority_rank}"'
-            f'{role_str}{ver_str}{loc_str}{eff_str}{exp_str}{pub_str}{super_str}{scope_str}>\n'
+            f'{role_str}{ver_str}{mhop_str}{loc_str}{eff_str}{exp_str}{pub_str}{super_str}{scope_str}>\n'
             f'{clean_text.strip()}\n'
             f'</evidence_item>'
         )
@@ -383,7 +385,8 @@ class StructuredEvidencePackage:
                 retrieval_score=retrieval_score,
                 section_identifier=sec_id,
                 role=item_role,
-                is_missing=is_missing
+                is_missing=is_missing,
+                multi_hop_domain=chk.get('multi_hop_domain') or chk.get('sub_query_domain')
             )
             items.append(item)
 

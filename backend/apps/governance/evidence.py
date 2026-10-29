@@ -63,12 +63,11 @@ class EvidencePresentationEngine:
             did = str(c.get('document_id') or '').lower()
             dcode = str(c.get('document_code') or '').lower()
             query_doc_match = 4 if any(cd in t or cd in did or cd in dcode for cd in codes_in_query) else 0
-            cited_in_ans = 2 if ((t and t in ans_lower) or (dcode and dcode in ans_lower)) else 0
-            st = c.get('document_status', 'unknown')
-            is_gov = 3 if st in ['approved', 'ready', 'active'] else (2 if st not in ['superseded', 'quarantined'] else 1)
+            st = (c.get('document_status') or c.get('status') or '').lower()
+            is_gov = 3 if st in ['approved', 'active', 'ready'] else (2 if st == 'unknown' else 0)
             auth = int(c.get('authority_level', 0) or 0)
             score = float(c.get('score', 0.0) or 0.0)
-            return (query_doc_match, cited_in_ans, is_gov, auth, score)
+            return (query_doc_match, is_gov, auth, score)
 
         candidate_citations.sort(key=_sort_key, reverse=True)
 

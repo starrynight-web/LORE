@@ -11,6 +11,8 @@ from .embeddings import get_embedding_adapter
 from .lexical import LexicalSearchService
 from .resilience import resilient_vector_search, qdrant_circuit_breaker, CircuitState
 from .reranking import BaseReranker, HeuristicReranker, RerankerFactory
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from .multi_hop import QueryDecomposer, SubQuery, MultiHopResult
 
 logger = logging.getLogger(__name__)
 
@@ -890,3 +892,222 @@ class HybridRetrievalService:
         }
 
         return final_results
+
+    def multi_hop_search(
+        self,
+        query: str,
+        workspace_id: str,
+        organization_id: str,
+        limit: int = 8,
+        user=None,
+        user_role: str = 'member',
+        as_of=None,
+        enable_multi_hop: bool = True,
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        Multi-hop retrieval with query decomposition and parallel sub-query execution.
+        Falls back to standard search if query is not compound or multi-hop is disabled.
+        """
+        t_start = time.time()
+
+        if not query or not query.strip():
+            self.last_diagnostics = {
+                'query_length': 0,
+                'retrieval_mode': 'empty_query',
+                'selected_final_count': 0,
+                'total_ms': 0
+            }
+            return []
+
+        # Step 1: Analyze the full query
+        from .query_understanding import QueryUnderstandingService
+        base_analysis = QueryUnderstandingService.analyze(query=query, caller_as_of=as_of)
+
+        # Step 2: Check if multi-hop is needed
+        if not enable_multi_hop or not QueryDecomposer.is_compound_query(query):
+            # Single-hop path — use existing search
+            return self.search(
+                query=query,
+                workspace_id=workspace_id,
+                organization_id=organization_id,
+                limit=limit,
+                user=user,
+                user_role=user_role,
+                as_of=as_of,
+                **kwargs
+            )
+
+        # Step 3: Decompose into sub-queries
+        sub_queries = QueryDecomposer.decompose(query, base_analysis)
+        logger.info(
+            f"[MultiHop] Decomposed query into {len(sub_queries)} sub-queries: "
+            f"{[sq.id for sq in sub_queries]}"
+        )
+
+        # Step 4: Execute sub-queries in parallel
+        sub_results: List[MultiHopResult] = []
+        sq_budget = max(4, limit // max(1, len(sub_queries)))
+
+        with ThreadPoolExecutor(max_workers=min(len(sub_queries), 4)) as executor:
+            future_to_sq = {}
+            for sq in sub_queries:
+                future = executor.submit(
+                    self._execute_sub_query,
+                    sq=sq,
+                    workspace_id=workspace_id,
+                    organization_id=organization_id,
+                    limit=sq_budget,
+                    user=user,
+                    user_role=user_role,
+                    as_of=as_of,
+                    **kwargs
+                )
+                future_to_sq[future] = sq
+
+            for future in as_completed(future_to_sq):
+                sq = future_to_sq[future]
+                try:
+                    chunks, mode, elapsed = future.result()
+                    sub_results.append(MultiHopResult(
+                        sub_query=sq,
+                        chunks=chunks,
+                        retrieval_mode=mode,
+                        total_ms=elapsed
+                    ))
+                except Exception as e:
+                    logger.warning(f"[MultiHop] Sub-query {sq.id} failed: {e}")
+
+        # Step 5: Fuse results with provenance tagging
+        fused = self._fuse_multi_hop_results(sub_results, limit)
+
+        # Step 6: Log diagnostics
+        total_ms = int((time.time() - t_start) * 1000)
+        self.last_diagnostics = {
+            'query_length': len(query),
+            'retrieval_mode': 'multi_hop',
+            'sub_queries_count': len(sub_queries),
+            'sub_queries': [
+                {
+                    'id': sr.sub_query.id,
+                    'text': sr.sub_query.text[:100],
+                    'domain': sr.sub_query.domain,
+                    'chunks_returned': len(sr.chunks),
+                    'retrieval_mode': sr.retrieval_mode,
+                    'elapsed_ms': sr.total_ms
+                }
+                for sr in sub_results
+            ],
+            'fused_chunks_count': len(fused),
+            'total_ms': total_ms,
+            'query_analysis': base_analysis.to_dict()
+        }
+
+        return fused
+
+    def _execute_sub_query(
+        self,
+        sq: SubQuery,
+        workspace_id: str,
+        organization_id: str,
+        limit: int,
+        user,
+        user_role: str,
+        as_of,
+        **kwargs
+    ) -> Tuple[List[Dict[str, Any]], str, int]:
+        """Execute a single sub-query through the standard retrieval pipeline."""
+        t_start = time.time()
+
+        # Run standard hybrid search for this sub-query
+        chunks = self.search(
+            query=sq.text,
+            workspace_id=workspace_id,
+            organization_id=organization_id,
+            limit=limit,
+            user=user,
+            user_role=user_role,
+            as_of=as_of,
+            **kwargs
+        )
+
+        # Tag each chunk with sub-query provenance
+        target_codes_upper = {str(tc).upper() for tc in sq.target_doc_codes}
+        for chunk in chunks:
+            chunk['sub_query_id'] = sq.id
+            chunk['sub_query_domain'] = sq.domain
+            chunk['sub_query_role'] = sq.role_label
+            chunk['multi_hop_domain'] = sq.domain
+            # Boost chunks that match the sub-query's target docs
+            doc_code = str(chunk.get('document_code', '')).upper()
+            if doc_code in target_codes_upper:
+                chunk['multi_hop_boost'] = 0.5
+            else:
+                chunk['multi_hop_boost'] = chunk.get('multi_hop_boost', 0.0)
+
+        elapsed = int((time.time() - t_start) * 1000)
+        mode = chunks[0].get('retrieval_status', 'unknown') if chunks else 'no_results'
+
+        return chunks, mode, elapsed
+
+    def _fuse_multi_hop_results(
+        self,
+        sub_results: List[MultiHopResult],
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Fuse results from multiple sub-queries with provenance preservation.
+        Ensures each sub-query contributes at least some chunks to the final set.
+        """
+        if not sub_results:
+            return []
+
+        # Strategy: Round-robin selection to ensure each sub-query is represented
+        fused = []
+        seen_chunk_ids = set()
+
+        # Calculate per-sub-query quota
+        quota_per_sq = max(2, limit // len(sub_results))
+
+        # Round 1: Take top chunks from each sub-query (up to quota)
+        for sr in sub_results:
+            taken = 0
+            for chunk in sr.chunks:
+                cid = str(chunk.get('chunk_id') or chunk.get('id') or '')
+                if cid and cid not in seen_chunk_ids and taken < quota_per_sq:
+                    seen_chunk_ids.add(cid)
+                    chunk['multi_hop_source'] = sr.sub_query.id
+                    chunk['multi_hop_domain'] = sr.sub_query.domain
+                    fused.append(chunk)
+                    taken += 1
+
+        # Round 2: Fill remaining slots with highest-scoring chunks across all sub-queries
+        if len(fused) < limit:
+            all_remaining = []
+            for sr in sub_results:
+                for chunk in sr.chunks:
+                    cid = str(chunk.get('chunk_id') or chunk.get('id') or '')
+                    if cid and cid not in seen_chunk_ids:
+                        all_remaining.append(chunk)
+
+            # Sort by score descending including multi_hop_boost
+            all_remaining.sort(
+                key=lambda c: (float(c.get('score', 0) or 0) + float(c.get('multi_hop_boost', 0) or 0)),
+                reverse=True
+            )
+
+            for chunk in all_remaining:
+                if len(fused) >= limit:
+                    break
+                cid = str(chunk.get('chunk_id') or chunk.get('id') or '')
+                if cid and cid not in seen_chunk_ids:
+                    seen_chunk_ids.add(cid)
+                    fused.append(chunk)
+
+        # Final sort: group by domain for coherent context, then by score
+        fused.sort(key=lambda c: (
+            c.get('multi_hop_domain', 'general'),
+            -(float(c.get('score', 0) or 0) + float(c.get('multi_hop_boost', 0) or 0))
+        ))
+
+        return fused[:limit]

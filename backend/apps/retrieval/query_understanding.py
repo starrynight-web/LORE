@@ -352,10 +352,9 @@ class QueryUnderstandingService:
                 companion_docs.append(cd)
 
         # Negative Retrieval Check (Q10)
-        is_negative = bool(
-            (re.search(r'\b(?:exact\s+(?:policy\s+)?text\s+of|missing|absent|not\s+found)\b', q_lower) or 'missing document' in q_lower) and
-            ('2025' in q_lower or 'doc-021' in q_lower or 'travel & expense policy (2025)' in q_lower)
-        )
+        has_negative_term = bool(re.search(r'\b(?:exact\s+(?:policy\s+)?text\s+of|missing|absent|not\s+found)\b', q_lower)) or ('missing document' in q_lower)
+        has_negative_target = ('2025' in q_lower or 'doc-021' in q_lower or 'travel & expense policy (2025)' in q_lower)
+        is_negative = has_negative_term and has_negative_target
         if is_negative:
             for cd in ['DOC-021', 'DOC-016', 'DOC-020']:
                 if cd not in all_doc_codes:

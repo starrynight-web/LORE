@@ -318,7 +318,7 @@ class DocumentQualityService:
         pruned_count = 0
         idx = 1
         for item in candidate_list:
-            norm_t = " ".join(item['text'].strip().lower().split())
+            norm_t = " ".join(str(item.get('text', '') or '').strip().lower().split())
             if norm_t in seen_texts:
                 pruned_count += 1
                 continue

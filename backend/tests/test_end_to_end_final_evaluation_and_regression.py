@@ -493,9 +493,9 @@ def test_controlled_baseline_promotion_and_rollback(eval_env):
     run_v1.refresh_from_db()
     run_v2.refresh_from_db()
 
-    assert bool(run_v2.is_active_baseline) is True
-    assert bool(run_v2.is_approved_for_promotion) is True
-    assert bool(run_v1.is_active_baseline) is False
+    assert run_v2.is_active_baseline
+    assert run_v2.is_approved_for_promotion
+    assert not run_v1.is_active_baseline
 
     # 2. Rollback to run_v1
     restored = EndToEndEvaluationService.rollback_baseline(ws, user=admin)
@@ -503,8 +503,8 @@ def test_controlled_baseline_promotion_and_rollback(eval_env):
     run_v1.refresh_from_db()
     run_v2.refresh_from_db()
 
-    assert bool(run_v1.is_active_baseline) is True
-    assert bool(run_v2.is_active_baseline) is False
+    assert run_v1.is_active_baseline
+    assert not run_v2.is_active_baseline
     assert restored.id == run_v1.id
 
 

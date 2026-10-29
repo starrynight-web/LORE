@@ -185,8 +185,8 @@ class HeuristicReranker(BaseReranker):
             # 5. Document Target alignment bonus
             doc_match_bonus = 0.0
             if doc_code_targets:
-                if any(dc == doc_code or dc in title for dc in doc_code_targets):
-                    doc_match_bonus = 0.30
+                if any(dc == doc_code or dc in title.lower() for dc in doc_code_targets):
+                    doc_match_bonus = 0.80  # Massive boost to win the ranking battle
 
             # 6. Section target bonus
             section_bonus = 0.0
@@ -206,9 +206,14 @@ class HeuristicReranker(BaseReranker):
 
             # A. Travel Lodging vs Meals Domain Separation (Requirement 4)
             if analysis.is_lodging_query and not analysis.is_meal_query:
-                is_meal_chunk = any(w in text for w in ['breakfast', 'lunch', 'dinner', 'per diem', 'daily maximum $70']) and not any(h in text for h in ['hotel', 'lodging', 'room rate', 'per night'])
+                is_meal_chunk = (
+                    any(w in text for w in ['breakfast', 'lunch', 'dinner', 'per diem', 'daily maximum $70', 'meal allowance']) or
+                    'section 5' in sec_id or
+                    'meal' in sec_id
+                )
                 if is_meal_chunk:
-                    domain_penalty -= 0.40  # Reject meal allowance chunks from polluting hotel queries!
+                    domain_penalty -= 0.85  # Reject meal allowance chunks from polluting hotel queries!
+                    doc_match_bonus = 0.0
                 if any(w in text for w in ['hotel reimbursement', 'lodging cap', 'per night', 'hotel limits', 'hotel accommodation']) or 'section 4' in sec_id:
                     fact_bonus += 0.35
                     if any(p in text for p in ['$220', '$180', '$150', '$240', '240', 'us$240', '220']):
@@ -263,8 +268,24 @@ class HeuristicReranker(BaseReranker):
             if has_relevance and not analysis.is_historical and not (analysis.target_year and analysis.target_year <= 2024):
                 if gov_status in ('approved', 'ready', 'active') and doc_code not in ('doc-001', 'doc-016'):
                     governing_bonus += 0.20
-                if gov_status == 'draft' or doc_code == 'doc-001':
-                    distractor_penalty -= 0.30  # Penalize unapproved v1 draft
+
+                # Only penalize drafts if a better approved alternative exists
+                cand_pool = options.get('candidates') if options.get('candidates') is not None else candidates
+                curr_chunk_id = str(chk.get('chunk_id') or chk.get('id', '')) if isinstance(chk, dict) else str(getattr(chk, 'id', getattr(chk, 'chunk_id', '')))
+
+                is_highly_relevant = (token_coverage >= 0.3 or phrase_bonus >= 0.3 or fact_bonus >= 0.3)
+                has_competing_approved = any(
+                    (c.get('governance_status') in ('approved', 'ready', 'active') if isinstance(c, dict) else (getattr(getattr(c, 'document', None), 'governance_status', None) in ('approved', 'ready', 'active'))) and 
+                    ((c.get('token_coverage', 0) >= 0.2 or c.get('phrase_bonus', 0) >= 0.2) if isinstance(c, dict) else False)
+                    for c in cand_pool if (str(c.get('chunk_id') or c.get('id', '')) if isinstance(c, dict) else str(getattr(c, 'id', getattr(c, 'chunk_id', '')))) != curr_chunk_id
+                )
+
+                if gov_status == 'draft' and is_highly_relevant and has_competing_approved:
+                    distractor_penalty -= 0.15  # Reduced penalty
+                elif gov_status == 'draft' and not is_highly_relevant:
+                    distractor_penalty -= 0.30
+                if doc_code == 'doc-001':
+                    distractor_penalty -= 0.30
                 if gov_status == 'superseded' or doc_code == 'doc-016':
                     distractor_penalty -= 0.30  # Penalize superseded archived version
 

@@ -346,8 +346,8 @@ class DecisionIntelligenceLayer:
             any(p in q_lower for p in [
                 'can we approve', 'can i approve', 'grant approval', 'can we onboard', 'can we deploy',
                 'can i deploy', 'can i bypass', 'can we bypass', 'can i enable', 'can we enable',
-                'can i disable', 'can we disable', 'can i skip', 'can we skip', 'should a travel coordinator use',
-                'should a coordinator use', 'can the $', 'can the purchase be authorized', 'be authorized based on',
+                'can i disable', 'can we disable', 'can i skip', 'can we skip',
+                'can the $', 'can the purchase be authorized', 'be authorized based on',
                 'should we approve', 'should i approve', 'approve this'
             ]) or
             (any(w in q_lower for w in ['onboard ', 'deploy ', 'release to ', 'execute ', 'grant access', 'perform ', 'bypass ']) and
@@ -1421,7 +1421,17 @@ class EvidenceSufficiencyLayer:
                 intent = 'action_request'
             else:
                 intent = 'informational'
-        is_action_gate = (intent in ('action_request', 'action_authorization'))
+        high_risk_domains = ['vendor', 'supplier', 'cloud', 'saas', 'deploy', 'production', 
+                             'release', 'data', 'pii', 'gdpr', 'bypass', 'disable security',
+                             'tool', 'software', 'system', 'application']
+
+        is_explicit_action = (
+            any(w in q_lower for w in ['bypass ', 'disable ', 'skip ', 'override ']) or
+            (any(w in q_lower for w in ['approve ', 'authorize ', 'onboard ', 'deploy ', 
+                                         'execute ', 'grant access']) and 
+             any(domain in q_lower for domain in high_risk_domains))
+        )
+        is_action_gate = ((intent in ('action_request', 'action_authorization')) and is_explicit_action) or (intent is None)
 
         evidence_found = []
         for chk in retrieved_chunks:
@@ -1768,6 +1778,20 @@ class EnterpriseGovernanceEngine:
         workspace = req.workspace
         ws_id = str(workspace.id) if workspace and hasattr(workspace, 'id') else ''
         candidate_chunks = req.candidate_evidence or []
+
+        if not candidate_chunks and req.query and workspace:
+            from apps.retrieval.services import HybridRetrievalService
+            retrieval_service = HybridRetrievalService()
+            candidate_chunks = retrieval_service.multi_hop_search(
+                query=req.query,
+                workspace_id=str(workspace.id) if workspace else None,
+                organization_id=str(workspace.organization.id) if workspace and getattr(workspace, 'organization', None) else None,
+                limit=12,
+                user=req.principal,
+                user_role=req.user_role,
+                as_of=req.as_of,
+                enable_multi_hop=True
+            )
 
         # Check for degraded retrieval (e.g. vector store outage or lexical-only fallback)
         is_retrieval_degraded = any(

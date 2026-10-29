@@ -180,6 +180,16 @@ class SqliteFullTextSearchBackend(BaseLexicalSearchBackend):
                 if variant not in extended_terms:
                     extended_terms.append(variant)
 
+        if any(w in ['procurement', 'purchase', 'buy'] for w in all_tokens):
+            for variant in ['procurement', 'purchase', 'buy', 'acquisition', 'spend', 'exception']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
+        if any(w in ['leave', 'vacation', 'holiday'] for w in all_tokens):
+            for variant in ['leave', 'vacation', 'holiday', 'pto', 'time off', 'carryover']:
+                if variant not in extended_terms:
+                    extended_terms.append(variant)
+
         if any(w in ['leave', 'vacation', 'holiday', 'carryover', 'carry'] for w in all_tokens):
             for variant in ['leave', 'annual leave', 'vacation', 'pto', 'carryover', 'carry forward', 'expire', 'accrue']:
                 if variant not in extended_terms:

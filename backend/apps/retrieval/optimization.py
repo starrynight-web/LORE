@@ -233,7 +233,7 @@ class EvidenceDrivenOptimizationService:
         # ---------------- Final Decision Resolution ----------------
         proposed_config_obj = None
 
-        if best_candidate and heldout_passed:
+        if best_candidate and best_cand_metrics and heldout_passed:
             decision = 'improvement_proposed'
             status = 'improvement_proposed'
             decision_notes = (

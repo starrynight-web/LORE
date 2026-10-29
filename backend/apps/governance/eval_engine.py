@@ -132,7 +132,7 @@ class SingleCaseEvaluationReport:
     query: str
     passed: bool
     dimensions: EvaluationDimensionsResult
-    diagnostics: StageDiagnostics
+    diagnostics: Optional[StageDiagnostics] = None
     human_review_required: bool = False
     human_review_reason: Optional[str] = None
 

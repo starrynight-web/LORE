@@ -170,7 +170,7 @@ class TestPipelineStageDiagnostics:
             dimensions=EvaluationDimensionsResult()
         )
         assert stage == PipelineStage.STAGE_2_RETRIEVAL_CANDIDATE_GENERATION
-        assert "Retrieval Miss" in cat
+        assert cat is not None and "Retrieval Miss" in cat
 
     def test_evidence_sufficiency_identifies_stage_4(self):
         case = GoldTestCase(
@@ -192,7 +192,7 @@ class TestPipelineStageDiagnostics:
             dimensions=EvaluationDimensionsResult()
         )
         assert stage == PipelineStage.STAGE_4_EVIDENCE_SUFFICIENCY_GATING
-        assert "Sufficiency False Negative" in cat
+        assert cat is not None and "Sufficiency False Negative" in cat
 
     def test_numerical_error_identifies_stage_6(self):
         case = GoldTestCase(
@@ -212,7 +212,7 @@ class TestPipelineStageDiagnostics:
             dimensions=dims
         )
         assert stage == PipelineStage.STAGE_6_SYNTHESIS_AND_NUMERICAL_REASONING
-        assert "Arithmetic Error" in cat
+        assert cat is not None and "Arithmetic Error" in cat
 
 
 class TestReleaseGatingEngine:
@@ -298,4 +298,4 @@ class TestReleaseGatingEngine:
         assert decision.decision == "RELEASE_PERMITTED"
         assert decision.benchmark_12_pass_rate == 1.0
         assert all(g.passed for g in decision.gates)
-        assert decision.comparative_analysis["correctness_improvement"] > 0.0
+        assert decision.comparative_analysis is not None and decision.comparative_analysis["correctness_improvement"] > 0.0

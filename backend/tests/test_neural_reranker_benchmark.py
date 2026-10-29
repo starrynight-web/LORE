@@ -14,7 +14,7 @@ import time
 import math
 import uuid
 import pytest
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from unittest.mock import patch, MagicMock
 
 from django.conf import settings
@@ -288,7 +288,7 @@ class TestNeuralRerankerAndBenchmark:
             @property
             def model_revision(self): return "main"
             def check_health(self): return {'status': 'failing', 'ready': False}
-            def rerank(self, query, candidates, top_k=10, **options):
+            def rerank(self, query: str, candidates: List[Any], top_k: int = 10, min_relevance_threshold: Optional[float] = None, **options: Any) -> List[Any]:
                 raise ModelUnavailableError("Simulated neural model weights missing or unreadable.")
 
         primary = FailingNeuralReranker()
@@ -312,6 +312,7 @@ class TestNeuralRerankerAndBenchmark:
 
         results = resilient.rerank(query="CloudBox Frankfurt", candidates=candidates, top_k=5)
         assert len(results) == 1
+        assert resilient._last_diagnostics is not None
         assert resilient._last_diagnostics.is_fallback is True
         assert "ModelUnavailableError" in resilient._last_diagnostics.fallback_reason
         assert "heuristic" in resilient.backend_name
@@ -328,7 +329,7 @@ class TestNeuralRerankerAndBenchmark:
             @property
             def model_revision(self): return "main"
             def check_health(self): return {'status': 'failing'}
-            def rerank(self, query, candidates, top_k=10, **options):
+            def rerank(self, query: str, candidates: List[Any], top_k: int = 10, min_relevance_threshold: Optional[float] = None, **options: Any) -> List[Any]:
                 raise ModelUnavailableError("Critical model offline.")
 
         resilient = ResilientFallbackReranker(
@@ -430,7 +431,7 @@ class TestNeuralRerankerAndBenchmark:
         metrics_n = {'recall_3': [], 'recall_5': [], 'mrr': [], 'ndcg_5': [], 'latency': []}
 
         for item in benchmark_queries:
-            q = item['query']
+            q = str(item['query'])
             exp = item['expected']
 
             # Run Heuristic

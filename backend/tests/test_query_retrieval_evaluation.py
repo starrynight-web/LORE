@@ -243,21 +243,29 @@ class TestQueryRetrievalEvaluationSuite:
     Tests all requirements: Query Intent, Candidate Retrieval, Reranking, Metadata Filters,
     Evidence Assembly, and Diagnostics.
     """
+    workspace: Workspace
+    org: Organization
+    retrieval_service: HybridRetrievalService
 
     def setup_method(self):
-        self.workspace = Workspace.objects.filter(id='b69b9b83-21a5-451f-bafe-382a508ac5a4').first()
-        if not self.workspace or SourceDocument.objects.filter(workspace=self.workspace).count() < 5:
+        ws = Workspace.objects.filter(id='b69b9b83-21a5-451f-bafe-382a508ac5a4').first()
+        if not ws or SourceDocument.objects.filter(workspace=ws).count() < 5:
             # Clean or seed workspace in test database
-            self.org, _ = Organization.objects.get_or_create(name="Evaluation Org", slug="eval-org")
-            self.workspace, _ = Workspace.objects.get_or_create(
+            org, _ = Organization.objects.get_or_create(name="Evaluation Org", slug="eval-org")
+            ws, _ = Workspace.objects.get_or_create(
                 id='b69b9b83-21a5-451f-bafe-382a508ac5a4',
-                organization=self.org,
+                organization=org,
                 name="Evaluation Workspace",
                 slug="eval-ws"
             )
+            self.workspace = ws
+            self.org = org
             self._seed_benchmark_corpus()
         else:
-            self.org = self.workspace.organization
+            self.workspace = ws
+            self.org = ws.organization
+        assert self.workspace is not None
+        assert self.org is not None
         self.retrieval_service = HybridRetrievalService()
 
     def _seed_benchmark_corpus(self):
@@ -358,15 +366,16 @@ class TestQueryRetrievalEvaluationSuite:
         monetary quantities, and requested answer fields while preserving user requested dates.
         """
         for item in GOLD_EVALUATION_DATASET_V1:
-            analysis = QueryUnderstandingService.analyze(item["query"])
+            q_text = str(item["query"])
+            analysis = QueryUnderstandingService.analyze(q_text)
             assert analysis.intent == item["intent"], (
-                f"Query '{item['query']}' classified as {analysis.intent}, expected {item['intent']}"
+                f"Query '{q_text}' classified as {analysis.intent}, expected {item['intent']}"
             )
             # Verify explicit document IDs extracted if present in query
             for doc in item["required_docs"]:
-                if doc in item["query"]:
+                if doc in q_text:
                     assert doc.upper() in [d.upper() for d in analysis.all_target_doc_codes], (
-                        f"Expected doc {doc} in extracted target codes for query '{item['query']}'"
+                        f"Expected doc {doc} in extracted target codes for query '{q_text}'"
                     )
 
         # Test requested date preservation: user requested date must NOT be replaced with current date
@@ -383,10 +392,11 @@ class TestQueryRetrievalEvaluationSuite:
         natural language paraphrases without depending strictly on exact keywords.
         """
         for item in GOLD_EVALUATION_DATASET_V1:
-            para_analysis = QueryUnderstandingService.analyze(item["paraphrase"])
+            para_text = str(item["paraphrase"])
+            para_analysis = QueryUnderstandingService.analyze(para_text)
             # Paraphrases should either match original intent or valid close intent
             assert para_analysis.intent in (item["intent"], QueryIntent.POLICY_INTERPRETATION, QueryIntent.EXACT_FACT_LOOKUP), (
-                f"Paraphrase '{item['paraphrase']}' failed intent classification: {para_analysis.intent}"
+                f"Paraphrase '{para_text}' failed intent classification: {para_analysis.intent}"
             )
 
     def test_03_reranker_fact_relevance_vs_topical_similarity(self):
@@ -620,9 +630,9 @@ class TestQueryRetrievalEvaluationSuite:
         total_distractor_opportunities = 0
 
         for item in GOLD_EVALUATION_DATASET_V1:
-            q = item["query"]
-            gold_docs = item["required_docs"]
-            distractors = item.get("distractors", [])
+            q = str(item["query"])
+            gold_docs = [str(d) for d in item["required_docs"]]
+            distractors = [str(d) for d in item.get("distractors", [])]
 
             t0 = time.time()
             results = self.retrieval_service.search(

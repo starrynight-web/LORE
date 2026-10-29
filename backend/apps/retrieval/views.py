@@ -44,13 +44,15 @@ def search_view(request):
         workspace = get_object_or_404(Workspace, id=workspace_id)
 
     retrieval_service = HybridRetrievalService()
-    results = retrieval_service.search(
+    enable_multi_hop = request.data.get('enable_multi_hop', True)
+    results = retrieval_service.multi_hop_search(
         query=query,
         workspace_id=str(workspace.id),
         organization_id=str(workspace.organization.id),
         collection_id=collection_id,
         document_id=document_id,
-        limit=limit
+        limit=limit,
+        enable_multi_hop=enable_multi_hop
     )
 
     return Response({
@@ -131,16 +133,17 @@ def governed_query_view(request):
 
     # 1. Retrieve Candidate Chunks (Scoped to Tenant, Collection, or specific PDF Document)
     retrieval_service = HybridRetrievalService()
-    candidate_chunks = retrieval_service.search(
+    candidate_chunks = retrieval_service.multi_hop_search(
         query=query,
         workspace_id=str(workspace.id),
         organization_id=str(workspace.organization.id),
         collection_id=collection_id,
         document_id=document_id,
-        limit=10,
+        limit=12,
         user=effective_user,
         user_role=user_role,
-        as_of=as_of
+        as_of=as_of,
+        enable_multi_hop=True
     )
 
     # 2. Evaluate via Complete 9-Layer Enterprise Governance Engine (L7 -> L0)

@@ -465,6 +465,7 @@ class TestIngestionAndEvidencePreservation:
 
         # Corpus vs retrieval boundary check
         missing_doc = SourceDocument.objects.filter(document_code='DOC-021').first()
+        assert missing_doc is not None
         assert missing_doc.is_missing is True
         assert missing_doc.status == 'missing'
         # Absent from chunks

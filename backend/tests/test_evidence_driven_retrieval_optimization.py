@@ -19,6 +19,7 @@ Tests:
 
 import math
 import uuid
+from typing import cast, Any
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -53,7 +54,7 @@ def retrieval_env(db):
         name="Retrieval Test Workspace",
         slug=f"ret-ws-{uuid.uuid4().hex[:6]}"
     )
-    admin = User.objects.create_user(
+    admin = cast(Any, User.objects).create_user(
         username=f"ret_admin_{uuid.uuid4().hex[:6]}",
         email=f"admin_{uuid.uuid4().hex[:6]}@retrieval.test",
         password="Password123!"
@@ -282,7 +283,7 @@ def test_controlled_configuration_promotion(retrieval_env):
     """
     ws = retrieval_env["ws"]
     base_cfg = EvidenceDrivenOptimizationService.get_or_create_active_config(ws)
-    assert base_cfg.is_active is True
+    assert base_cfg.is_active
 
     # Create proposed configuration
     proposed_cfg = RetrievalConfiguration.objects.create(
@@ -314,12 +315,12 @@ def test_controlled_configuration_promotion(retrieval_env):
     proposed_cfg.refresh_from_db()
     opt_run.refresh_from_db()
 
-    assert base_cfg.is_active is False
+    assert not base_cfg.is_active
     assert proposed_cfg.is_active is True
     assert promoted.id == proposed_cfg.id
     assert opt_run.is_promoted is True
     assert opt_run.decision == 'promoted'
-    assert opt_run.rollback_config.id == base_cfg.id
+    assert opt_run.rollback_config is not None and opt_run.rollback_config.id == base_cfg.id
 
 
 @pytest.mark.django_db
@@ -346,8 +347,8 @@ def test_configuration_rollback_restores_known_good(retrieval_env):
     v2_cfg.refresh_from_db()
 
     assert restored.id == base_cfg.id
-    assert base_cfg.is_active is True
-    assert v2_cfg.is_active is False
+    assert base_cfg.is_active
+    assert not v2_cfg.is_active
 
 
 @pytest.mark.django_db

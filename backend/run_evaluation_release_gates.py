@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # Configure Django environment
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,8 +36,8 @@ from apps.governance.models import EndToEndEvaluationRun, EvaluationFailureRecor
 
 def run_evaluation_pipeline(
     workspace_id: str = "b69b9b83-21a5-451f-bafe-382a508ac5a4",
-    gold_benchmark_path: str = None,
-    baseline_run_path: str = None,
+    gold_benchmark_path: Optional[str] = None,
+    baseline_run_path: Optional[str] = None,
     output_report_path: str = "release_gating_evaluation_report.json"
 ) -> ReleaseGateDecision:
     """
@@ -56,6 +56,8 @@ def run_evaluation_pipeline(
         workspace = Workspace.objects.filter(sources__isnull=False).distinct().first()
         if not workspace:
             workspace = Workspace.objects.first()
+        if not workspace:
+            raise RuntimeError("No workspace found to run evaluation pipeline.")
         print(f"Using Fallback Workspace: {workspace.name} ({workspace.id})")
 
     # 2. Load Gold Benchmark

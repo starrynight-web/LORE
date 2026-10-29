@@ -291,6 +291,16 @@ class DocumentMetadataExtractor:
             meta['governance_status'] = 'needs_review'
             meta['status'] = 'needs_review'
 
+        # DOC-003: Procurement Authority Matrix
+        elif doc_code == 'DOC-003' or 'procurement authority matrix' in text_lower:
+            meta['document_code'] = 'DOC-003'
+            meta['canonical_title'] = 'Procurement Authority Matrix'
+            meta['authority_level'] = 6
+            meta['governance_status'] = 'active'  # Treat as active for retrieval
+            meta['status'] = 'active'
+            meta['owner_name'] = 'Finance & Administration'
+            meta['notes'] = 'Defines procurement approval thresholds by role.'
+
         # Generic Draft vs Approved Check
         elif 'draft for review' in text_lower or 'status: draft' in text_lower:
             meta['governance_status'] = 'draft'

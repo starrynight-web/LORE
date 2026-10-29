@@ -223,16 +223,17 @@ class ConversationService:
         assistant_msg = None
 
         try:
-            candidate_chunks = retrieval_service.search(
+            candidate_chunks = retrieval_service.multi_hop_search(
                 query=clean_query,
                 workspace_id=str(conversation.workspace_id),
                 organization_id=str(conversation.organization_id),
                 collection_id=effective_col_id,
                 document_id=effective_doc_id,
-                limit=10,
+                limit=12,
                 user=user,
                 user_role=user_role,
-                as_of=as_of
+                as_of=as_of,
+                enable_multi_hop=True
             )
 
             policy_ctx = {

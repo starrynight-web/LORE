@@ -395,7 +395,7 @@ class EndToEndEvaluationService:
 
         # 5. Baseline Comparison & Regression Gates
         regressions_detected = []
-        baseline_comparison = {}
+        baseline_comparison: Dict[str, Any] = {}
 
         if baseline_run and baseline_run.retrieval_metrics:
             base_ret = baseline_run.retrieval_metrics
@@ -437,7 +437,7 @@ class EndToEndEvaluationService:
             decision = 'REGRESSION_DETECTED'
             reason = f"Candidate configuration regressed required quality metrics: {'; '.join(regressions_detected)}"
             proposed_actions.append("Reject candidate configuration and retain active production baseline.")
-        elif baseline_run and (baseline_comparison.get('delta_precision_k', 0) > 0.02 or baseline_comparison.get('delta_recall_k', 0) > 0.02):
+        elif baseline_run and (float(baseline_comparison.get('delta_precision_k', 0) or 0) > 0.02 or float(baseline_comparison.get('delta_recall_k', 0) or 0) > 0.02):
             decision = 'IMPROVEMENT_DEMONSTRATED'
             reason = "Candidate demonstrated measurable relevance improvements over baseline under approved protocol."
             proposed_actions.append("Eligible for production promotion under authorized release workflow.")
