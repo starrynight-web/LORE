@@ -205,13 +205,18 @@ sequenceDiagram
 | Tool | What it returns |
 | --- | --- |
 | `list_personas` | Stable personas only. Drafts are omitted. |
-| `get_context` | One persona, one-line skill summaries, and a short map slice. This is the call the agent makes for a task. |
+| `get_context` | One call for a task. Matching skill summaries, and the files to open. A named persona still returns that persona's stable summaries. |
 | `get_skill` | The full body of one stable skill for that persona. |
 | `ingest` | Saves a new skill as a draft. It is not served until you approve it. A repeated idempotency key returns the first result. |
 | `log_decision` | Appends what the agent did to an existing decision file. |
 | `trace` | Reads one decision file back. |
+| `map_codebase` | Starts a codebase map build and returns while it runs. A second call during a build returns the same running status. |
+| `map_status` | Whether the map is missing, running, ready, or failed, plus `built_at_commit` when the map has one. |
+| `locate` | Up to eight files for a task sentence, and the relation that justified each one. It does not return the graph. |
 
-`get_context` takes a persona name, an optional intent, and an optional file path. The file path chooses which part of the codebase map to include. The intent is recorded on the answer. It does not search the skills.
+`get_context` with a task sentence and no persona picks the personas named in that sentence, returns only the skill summaries that share a word with it, and includes the files to open. A call that names a persona still returns that persona's stable summaries. The file path chooses which part of the codebase map to include on a named-persona call. `locate` remains available and searches the map on its own.
+
+Personas are read from the project `.lore`, or from the persona library when the project has none. The map is written in the open repository. A `.lore` folder that contains only `graph-status.json` does not hide the library. If the map is missing, or its commit is not the current git HEAD, `get_context` starts a build and still returns skills. A repository that is not a git root is stale when a source file is newer than `graph.json`.
 
 ## What `get_context` puts in the answer
 

@@ -1,0 +1,61 @@
+{
+  "cold_map_seconds": 0.9,
+  "runs": [
+    {
+      "arm": "baseline",
+      "run": 1,
+      "exit": 0,
+      "seconds": 49.9,
+      "input_tokens": 82309,
+      "output_tokens": 677,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 1,
+      "exit": 0,
+      "seconds": 52.7,
+      "input_tokens": 468014,
+      "output_tokens": 1618,
+      "tools": [
+        "list_personas",
+        "get_context",
+        "locate"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    }
+  ],
+  "score": {
+    "baseline_pass_rate": 1.0,
+    "lore_pass_rate": 1.0,
+    "baseline_median_input_tokens": 82309,
+    "lore_median_input_tokens": 468014,
+    "input_token_ratio": 5.686,
+    "baseline_median_seconds": 49.9,
+    "lore_median_seconds": 52.7,
+    "time_ratio": 1.056,
+    "gate": true,
+    "tokens": false,
+    "time": true,
+    "lore_wins": false
+  },
+  "note": "Rerun after spaced persona names resolve, with the benchmark personas copied into the disposable project. The first three-run result is results.json. The earlier rerun missed because the MCP process never saw the benchmark library.",
+  "diagnosis": "Persona names with spaces now resolve, and this rerun served skill summaries (frontend get_context used 258 tokens). Lore still lost on input tokens: 468014 versus 82309. Both runs passed the checklist. Time was inside the gate (52.7s versus 49.9s). The skill payloads are a few hundred tokens. The gap is the extra model calls for list_personas, four get_context calls, and locate. get_context still returns every stable skill for the persona. That is the next cause, and it is too small on its own to explain the ratio."
+}

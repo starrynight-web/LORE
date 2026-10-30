@@ -30,6 +30,27 @@ def test_token_count_uses_one_token_per_three_bytes_when_encoder_missing() -> No
     assert count_tokens("abcd") >= 1
 
 
+def test_task_call_returns_matching_skills_and_files(project: Path) -> None:
+    envelope = get_context(project, "", intent="frontend engineer function components in the UI")
+    jsonschema.validate(envelope, SCHEMA)
+    assert envelope["verdict"] == "ok"
+    ids = [item["id"] for item in envelope["items"]]
+    assert ids == ["skill:frontend-engineer/react-practices@v1"]
+    assert "persona:frontend-engineer" in envelope["data"]["personas"]
+    assert "persona:backend-engineer" not in envelope["data"]["personas"]
+    paths = [item["path"] for item in envelope["data"]["files"]]
+    assert "src/ui/Button.tsx" in paths
+    assert BODY_MARKER not in json.dumps(envelope)
+    assert BACKEND_MARKER not in json.dumps(envelope)
+
+
+def test_spaced_persona_name_resolves(project: Path) -> None:
+    envelope = get_context(project, "frontend engineer")
+    assert envelope["verdict"] == "ok"
+    assert envelope["data"]["persona"] == "persona:frontend-engineer"
+    assert envelope["items"][0]["id"] == "skill:frontend-engineer/react-practices@v1"
+
+
 def test_frontend_returns_summaries_only(project: Path) -> None:
     envelope = get_context(project, "frontend-engineer", intent="build the settings form")
     jsonschema.validate(envelope, SCHEMA)

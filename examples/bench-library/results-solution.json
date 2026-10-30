@@ -1,0 +1,151 @@
+{
+  "cold_map_seconds": 1.0,
+  "runs": [
+    {
+      "arm": "baseline",
+      "run": 1,
+      "exit": 0,
+      "seconds": 62.8,
+      "input_tokens": 102265,
+      "cached_input_tokens": 80512,
+      "fresh_input_tokens": 21753,
+      "output_tokens": 738,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "baseline",
+      "run": 2,
+      "exit": 0,
+      "seconds": 38.3,
+      "input_tokens": 145777,
+      "cached_input_tokens": 123264,
+      "fresh_input_tokens": 22513,
+      "output_tokens": 969,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "baseline",
+      "run": 3,
+      "exit": 0,
+      "seconds": 24.9,
+      "input_tokens": 143006,
+      "cached_input_tokens": 120832,
+      "fresh_input_tokens": 22174,
+      "output_tokens": 806,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 1,
+      "exit": 0,
+      "seconds": 32.9,
+      "input_tokens": 209874,
+      "cached_input_tokens": 194176,
+      "fresh_input_tokens": 15698,
+      "output_tokens": 1199,
+      "tools": [
+        "get_context"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 2,
+      "exit": 0,
+      "seconds": 35.7,
+      "input_tokens": 235163,
+      "cached_input_tokens": 219008,
+      "fresh_input_tokens": 16155,
+      "output_tokens": 1279,
+      "tools": [
+        "get_context",
+        "get_skill"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 3,
+      "exit": 0,
+      "seconds": 40.5,
+      "input_tokens": 185451,
+      "cached_input_tokens": 142208,
+      "fresh_input_tokens": 43243,
+      "output_tokens": 1323,
+      "tools": [
+        "get_context",
+        "get_skill"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    }
+  ],
+  "score": {
+    "baseline_pass_rate": 1.0,
+    "lore_pass_rate": 1.0,
+    "baseline_median_input_tokens": 143006,
+    "lore_median_input_tokens": 209874,
+    "input_token_ratio": 1.468,
+    "baseline_median_fresh_tokens": 22174,
+    "lore_median_fresh_tokens": 16155,
+    "fresh_token_ratio": 0.729,
+    "baseline_median_seconds": 38.3,
+    "lore_median_seconds": 35.7,
+    "time_ratio": 0.932,
+    "gate": true,
+    "tokens": false,
+    "time": true,
+    "lore_wins": false
+  },
+  "note": "One get_context call returns the matching skill summaries and the files."
+}

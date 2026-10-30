@@ -17,4 +17,4 @@ Project config: `.mcp.json` at the repo root.
 
 Or from the CLI: `claude mcp add lore -- ~/go/bin/lore serve --root "$PWD"`.
 
-Claude Code reads `CLAUDE.md`. Copy the rules from `examples/demo-app/AGENTS.md` into it, or put `@AGENTS.md` in it to import that file.
+Claude Code reads `CLAUDE.md`. `lore connect` writes a Lore section into `~/.claude/CLAUDE.md`.

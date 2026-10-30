@@ -1,4 +1,7 @@
-"""Run Graphify from Lore's own environment. The agent never calls this."""
+"""Run Graphify from Lore's own environment.
+
+The map tools start this in the background. Callers do not wait for Graphify.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from lore.core.graph import KNOWN_SCHEMA, _version
+from lore.core.graph import BUILDING_NOTE, KNOWN_SCHEMA, _version, git_head, map_is_stale
 
 
 def _graphify() -> Path:
@@ -52,6 +55,25 @@ def run_graphify(project: Path) -> None:
         )
 
 
+def ensure_fresh(project: Path) -> str | None:
+    """Start a build when the map is missing or stale. Return a note, or None.
+
+    A failed build is not started again until the git commit changes, so a
+    broken extract does not launch Graphify on every context call.
+    """
+    status_path = project / ".lore" / "graph-status.json"
+    status = _read(status_path)
+    state = str(status.get("state") or "")
+    if state == "running":
+        return BUILDING_NOTE
+    if state == "failed" and not _head_moved(project, status):
+        return str(status.get("error") or "The map failed.")
+    if map_is_stale(project):
+        start_build(project, status_path)
+        return BUILDING_NOTE
+    return None
+
+
 def start_build(project: Path, status_path: Path | None = None) -> dict[str, Any]:
     status_path = status_path or (project / ".lore" / "graph-status.json")
     current = _read(status_path)
@@ -78,7 +100,17 @@ def _job(project: Path, status_path: Path) -> None:
             },
         )
     except Exception as exc:  # noqa: BLE001 - any map failure must settle the status file
-        _write(status_path, {"state": "failed", "error": str(exc) or "The codebase map failed."})
+        payload: dict[str, Any] = {"state": "failed", "error": str(exc) or "The codebase map failed."}
+        head = git_head(project)
+        if head:
+            payload["commit"] = head
+        _write(status_path, payload)
+
+
+def _head_moved(project: Path, status: dict[str, Any]) -> bool:
+    head = git_head(project)
+    recorded = str(status.get("commit") or "")
+    return bool(head and recorded and head != recorded)
 
 
 def _read(path: Path) -> dict[str, Any]:

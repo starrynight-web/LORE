@@ -57,19 +57,60 @@ def project_name() -> str:
     return workspace_root().name or "this project"
 
 
+def is_knowledge_store(directory: Path) -> bool:
+    """True when this folder holds personas, not only a codebase-map status file.
+
+    Mapping a repo that has no personas creates `.lore/graph-status.json`.
+    That file must not hide the persona library.
+    """
+    lore = directory / ".lore"
+    if not lore.is_dir():
+        return False
+    names = {entry.name for entry in lore.iterdir()}
+    return names != {"graph-status.json"}
+
+
 def find_project(start: Path) -> Path:
-    """Return the directory that directly contains `.lore`.
+    """Return the directory that holds the persona store.
 
     A project folder wins. Otherwise the persona library is used, so an agent
     can call Lore from a project that does not keep its own personas.
     """
-    current = start.expanduser().resolve()
-    if current.is_file():
-        current = current.parent
+    current = _directory(start)
     for candidate in (current, *current.parents):
-        if (candidate / ".lore").is_dir():
+        if is_knowledge_store(candidate):
             return candidate
     library = library_root()
-    if (library / ".lore").is_dir():
+    if is_knowledge_store(library):
         return library.resolve()
     raise LoreNotFound(start)
+
+
+def map_root(start: Path) -> Path:
+    """Return the repository to map.
+
+    `LORE_WORKSPACE` wins. Otherwise a project `.lore` store owns the map,
+    walking up from `start` so a nested working directory still maps the repo.
+    A repo with no persona store is mapped itself. The persona library is
+    mapped only when the editor opened that library.
+    """
+    forced = os.environ.get("LORE_WORKSPACE", "").strip()
+    if forced:
+        return Path(forced).expanduser().resolve()
+    current = _directory(start)
+    library = library_root().expanduser().resolve()
+    for candidate in (current, *current.parents):
+        if candidate == library:
+            return library
+        if is_knowledge_store(candidate):
+            return candidate
+        if candidate.parent == candidate:
+            break
+    return current
+
+
+def _directory(start: Path) -> Path:
+    current = start.expanduser().resolve()
+    if current.is_file():
+        return current.parent
+    return current

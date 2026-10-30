@@ -1,0 +1,119 @@
+{
+  "question": {
+    "paste": "Cost of reading every file under .lore/skills, drafts included.",
+    "lore-steps": "Cost of one get_context per step, without list_personas or locate.",
+    "lore-once": "Cost of a single get_context for the whole task.",
+    "paste-stable": "Cost of reading only the twelve stable skill bodies."
+  },
+  "runs": [
+    {
+      "arm": "paste",
+      "exit": 0,
+      "seconds": 62.6,
+      "input_tokens": 242643,
+      "cached_input_tokens": 205824,
+      "fresh_input_tokens": 36819,
+      "output_tokens": 1282,
+      "turns": 1,
+      "tools": [],
+      "commands": [
+        "/usr/bin/bash -lc 'find .lore/skills -type f -print'",
+        "/usr/bin/bash -lc 'find .lore/skills -type f -print0 | xargs -0 cat'",
+        "/usr/bin/bash -lc \"python - <<'PY' from pathlib import Path files=sorted(Path('.lore/skills').rglob('*')) files=[p for p in files if p.is_file()] for start in range(0,len(files),15",
+        "/usr/bin/bash -lc \"sed -n '1,160p' src/ui/Panel.tsx && sed -n '1,180p' src/api/health.py && git status --short && git diff -- README.md\"",
+        "/usr/bin/bash -lc \"python - <<'PY' from pathlib import Path p = Path('src/ui/Panel.tsx') s = p.read_text() s = s.replace('const label = \\\"Draft\\\";', 'const label = \\\"Saved\\\";') p.w",
+        "/usr/bin/bash -lc \"cat src/ui/Panel.tsx src/api/health.py review.txt && git diff --quiet -- README.md; printf 'README_DIFF_EXIT=%s\\\\n' \\\"\"'$?\"'"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore-steps",
+      "exit": 0,
+      "seconds": 34.7,
+      "input_tokens": 156596,
+      "cached_input_tokens": 136704,
+      "fresh_input_tokens": 19892,
+      "output_tokens": 1106,
+      "turns": 1,
+      "tools": [
+        "get_context",
+        "get_context",
+        "get_context",
+        "get_context"
+      ],
+      "commands": [
+        "/usr/bin/bash -lc \"sed -n '1,200p' src/ui/Panel.tsx && sed -n '1,200p' src/api/health.py && git status --short -- README.md && git diff -- README.md\"",
+        "/usr/bin/bash -lc \"cat > review.txt <<'EOF' src/ui/Panel.tsx src/api/health.py EOF printf '%s\\\\n' '--- Panel.tsx ---' sed -n '1,120p' src/ui/Panel.tsx printf '%s\\\\n' '--- health.py"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore-once",
+      "exit": 0,
+      "seconds": 38.9,
+      "input_tokens": 152822,
+      "cached_input_tokens": 126976,
+      "fresh_input_tokens": 25846,
+      "output_tokens": 1170,
+      "turns": 1,
+      "tools": [
+        "get_context"
+      ],
+      "commands": [
+        "/usr/bin/bash -lc \"git status --short && git diff -- README.md && sed -n '1,200p' src/ui/Panel.tsx && sed -n '1,200p' src/api/health.py\"",
+        "/usr/bin/bash -lc \"cat > review.txt <<'EOF' src/ui/Panel.tsx src/api/health.py EOF\"",
+        "/usr/bin/bash -lc \"git diff --check -- src/ui/Panel.tsx src/api/health.py review.txt && git diff -- README.md && git diff -- src/ui/Panel.tsx src/api/health.py && cat review.txt &&"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "paste-stable",
+      "exit": 0,
+      "seconds": 28.2,
+      "input_tokens": 119769,
+      "cached_input_tokens": 93696,
+      "fresh_input_tokens": 26073,
+      "output_tokens": 933,
+      "turns": 1,
+      "tools": [],
+      "commands": [
+        "/usr/bin/bash -lc 'cat .lore/skills/frontend-engineer/frontend-design@v1.md .lore/skills/frontend-engineer/tailwind-best-practices@v1.md .lore/skills/frontend-engineer/shadcn-best-",
+        "/usr/bin/bash -lc \"sed -n '1,240p' src/ui/Panel.tsx && sed -n '1,200p' src/api/health.py && git status --short -- README.md && git diff -- README.md\"",
+        "/usr/bin/bash -lc \"cat > review.txt <<'EOF' src/ui/Panel.tsx src/api/health.py EOF sed -n '1,120p' src/ui/Panel.tsx && sed -n '1,80p' src/api/health.py && cat review.txt && git sta"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    }
+  ]
+}

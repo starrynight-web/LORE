@@ -1,0 +1,139 @@
+{
+  "cold_map_seconds": 2.9,
+  "runs": [
+    {
+      "arm": "baseline",
+      "run": 1,
+      "exit": 0,
+      "seconds": 42.5,
+      "input_tokens": 125130,
+      "output_tokens": 924,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "baseline",
+      "run": 2,
+      "exit": 0,
+      "seconds": 35.0,
+      "input_tokens": 145430,
+      "output_tokens": 937,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "baseline",
+      "run": 3,
+      "exit": 0,
+      "seconds": 25.3,
+      "input_tokens": 101482,
+      "output_tokens": 723,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 1,
+      "exit": 0,
+      "seconds": 49.5,
+      "input_tokens": 250217,
+      "output_tokens": 1304,
+      "tools": [
+        "list_personas",
+        "get_context",
+        "locate"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 2,
+      "exit": 0,
+      "seconds": 39.5,
+      "input_tokens": 194141,
+      "output_tokens": 1302,
+      "tools": [
+        "list_personas",
+        "get_context",
+        "locate"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 3,
+      "exit": 0,
+      "seconds": 49.0,
+      "input_tokens": 410142,
+      "output_tokens": 1613,
+      "tools": [
+        "list_personas",
+        "get_context",
+        "locate"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    }
+  ],
+  "score": {
+    "baseline_pass_rate": 1.0,
+    "lore_pass_rate": 1.0,
+    "baseline_median_input_tokens": 125130,
+    "lore_median_input_tokens": 250217,
+    "input_token_ratio": 2.0,
+    "baseline_median_seconds": 35.0,
+    "lore_median_seconds": 49.0,
+    "time_ratio": 1.4,
+    "gate": true,
+    "tokens": false,
+    "time": false,
+    "lore_wins": false
+  }
+}

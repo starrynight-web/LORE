@@ -1,0 +1,8 @@
+Do these steps in order. Do not edit README.md.
+
+1. As a frontend engineer, change the panel label to Saved. Keep the theme import.
+2. As an accessibility engineer, give the empty button the visible text Save.
+3. As a backend engineer, add a status field with the value ready to the health response.
+4. As a reviewer, write review.txt with one line per file you changed. Do not edit those files again.
+
+Done when src/ui/Panel.tsx contains Saved and Save, src/ui/Panel.tsx still imports ./theme, src/api/health.py contains ready, review.txt names the changed files, and README.md is unchanged.

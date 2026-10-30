@@ -9,28 +9,38 @@ from fastmcp import FastMCP
 
 from lore.core.context import get_context as build_context
 from lore.core.decisions import append_outcome, read_decision
+from lore.core.graph import locate as locate_files
+from lore.core.graph import map_status as read_map_status
 from lore.core.idempotency import recall, remember
-from lore.core.paths import find_project
+from lore.core.instructions import STANDING_INSTRUCTIONS
+from lore.core.paths import find_project, map_root
 from lore.core.personas import find_skill, persona_id, write_skill
 from lore.core.personas import list_personas as load_personas
+from lore.setup.graph_job import start_build
 
 
 def build(project: Path | None = None) -> FastMCP:
-    mcp = FastMCP("lore")
+    mcp = FastMCP("lore", instructions=STANDING_INSTRUCTIONS)
 
-    def root() -> Path:
+    def origin() -> Path:
         if project is not None:
             return project
-        return find_project(Path.cwd())
+        return Path.cwd()
+
+    def root() -> Path:
+        return find_project(origin())
+
+    def maps() -> Path:
+        return map_root(origin())
 
     @mcp.tool
-    def get_context(persona: str, intent: str = "", file_path: str = "") -> dict[str, Any]:
-        """Return one persona's skill summaries and a short codebase-map slice."""
-        return build_context(root(), persona, intent, file_path)
+    def get_context(intent: str = "", persona: str = "", file_path: str = "") -> dict[str, Any]:
+        """Matching skill summaries and the files to open. Call once per task."""
+        return build_context(origin(), persona, intent, file_path)
 
     @mcp.tool
     def get_skill(name: str, persona: str = "") -> dict[str, Any]:
-        """Return the full steps for one stable skill."""
+        """Full steps for one stable skill."""
         owner = persona or None
         doc = find_skill(root(), name, owner)
         if doc is None:
@@ -44,7 +54,7 @@ def build(project: Path | None = None) -> FastMCP:
 
     @mcp.tool
     def list_personas() -> list[dict[str, str]]:
-        """List stable personas. Drafts are omitted."""
+        """Stable persona names."""
         rows = []
         for doc in load_personas(root()):
             if doc.get("status") != "stable":
@@ -63,7 +73,7 @@ def build(project: Path | None = None) -> FastMCP:
         summary: str = "",
         idempotency_key: str = "",
     ) -> dict[str, Any]:
-        """Save a skill as a draft. It is not served until a person approves it."""
+        """Save a skill draft. It is not served until approved."""
         project = root()
         if idempotency_key:
             previous = recall(project, idempotency_key)
@@ -90,7 +100,7 @@ def build(project: Path | None = None) -> FastMCP:
         note: str = "",
         idempotency_key: str = "",
     ) -> dict[str, str]:
-        """Append what the agent did to an existing decision."""
+        """Append an outcome to a decision."""
         project = root()
         if idempotency_key:
             previous = recall(project, idempotency_key)
@@ -110,9 +120,24 @@ def build(project: Path | None = None) -> FastMCP:
 
     @mcp.tool
     def trace(decision_id: str) -> dict[str, Any]:
-        """Read one decision file."""
+        """Read one decision."""
         doc = read_decision(root(), decision_id)
         return {"id": doc.get("id"), "header": doc.header, "body": doc.body}
+
+    @mcp.tool
+    def map_codebase() -> dict[str, Any]:
+        """Start the codebase map. Returns while it runs."""
+        return start_build(maps())
+
+    @mcp.tool
+    def map_status() -> dict[str, Any]:
+        """Map state: missing, running, ready, or failed."""
+        return read_map_status(maps())
+
+    @mcp.tool
+    def locate(intent: str, file_path: str = "") -> dict[str, Any]:
+        """Files for a task. get_context already includes them."""
+        return locate_files(maps(), intent, file_path)
 
     return mcp
 

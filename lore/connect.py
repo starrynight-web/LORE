@@ -12,6 +12,8 @@ import platform
 import shutil
 from pathlib import Path
 
+from lore.core.instructions import RULE_BEGIN, RULE_END, STANDING_INSTRUCTIONS
+
 
 def invocation() -> tuple[str, list[str]]:
     """The program an editor should start, and the arguments that select MCP."""
@@ -229,4 +231,50 @@ def register_agents(
             skipped.append(f"{label}: {path}")
             continue
         written.append(str(path))
+    written.extend(_write_rules(home))
     return {"written": written, "skipped": skipped}
+
+
+def cursor_rule() -> str:
+    return (
+        "---\n"
+        "description: Ask Lore before searching a repository\n"
+        "alwaysApply: true\n"
+        "---\n\n"
+        f"{STANDING_INSTRUCTIONS}\n"
+    )
+
+
+def _write_rules(home: Path) -> list[str]:
+    """Standing instructions for editors whose config directory already exists."""
+    written: list[str] = []
+    cursor = home / ".cursor"
+    if cursor.is_dir() or (cursor / "mcp.json").exists():
+        path = cursor / "rules" / "lore.mdc"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(cursor_rule(), encoding="utf-8")
+        written.append(str(path))
+    if (home / ".codex").is_dir():
+        path = home / ".codex" / "AGENTS.md"
+        _upsert_rule(path)
+        written.append(str(path))
+    if (home / ".claude").is_dir():
+        path = home / ".claude" / "CLAUDE.md"
+        _upsert_rule(path)
+        written.append(str(path))
+    return written
+
+
+def _upsert_rule(path: Path) -> None:
+    block = f"{RULE_BEGIN}\n{STANDING_INSTRUCTIONS}\n{RULE_END}\n"
+    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if RULE_BEGIN in existing and RULE_END in existing:
+        pre, rest = existing.split(RULE_BEGIN, 1)
+        _, post = rest.split(RULE_END, 1)
+        text = pre.rstrip() + "\n\n" + block + post.lstrip("\n")
+    elif existing.strip():
+        text = existing.rstrip() + "\n\n" + block
+    else:
+        text = block
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")

@@ -65,3 +65,10 @@ def test_register_keeps_servers_already_in_the_file(
     assert str(cursor) in result["written"]
     assert any(item.startswith("Claude Code:") for item in result["skipped"])
     assert not (tmp_path / ".config" / "Claude").exists()
+    rule = (tmp_path / ".cursor" / "rules" / "lore.mdc").read_text(encoding="utf-8")
+    assert "alwaysApply: true" in rule
+    assert "get_context once" in rule
+    agents = (tmp_path / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
+    claude = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "get_context once" in agents
+    assert "get_context once" in claude

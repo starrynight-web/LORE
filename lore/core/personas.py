@@ -8,13 +8,19 @@ from lore.core.okf import Doc, read_doc, write_doc
 
 
 def persona_id(name: str) -> str:
-    if name.startswith("persona:"):
-        return name
-    return f"persona:{name}"
+    return f"persona:{persona_slug(name)}"
 
 
 def persona_slug(name: str) -> str:
-    return persona_id(name).split(":", 1)[1]
+    """Fold spaces and capitals so "frontend engineer" is frontend-engineer."""
+    raw = name.strip()
+    if raw.startswith("persona:"):
+        raw = raw.split(":", 1)[1]
+    chars = [ch.lower() if ch.isalnum() else "-" for ch in raw.strip()]
+    slug = "".join(chars).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug or "item"
 
 
 def lore_dir(project: Path) -> Path:

@@ -1,0 +1,20 @@
+{
+  "exit": 0,
+  "seconds": 127.7,
+  "decisions": [
+    "dec-0001.md"
+  ],
+  "tools": [
+    "list_personas",
+    "get_context",
+    "locate"
+  ],
+  "called_lore_before_narration": true,
+  "event_types": [
+    "item.completed",
+    "item.started",
+    "thread.started",
+    "turn.completed",
+    "turn.started"
+  ]
+}

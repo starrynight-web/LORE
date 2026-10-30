@@ -12,4 +12,4 @@ args = ["serve", "--root", "/home/you/path/to/project"]
 
 Or: `codex mcp add lore -- ~/go/bin/lore serve --root "$PWD"`.
 
-Run `/mcp` in a Codex session to check that `lore` is connected. Codex reads `AGENTS.md` for rules.
+Run `/mcp` in a Codex session to check that `lore` is connected. Codex reads `AGENTS.md` for rules. `lore connect` writes a Lore section into `~/.codex/AGENTS.md`.
