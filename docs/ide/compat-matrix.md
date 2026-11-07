@@ -1,6 +1,8 @@
 # MCP client compatibility
 
-Fill this in from [smoke-test.md](smoke-test.md) runs. Use ✅ (works), ⚠️ (partly, add a note), ❌ (not supported), or leave it blank (not tested yet).
+**Historical:** rows below were recorded against the Go `lore serve` demo (12 tools). Solo uses `lore-solo mcp` with a 4-tool coding surface by default. Re-run [smoke-test.md](smoke-test.md) before treating this matrix as current.
+
+Fill this in from smoke-test runs. Use ✅ (works), ⚠️ (partly, add a note), ❌ (not supported), or leave it blank (not tested yet).
 
 | Capability | Cursor | VS Code | Antigravity | Claude Desktop |
 | --- | --- | --- | --- | --- |

@@ -1,0 +1,5 @@
+As an accessibility engineer, give the empty button in src/ui/Panel.tsx visible text Save.
+
+Do not edit README.md. Do not empty the button again.
+
+Done when src/ui/Panel.tsx has a button whose visible text is Save.

@@ -45,7 +45,7 @@ def test_mcp_tools_do_not_bind_a_port(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(socket.socket, "bind", refuse_bind)
 
     async def call() -> None:
-        async with Client(build(project)) as client:
+        async with Client(build(project, surface="full")) as client:
             context = _payload(await client.call_tool("get_context", {"persona": "frontend-engineer"}))
             assert isinstance(context, dict)
             ids = [item["id"] for item in context["items"]]
@@ -97,5 +97,42 @@ def test_mcp_tools_do_not_bind_a_port(tmp_path: Path, monkeypatch: pytest.Monkey
             traced = _payload(await client.call_tool("trace", {"decision_id": context["decision_id"]}))
             assert isinstance(traced, dict)
             assert traced["header"]["verdict"] == "ok"
+
+    asyncio.run(call())
+
+
+def test_coding_surface_exposes_quality_loop_tools(tmp_path: Path) -> None:
+    project = _copy(tmp_path)
+
+    async def call() -> None:
+        async with Client(build(project, surface="coding")) as client:
+            tools = await client.list_tools()
+            names = sorted(tool.name for tool in tools)
+            assert names == ["check_applied", "get_context", "log_decision", "map_codebase"]
+            context = _payload(
+                await client.call_tool(
+                    "get_context",
+                    {"persona": "frontend-engineer", "intent": "button label"},
+                )
+            )
+            assert isinstance(context, dict)
+            cite_ids = context["data"]["cite_ids"]
+            assert cite_ids
+            checked = _payload(
+                await client.call_tool(
+                    "check_applied",
+                    {"decision_id": context["decision_id"], "rule_ids": cite_ids},
+                )
+            )
+            assert isinstance(checked, dict)
+            assert checked["status"] == "pass"
+            logged = _payload(
+                await client.call_tool(
+                    "log_decision",
+                    {"decision_id": context["decision_id"], "outcome": "edited button"},
+                )
+            )
+            assert isinstance(logged, dict)
+            assert logged["status"] == "recorded"
 
     asyncio.run(call())

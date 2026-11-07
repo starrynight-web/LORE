@@ -4,9 +4,20 @@ Work this list in order. Check a box only when the exit line under it is true. E
 
 **Branch:** `solo` (renamed from `solo-approach`, which started from `dev`).
 
-**What this slice is.** One developer. One persona (a role, such as “frontend engineer”) owns a set of skills. The IDE’s agent calls Lore and receives that persona, a one-line summary of each of its skills, and a short slice of the codebase map. The setup website is optional. The agent works when the website is closed.
+**What this slice is.** One developer. Personas own skills. Standing rules + MCP make Lore fire like a DevRelay-style autopilot: `get_context` → edit → `check_applied` → `log_decision`. Graphify maps the codebase. The setup website is optional. Product promise: [QUALITY_PLAN.md](QUALITY_PLAN.md). Enterprise is a **separate** stack on branch `enterprise` — [HOSTING.md](HOSTING.md).
 
-Team and Enterprise are later sections on this same Python engine. They are not in this list.
+## Vision lock / next Solo slices
+
+Work these after the historical phases below. Check a box only when the exit line is true.
+
+- [x] **V.1** Docs: QUALITY_PLAN / HOW_IT_WORKS / FLOW / README / HOSTING / PROTOCOL match the north star (DevRelay-shaped Solo, practical bake-off arms, Solo vs Enterprise).
+- [x] **V.2** Connect writes standing rules for Antigravity + VS Code project files + repo `AGENTS.md` when a project path is known; `STANDING_INSTRUCTIONS` stays the single source.
+- [x] **V.3** MCP server name is `lore-solo` everywhere connect writes (no collision with Go `lore` / Enterprise).
+- [x] **V.4** Quality bake-off arms: `no_skills` / `user_picked` / `agent_chosen` / `lore`; harness + PROTOCOL (agy re-run deferred).
+- [x] **V.5** Devin connect writer + IDE docs refreshed to Solo coding surface.
+- [x] **V.6** Stronger persona/skill matching than bare word intersection (still summaries-only, draft-gated).
+
+**Exit for this section:** each checked item matches the matching engineering change on `solo`.
 
 ## Current shape
 
@@ -152,9 +163,9 @@ This is the product the agent calls. The setup site does not exist yet. Tests mu
 ```json
 {
   "mcpServers": {
-    "lore": {
-      "command": "python",
-      "args": ["-m", "lore", "mcp"]
+    "lore-solo": {
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"]
     }
   }
 }

@@ -1,0 +1,19 @@
+{
+  "runner": "agy",
+  "model": "gemini-3.8-flash-medium",
+  "mcp_server": "lore-solo",
+  "exit": 0,
+  "seconds": 118.2,
+  "tools": [
+    "get_context",
+    "check_applied",
+    "log_decision"
+  ],
+  "process": {
+    "get_context": true,
+    "check_applied": true,
+    "log_decision": true,
+    "ok": true
+  },
+  "passed": true
+}

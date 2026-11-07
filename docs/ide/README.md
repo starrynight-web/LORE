@@ -1,38 +1,39 @@
-# Connecting Lore to your IDE
+# Connecting Lore Solo to your IDE
 
-Lore runs as a local MCP server over stdio: the IDE starts `lore serve --root <project>` and talks to it over stdin/stdout. Nothing listens on a port.
+Lore Solo runs as a local MCP server over stdio. The IDE starts `lore-solo mcp` (working directory = open project, or `LORE_WORKSPACE`). Nothing listens on a port.
+
+Server display name: **`lore-solo`** (avoids colliding with older Go `lore` and Enterprise `lore-enterprise-mcp`).
 
 ## Before you start
 
-1. Install the binary: `go install github.com/starrynight-web/LORE/cmd/lore@dev` (use `@latest` once the code is merged into `main`), or from a checkout of `dev`, `go install ./cmd/lore`. It lands in `~/go/bin/lore`.
-2. In your project, run `lore init` (or `lore init --demo` for the sample auth rules). It creates `.lore/` and prints a ready-to-paste config for each IDE with absolute paths filled in.
-3. Check the server by hand first: `npx @modelcontextprotocol/inspector ~/go/bin/lore serve --root /path/to/project`.
+1. Install: `uvx lore-solo install` (optional map extra; see GitHub #2 / Graphify native build).
+2. Register editors: `uvx lore-solo connect` — writes MCP configs + standing rules.
+3. Or from a clone of the `solo` branch: `./scripts/lore-solo install` then `connect`.
 
-Use an absolute path to the binary in configs. IDEs started from a desktop launcher often don't see your shell `PATH`.
+Default **coding** tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`. Admin tools: `lore-solo mcp --full`.
 
-If a client passes `${workspaceFolder}` through without expanding it, `lore serve` ignores it and finds `.lore/` by walking up from the working directory.
+Product promise and loop: [../solo/QUALITY_PLAN.md](../solo/QUALITY_PLAN.md).
 
 ## Clients
 
-| Client | Page | Status |
+| Client | Page | Notes |
 | --- | --- | --- |
-| Cursor | [cursor.md](cursor.md) | smoke-tested target |
-| VS Code (Copilot agent mode) | [vscode.md](vscode.md) | smoke-tested target |
-| Google Antigravity | [antigravity.md](antigravity.md) | smoke-tested target |
-| Claude Desktop | [claude-desktop.md](claude-desktop.md) | smoke-tested target (chat, prompts, resources) |
-| Claude Code | [claude-code.md](claude-code.md) | config example, not verified |
-| Devin Desktop | [devin-desktop.md](devin-desktop.md) | config example, not verified |
-| OpenAI Codex | [codex.md](codex.md) | config example, not verified |
-| JetBrains (AI Assistant, Junie) | [jetbrains.md](jetbrains.md) | config example, not verified |
-| Zed | [zed.md](zed.md) | config example, not verified |
+| Cursor | [cursor.md](cursor.md) | `~/.cursor/mcp.json` + `rules/lore.mdc` |
+| VS Code (Copilot agent) | [vscode.md](vscode.md) | user `mcp.json` + `.github/copilot-instructions.md` |
+| Google Antigravity | [antigravity.md](antigravity.md) | global Gemini MCP; project `AGENTS.md` / `.agents/rules` |
+| Claude Desktop / Code | [claude-desktop.md](claude-desktop.md), [claude-code.md](claude-code.md) | update command to `lore-solo mcp` |
+| Devin Desktop | [devin-desktop.md](devin-desktop.md) | `.devin/mcp_config.json` + `AGENTS.md` |
+| OpenAI Codex | [codex.md](codex.md) | `[mcp_servers."lore-solo"]` + `AGENTS.md` |
+| JetBrains / Zed | [jetbrains.md](jetbrains.md), [zed.md](zed.md) | same MCP shape; verify locally |
 
-Results go in [compat-matrix.md](compat-matrix.md); the test script is [smoke-test.md](smoke-test.md).
+Older Go-era smoke notes: [compat-matrix.md](compat-matrix.md), [smoke-test.md](smoke-test.md) — treat as historical until re-run on Solo.
 
 ## Making agents call Lore on their own
 
-Server instructions are sent at connect time, but not every client shows them to the model. Add a short rule file as well; [`examples/demo-app`](https://github.com/starrynight-web/LORE/tree/dev/examples/demo-app) (on the `dev` branch for now) has one for each client:
+Connect writes standing instructions from `STANDING_INSTRUCTIONS` into:
 
-- `AGENTS.md`, read by Codex, Antigravity, Devin, Zed, Cursor and others
-- `.cursor/rules/lore.mdc` (Cursor)
-- `.github/copilot-instructions.md` (VS Code Copilot)
-- `.agents/rules/lore.md` (Antigravity)
+- `AGENTS.md` (project + Codex home)
+- `.cursor/rules/lore.mdc`
+- `.github/copilot-instructions.md` (when VS Code is present)
+- `.agents/rules/lore.md` (Antigravity always_on)
+- Claude `CLAUDE.md`

@@ -495,7 +495,10 @@ def connect(request: HttpRequest) -> JsonResponse:
     servers = data.get("mcpServers")
     if not isinstance(servers, dict):
         servers = {}
-    servers["lore"] = mcp_entry("cursor")
+    from lore.connect import MCP_SERVER_NAME
+
+    servers.pop("lore", None)
+    servers[MCP_SERVER_NAME] = mcp_entry("cursor")
     data["mcpServers"] = servers
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return JsonResponse(data)

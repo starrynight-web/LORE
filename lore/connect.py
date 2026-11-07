@@ -1,7 +1,9 @@
 """MCP entry for Lore, and the editor configs the connect command writes.
 
 The command is a local process. The editor starts it with the open project as
-its working directory.
+its working directory. Server display name is always ``lore-solo`` (distinct
+from Enterprise ``lore-enterprise-mcp``). The old Go ``lore`` binary is
+deprecated; connect still strips leftover ``lore`` MCP keys if present.
 """
 
 from __future__ import annotations
@@ -14,6 +16,10 @@ from pathlib import Path
 
 from lore.core.instructions import RULE_BEGIN, RULE_END, STANDING_INSTRUCTIONS
 
+# JSON / TOML key and FastMCP advertised name (keep in sync with mcp_server.build).
+MCP_SERVER_NAME = "lore-solo"
+_LEGACY_SERVER_NAMES = ("lore",)
+
 
 def invocation() -> tuple[str, list[str]]:
     """The program an editor should start, and the arguments that select MCP."""
@@ -23,10 +29,9 @@ def invocation() -> tuple[str, list[str]]:
     installed = _installed_command()
     if installed is not None:
         return str(installed), ["mcp"]
-    for name in ("lore-solo", "lore"):
-        found = shutil.which(name)
-        if found:
-            return found, ["mcp"]
+    found = shutil.which("lore-solo")
+    if found:
+        return found, ["mcp"]
     return "uvx", ["lore-solo", "mcp"]
 
 
@@ -37,14 +42,13 @@ def lore_command() -> str:
 
 def _installed_command() -> Path | None:
     bin_dir = Path.home() / ".lore" / "bin"
-    for name in ("lore-solo", "lore"):
-        base = bin_dir / name
-        if os.name == "nt":
-            windows = base.with_suffix(".exe")
-            if windows.is_file():
-                return windows
-        if base.is_file():
-            return base
+    base = bin_dir / "lore-solo"
+    if os.name == "nt":
+        windows = base.with_suffix(".exe")
+        if windows.is_file():
+            return windows
+    if base.is_file():
+        return base
     return None
 
 
@@ -68,9 +72,15 @@ def mcp_entry(
     entry: dict[str, object] = {"command": chosen, "args": chosen_args}
     if kind == "vscode":
         entry["type"] = "stdio"
+    env: dict[str, str] = {}
     name = client.strip()
     if name:
-        entry["env"] = {"LORE_CLIENT": name}
+        env["LORE_CLIENT"] = name
+    workspace = os.environ.get("LORE_WORKSPACE", "").strip()
+    if not workspace:
+        workspace = str(Path.cwd())
+    env["LORE_WORKSPACE"] = workspace
+    entry["env"] = env
     return entry
 
 
@@ -122,6 +132,11 @@ def host_system(value: str | None = None) -> str:
     return "linux"
 
 
+def _workspace() -> Path:
+    raw = os.environ.get("LORE_WORKSPACE", "").strip()
+    return Path(raw) if raw else Path.cwd()
+
+
 def _write_json(path: Path, key: str, entry: dict[str, object]) -> None:
     data: dict[str, object] = {}
     if path.is_file():
@@ -137,7 +152,9 @@ def _write_json(path: Path, key: str, entry: dict[str, object]) -> None:
     servers = data.get(key)
     if not isinstance(servers, dict):
         servers = {}
-    servers["lore"] = entry
+    for legacy in _LEGACY_SERVER_NAMES:
+        servers.pop(legacy, None)
+    servers[MCP_SERVER_NAME] = entry
     data[key] = servers
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -168,12 +185,23 @@ def _write_codex(path: Path, command: str, client: str = "", args: list[str] | N
         backup = path.with_name(path.name + ".lore.bak")
         if not backup.exists():
             shutil.copyfile(path, backup)
-    kept = _strip_toml_section(existing, "[mcp_servers.lore]")
+    kept = existing
+    for heading in (
+        '[mcp_servers.lore]',
+        '[mcp_servers."lore-solo"]',
+        "[mcp_servers.lore-solo]",
+    ):
+        kept = _strip_toml_section(kept, heading)
     rendered = ", ".join(json.dumps(part) for part in (args if args is not None else mcp_args()))
     env = ""
     if client.strip():
         env = f"env = {{ LORE_CLIENT = {json.dumps(client.strip())} }}\n"
-    block = f"[mcp_servers.lore]\ncommand = {json.dumps(command)}\nargs = [{rendered}]\n{env}"
+    block = (
+        f'[mcp_servers."{MCP_SERVER_NAME}"]\n'
+        f"command = {json.dumps(command)}\n"
+        f"args = [{rendered}]\n"
+        f"{env}"
+    )
     body = f"{kept}\n\n{block}" if kept else block
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body if body.endswith("\n") else body + "\n", encoding="utf-8")
@@ -184,12 +212,15 @@ def _targets(home: Path, system: str) -> list[tuple[str, Path, str, str]]:
     if system == "darwin":
         desktop = home / "Library" / "Application Support" / "Claude"
         vscode = home / "Library" / "Application Support" / "Code" / "User"
+        devin_global = home / "Library" / "Application Support" / "devin"
     elif system == "windows":
         desktop = home / "AppData" / "Roaming" / "Claude"
         vscode = home / "AppData" / "Roaming" / "Code" / "User"
+        devin_global = home / "AppData" / "Roaming" / "devin"
     else:
         desktop = home / ".config" / "Claude"
         vscode = home / ".config" / "Code" / "User"
+        devin_global = home / ".config" / "devin"
     rows: list[tuple[str, Path, str, str]] = []
     cursor = home / ".cursor"
     if cursor.is_dir() or (cursor / "mcp.json").exists():
@@ -206,6 +237,8 @@ def _targets(home: Path, system: str) -> list[tuple[str, Path, str, str]]:
     gemini = home / ".gemini" / "config"
     if gemini.is_dir():
         rows.append(("Antigravity", gemini / "mcp_config.json", "mcpServers", "other"))
+    if devin_global.is_dir() or (devin_global / "mcp_config.json").exists():
+        rows.append(("Devin", devin_global / "mcp_config.json", "mcpServers", "other"))
     return rows
 
 
@@ -232,6 +265,9 @@ def register_agents(
             continue
         written.append(str(path))
     written.extend(_write_rules(home))
+    written.extend(
+        _write_project_files(_workspace(), home=home, command=command, args=args)
+    )
     return {"written": written, "skipped": skipped}
 
 
@@ -240,6 +276,15 @@ def cursor_rule() -> str:
         "---\n"
         "description: Ask Lore before searching a repository\n"
         "alwaysApply: true\n"
+        "---\n\n"
+        f"{STANDING_INSTRUCTIONS}\n"
+    )
+
+
+def antigravity_rule() -> str:
+    return (
+        "---\n"
+        "trigger: always_on\n"
         "---\n\n"
         f"{STANDING_INSTRUCTIONS}\n"
     )
@@ -262,6 +307,51 @@ def _write_rules(home: Path) -> list[str]:
         path = home / ".claude" / "CLAUDE.md"
         _upsert_rule(path)
         written.append(str(path))
+    return written
+
+
+def _write_project_files(
+    workspace: Path,
+    *,
+    home: Path,
+    command: str,
+    args: list[str],
+) -> list[str]:
+    """Repo-root rules and optional Devin / Antigravity / VS Code project files."""
+    written: list[str] = []
+    if not workspace.exists():
+        return written
+    agents = workspace / "AGENTS.md"
+    _upsert_rule(agents)
+    written.append(str(agents))
+
+    agents_dir = workspace / ".agents" / "rules"
+    gemini_cfg = home / ".gemini" / "config"
+    if (workspace / ".agents").exists() or gemini_cfg.is_dir():
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        path = agents_dir / "lore.md"
+        path.write_text(antigravity_rule(), encoding="utf-8")
+        written.append(str(path))
+
+    vscode_user = (
+        (home / ".config" / "Code" / "User").is_dir()
+        or (home / "Library" / "Application Support" / "Code" / "User").is_dir()
+        or (home / "AppData" / "Roaming" / "Code" / "User").is_dir()
+    )
+    if vscode_user or (workspace / ".vscode").exists():
+        copilot = workspace / ".github" / "copilot-instructions.md"
+        _upsert_rule(copilot)
+        written.append(str(copilot))
+
+    if (workspace / ".devin").exists() or (home / ".config" / "devin").is_dir():
+        devin_dir = workspace / ".devin"
+        devin_dir.mkdir(parents=True, exist_ok=True)
+        _write_json(
+            devin_dir / "mcp_config.json",
+            "mcpServers",
+            mcp_entry("other", command, client="Devin", args=args),
+        )
+        written.append(str(devin_dir / "mcp_config.json"))
     return written
 
 

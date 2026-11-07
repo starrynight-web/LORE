@@ -1,35 +1,38 @@
 # Benchmark protocol
 
-Frozen before the timed runs. The task text is `examples/bench-app/TASK.txt`. The app is `examples/bench-app`. The skill pack is this library.
+Frozen for quality-first scoring. Token cuts are secondary diagnostics only — Solo does not claim an 85–95% (or 70%) total-input win.
 
-## Population
+The skill pack is this library (`inventory.json` records population). Stable in-scope skills remain: `design-taste-frontend`, `frontend-design`, `minimalist-ui`, `shadcn-best-practices`, `tailwind-best-practices`, `vercel-react-best-practices`, `web-a11y-authoring`, `web-a11y-review`, `create-a-backend`, `supabase-postgres-best-practices`, `review-security`, and `web-design-guidelines`.
 
-Skill files and editor rules were counted from `~/.agents/skills`, `~/.cursor/skills`, `~/.cursor/skills-cursor`, `~/.cursor/plugins/cache`, `~/.codex`, and `~/.claude`. `inventory.json` records the name, source path, and description. One copy of each skill name is filed here. Duplicate paths are counted and not filed twice.
+## Quality bake-off (primary)
 
-## Strata
+App: `examples/bench-quality-app/`. Tasks: [QUALITY_TASKS.md](QUALITY_TASKS.md).
 
-In scope, and the only skills marked stable: UI, accessibility, React, Tailwind, API or data, and review. The stable names are `design-taste-frontend`, `frontend-design`, `minimalist-ui`, `shadcn-best-practices`, `tailwind-best-practices`, `vercel-react-best-practices`, `web-a11y-authoring`, `web-a11y-review`, `create-a-backend`, `supabase-postgres-best-practices`, `review-security`, and `web-design-guidelines`.
+Same model within a suite (Antigravity: `gemini-3.8-flash-medium`). New headless session each run. Report pass rates across scenarios.
 
-Out of scope, filed as drafts and not served: editor meta skills, payments, Figma, video, Notion, hackathon and community workflows, and the rest of the platform catalog.
+### Arms (practical skill use)
 
-## Arms
+- **no_skills:** runner alone, no Lore MCP, no Lore rule. Models “forgot skills.”
+- **user_picked:** no Lore MCP; `AGENTS.md` names the fixed right skill file(s) for that scenario (explicit user pick). Wrong-pick variants may be added later for discrimination.
+- **agent_chosen:** no Lore MCP; skills copied on disk; `AGENTS.md` says use whatever skills you need (agent decides).
+- **lore:** skills only through Lore. Standing quality rule in `AGENTS.md`. Knowledge store copied into the worktree. Workspace MCP server name `lore-solo` (must not collide with a disabled global `lore` or Enterprise `lore-enterprise-mcp`). Confirm requires DONE `get_context`; lore process gate also requires DONE `check_applied` (pass) and `log_decision`.
 
-Same model (`gpt-6-luna`, medium effort). New Codex session each run. Three runs. Report the median.
+Legacy **paste_skills** (read all twelve skill bodies) is retired as a primary comparator; historical numbers stay in HURDLES only.
 
-- Baseline: Codex's own skills, no Lore MCP entry, no Lore rule.
-- Lore: those in-scope skills served only through Lore. Native skill files are not in that session's Codex home. The standing Lore rule is the project `AGENTS.md`.
+### Scoreboard
 
-The timed IDE is Codex, because it can run a session without a window. Cursor's always-on rule is written by `lore connect` and covered by the connect test. The Cursor CLI does not start a headless chat.
+- **Primary:** rubric pass rate for lore ≥ `user_picked`, ≥ `agent_chosen`, and ≥ `no_skills`.
+- **Process (lore only):** every completed lore run has successful `get_context`, `check_applied` status pass (or skip when nothing to cite), and `log_decision`.
+- **Time (secondary):** lore median seconds ≤ 1.25× max(`agent_chosen`, `user_picked`) medians (whichever practical arm is slower).
+- Tokens / fresh tokens may be logged; they are not fail lines.
+- Cold Graphify extract is timed once outside the session timer when the lore arm needs a map.
 
-## Scoreboard
+`quality_claim` is true only when primary and process gates pass and the time secondary ceiling holds.
 
-- Gate: checklist pass rate at least as high as baseline.
-- Primary: median input tokens at or below 70 percent of baseline.
-- Time: median wall clock, with the map already built, at or below 1.15 times baseline.
-- The cold Graphify extract is timed once and reported on its own line.
+## Legacy token comparison (historical)
 
-The charter's 85 to 95 percent reduction is reported. It is not the first fail line.
+Earlier Codex suites used `examples/bench-app/TASK.txt` with a 70% input-token primary gate. Those results remain under `results*.json` / HURDLES for history. That charter token claim is **retired** for Solo product messaging. See [QUALITY_PLAN.md](../../docs/solo/QUALITY_PLAN.md).
 
-## If Lore loses
+## If Lore loses on quality
 
-Read traces in this order and change only the first cause they support, then run the same task once more: the agent walked the repo anyway; `get_context` returned every stable skill; the map answer was large; `get_skill` was called for unused skills; the timer included the cold map build.
+Read traces in this order and change only the first cause they support, then re-run the failing scenario: the agent skipped Lore; `get_context` returned no skills; the agent edited a decoy file; `check_applied` failed or was skipped wrongly; `user_picked` / `agent_chosen` did not follow their rule; the rubric checked the wrong file.

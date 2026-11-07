@@ -1,14 +1,18 @@
-"""`lore-solo install`, `setup`, `uninstall`, `connect`, and `mcp`."""
+"""`lore-solo install`, `setup`, `uninstall`, `connect`, `mcp`, and `map`."""
 
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
-        print("usage: lore-solo install|setup|uninstall|connect|mcp", file=sys.stderr)
+        print(
+            "usage: lore-solo install|setup|uninstall|connect|mcp|map",
+            file=sys.stderr,
+        )
         return 0
     command, rest = args[0], args[1:]
     if command == "install":
@@ -40,11 +44,24 @@ def main(argv: list[str] | None = None) -> int:
 
         run_mcp(rest)
         return 0
+    if command == "map":
+        return _run_map(rest)
     print(
-        f"unknown command {command!r}; use install, setup, uninstall, connect, or mcp",
+        "unknown command "
+        f"{command!r}; use install, setup, uninstall, connect, mcp, or map",
         file=sys.stderr,
     )
     return 2
+
+
+def _run_map(argv: list[str]) -> int:
+    from lore.core.paths import map_root
+    from lore.setup.graph_job import start_build
+
+    start = Path(argv[0]) if argv else Path.cwd()
+    status = start_build(map_root(start))
+    print(status.get("state", "running"))
+    return 0
 
 
 if __name__ == "__main__":

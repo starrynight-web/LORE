@@ -1090,7 +1090,6 @@ dependencies = [
     { name = "django", version = "5.2.18", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "django", version = "6.1.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "fastmcp" },
-    { name = "graphifyy" },
     { name = "pyyaml" },
     { name = "tiktoken" },
 ]
@@ -1104,12 +1103,15 @@ dev = [
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
 ]
+map = [
+    { name = "graphifyy" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "django", specifier = ">=5.1" },
     { name = "fastmcp", specifier = ">=2" },
-    { name = "graphifyy", specifier = "==0.9.93" },
+    { name = "graphifyy", marker = "extra == 'map'", specifier = "==0.9.93" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
@@ -1119,7 +1121,7 @@ requires-dist = [
     { name = "types-jsonschema", marker = "extra == 'dev'" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["map", "dev"]
 
 [[package]]
 name = "markdown-it-py"

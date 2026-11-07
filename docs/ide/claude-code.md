@@ -1,20 +1,18 @@
 # Claude Code
 
-> Config example, not verified. Claude Code needs a paid Claude plan to sign in, so it isn't part of the smoke tests.
-
-Project config: `.mcp.json` at the repo root.
+Prefer `uvx lore-solo connect`, which updates `~/.claude.json` (or the Claude Desktop-style config) and upserts `~/.claude/CLAUDE.md`.
 
 ```json
 {
   "mcpServers": {
-    "lore": {
-      "command": "/home/you/go/bin/lore",
-      "args": ["serve", "--root", "."]
+    "lore-solo": {
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"]
     }
   }
 }
 ```
 
-Or from the CLI: `claude mcp add lore -- ~/go/bin/lore serve --root "$PWD"`.
+Or: `claude mcp add lore-solo -- uvx lore-solo mcp`.
 
-Claude Code reads `CLAUDE.md`. `lore connect` writes a Lore section into `~/.claude/CLAUDE.md`.
+Standing instructions in `CLAUDE.md` describe the coding loop. Default surface is four coding tools; use `lore-solo mcp --full` for admin tools.

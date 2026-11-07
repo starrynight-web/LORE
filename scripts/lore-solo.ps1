@@ -68,8 +68,16 @@ switch ($Command) {
     & $Bin connect
     exit $LASTEXITCODE
   }
+  "map" {
+    Require-Lore
+    if ($env:LORE_PROJECT) { Set-Location $env:LORE_PROJECT }
+    $MapArgs = @()
+    if ($args.Count -gt 1) { $MapArgs = $args[1..($args.Count - 1)] }
+    & $Bin map @MapArgs
+    exit $LASTEXITCODE
+  }
   default {
-    Write-Error "usage: scripts/lore-solo.ps1 install|setup|uninstall|mcp|connect"
+    Write-Error "usage: scripts/lore-solo.ps1 install|setup|uninstall|mcp|connect|map"
     exit 2
   }
 }

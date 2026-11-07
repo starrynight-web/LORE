@@ -1,5 +1,31 @@
-# Paid hosting, later
+# Solo vs Enterprise (tiers)
 
-A later paid host syncs the `.lore/` folder and `graphify-out/` for someone who wants the same personas and codebase map on more than one computer. The folder on the laptop stays the copy the developer owns. The agent on that laptop still reads those files directly.
+Solo and Enterprise share a story — MCP into the same agent harnesses, small cited results, drafts withheld until approved — but they are different products on different branches.
 
-This slice does not add accounts, Stripe, or Postgres. The setup key only guards the local website.
+## Solo (this tree, `solo` branch)
+
+- Local personas and skills under `.lore/` (markdown OKF).
+- Optional Graphify map under `graphify-out/` (file store, not a graph database).
+- MCP server display name: **`lore-solo`**.
+- Coding tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`.
+- Setup key only guards the local website. No accounts, Stripe, or Postgres.
+
+Graphify’s native stack (`graphifyy` → `tree-sitter`) may need a C/C++ toolchain when no wheel matches (on Windows that means MSVC). Core Lore installs without map; see GitHub #2 and `lore-solo install --no-map`.
+
+## Enterprise (`enterprise` branch)
+
+Customer-deployed governed knowledge grid: Django + Next.js + Qdrant + Celery, OCR/ingestion, 9-layer governance, tenancy, audit lineage.
+
+- MCP server: **`lore-enterprise-mcp`** (`backend/mcp_server.py` on that branch).
+- Tools include governed `get_context`, `search`, `check_compliance`, conflicts, `trace`, `query_as_of`, escalate, OCR, and more — see `docs/enterprise/MCP_TOOL_REFERENCE.md` on `enterprise`.
+
+## Compatibility rules
+
+- Same harnesses (Cursor, VS Code, Antigravity, …) via MCP stdio.
+- Keep familiar verbs where possible (`get_context`, `log_decision`, skill fetch).
+- Keep the small-result / ~800-token habit so agents do not learn a different pattern per tier.
+- Use **distinct MCP server names** (`lore-solo` vs `lore-enterprise-mcp`) so IDE schema caches never collide. The old Go `lore` binary is deprecated and removed; do not re-register a server key named only `lore`.
+
+A later paid host may sync Solo’s `.lore/` and `graphify-out/` across machines. That is not built here. The laptop copy remains what the agent reads.
+
+Inspect Enterprise without mixing trees: `git show origin/enterprise:README.md`.

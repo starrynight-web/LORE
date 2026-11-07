@@ -11,10 +11,12 @@ dependencies = [
     "tiktoken>=0.7",
     "fastmcp>=2",
     "django>=5.1",
-    "graphifyy==0.9.93",
 ]
 
 [project.optional-dependencies]
+map = [
+    "graphifyy==0.9.93",
+]
 dev = [
     "pytest>=8",
     "ruff>=0.6",

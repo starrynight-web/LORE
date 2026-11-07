@@ -1,24 +1,22 @@
 # VS Code (GitHub Copilot agent mode)
 
-Project config: `.vscode/mcp.json`. VS Code uses `servers`, not `mcpServers`.
+User config (written by connect when VS Code’s user folder exists): `…/Code/User/mcp.json`. VS Code uses `servers`, not `mcpServers`.
 
 ```json
 {
   "servers": {
-    "lore": {
+    "lore-solo": {
       "type": "stdio",
-      "command": "${userHome}/go/bin/lore",
-      "args": ["serve", "--root", "${workspaceFolder}"]
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"]
     }
   }
 }
 ```
 
-1. Open the file; a **Start** code lens appears above `lore`. Click it, or run **MCP: List Servers → lore → Start**.
-2. Open Copilot Chat in **Agent** mode and check the tools picker: Lore's 12 tools should be listed and ticked.
-3. Add `.github/copilot-instructions.md` (see `examples/demo-app`) so the agent calls `get_context` before editing.
-4. Prompts appear as `/mcp.lore.<name>`; resources via **Add Context → MCP Resources**.
+1. **MCP: List Servers → lore-solo → Start**.
+2. Open Copilot Chat in **Agent** mode; confirm coding tools are listed.
+3. Connect upserts `.github/copilot-instructions.md` with Lore standing instructions so the agent calls `get_context` before editing, then `check_applied` / `log_decision`.
+4. Full surface (`--full`) exposes admin tools that may prompt for confirmation.
 
-Read tools are annotated `readOnlyHint`, so VS Code may run them without asking. Write tools (`ingest`, `update_persona`, `log_decision`) will ask for confirmation.
-
-Logs: **MCP: List Servers → lore → Show Output**.
+Logs: **MCP: List Servers → lore-solo → Show Output**.

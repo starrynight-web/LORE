@@ -11,11 +11,30 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from lore.core.graph import BUILDING_NOTE, KNOWN_SCHEMA, _version, git_head, map_is_stale
+from lore.core.graph import (
+    BUILDING_NOTE,
+    KNOWN_SCHEMA,
+    _version,
+    git_head,
+    map_is_stale,
+    newest_source_mtime,
+)
+
+PENDING_NOTE = "The map will refresh shortly."
+QUIET_SECONDS = 45.0
+CEILING_SECONDS = 90.0
+MISSING_MAP_MESSAGE = (
+    "Graphify is not installed in this Lore environment. "
+    "Run: lore-solo install --map"
+)
+
+Clock = Callable[[], float]
 
 
 def _graphify() -> Path:
@@ -27,7 +46,7 @@ def _graphify() -> Path:
     found = shutil.which("graphify")
     if found is not None:
         return Path(found)
-    raise RuntimeError("Graphify is not installed in this Lore environment.")
+    raise RuntimeError(MISSING_MAP_MESSAGE)
 
 
 def run_graphify(project: Path) -> None:
@@ -55,12 +74,15 @@ def run_graphify(project: Path) -> None:
         )
 
 
-def ensure_fresh(project: Path) -> str | None:
+def ensure_fresh(project: Path, *, now: Clock | None = None) -> str | None:
     """Start a build when the map is missing or stale. Return a note, or None.
 
     A failed build is not started again until the git commit changes, so a
-    broken extract does not launch Graphify on every context call.
+    broken extract does not launch Graphify on every context call. Rebuilds of
+    an existing map wait for a quiet window (or a ceiling) so commit bursts
+    coalesce into one Graphify run for the latest HEAD.
     """
+    clock = now or time.time
     status_path = project / ".lore" / "graph-status.json"
     status = _read(status_path)
     state = str(status.get("state") or "")
@@ -68,10 +90,63 @@ def ensure_fresh(project: Path) -> str | None:
         return BUILDING_NOTE
     if state == "failed" and not _head_moved(project, status):
         return str(status.get("error") or "The map failed.")
-    if map_is_stale(project):
+    if not map_is_stale(project):
+        return None
+
+    graph = project / "graphify-out" / "graph.json"
+    has_sources = newest_source_mtime(project) is not None
+    if not has_sources and not graph.is_file():
+        return None
+
+    # First map for a tree with sources: start immediately.
+    if not graph.is_file():
         start_build(project, status_path)
         return BUILDING_NOTE
-    return None
+
+    return _coalesce_rebuild(project, status_path, status, clock())
+
+
+def _coalesce_rebuild(
+    project: Path,
+    status_path: Path,
+    status: dict[str, Any],
+    moment: float,
+) -> str:
+    head = git_head(project) or ""
+    pending_since = status.get("pending_since")
+    seen_head = str(status.get("seen_head") or "")
+    quiet_since = status.get("quiet_since")
+
+    if pending_since is None:
+        _write(
+            status_path,
+            {
+                **status,
+                "pending_since": moment,
+                "quiet_since": moment,
+                "seen_head": head,
+            },
+        )
+        return PENDING_NOTE
+
+    if head != seen_head:
+        _write(
+            status_path,
+            {
+                **status,
+                "pending_since": float(pending_since),
+                "quiet_since": moment,
+                "seen_head": head,
+            },
+        )
+        return PENDING_NOTE
+
+    quiet_start = float(quiet_since if quiet_since is not None else pending_since)
+    burst_start = float(pending_since)
+    if (moment - quiet_start) >= QUIET_SECONDS or (moment - burst_start) >= CEILING_SECONDS:
+        start_build(project, status_path)
+        return BUILDING_NOTE
+    return PENDING_NOTE
 
 
 def start_build(project: Path, status_path: Path | None = None) -> dict[str, Any]:

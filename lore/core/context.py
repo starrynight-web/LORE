@@ -43,6 +43,12 @@ _STOP = frozenset(
         "them",
         "then",
         "than",
+        "the",
+        "and",
+        "for",
+        "are",
+        "was",
+        "were",
         "these",
         "this",
         "those",
@@ -56,6 +62,76 @@ _STOP = frozenset(
 )
 # Shared role words. A persona matches on its distinctive name, not on "engineer" alone.
 _ROLE = frozenset({"agent", "developer", "engineer"})
+
+# Path tokens that hint which persona fits when the task sentence names no role.
+_PATH_HINTS: dict[str, frozenset[str]] = {
+    "frontend": frozenset(
+        {
+            "tsx",
+            "jsx",
+            "css",
+            "scss",
+            "html",
+            "svelte",
+            "vue",
+            "components",
+            "component",
+            "ui",
+            "button",
+            "panel",
+            "layout",
+            "styles",
+            "tailwind",
+            "react",
+        }
+    ),
+    "backend": frozenset(
+        {
+            "py",
+            "go",
+            "rs",
+            "java",
+            "kt",
+            "php",
+            "rb",
+            "api",
+            "server",
+            "sql",
+            "db",
+            "migration",
+            "migrations",
+            "schema",
+            "handler",
+            "routes",
+        }
+    ),
+    "accessibility": frozenset(
+        {
+            "a11y",
+            "aria",
+            "label",
+            "accessible",
+            "screenreader",
+        }
+    ),
+}
+
+# Expand short task words into related tokens so routing is not pure string equality.
+_ALIASES: dict[str, frozenset[str]] = {
+    "a11y": frozenset({"accessibility", "accessible", "aria", "label"}),
+    "accessibility": frozenset({"a11y", "accessible", "aria", "label"}),
+    "accessible": frozenset({"a11y", "accessibility", "aria", "label"}),
+    "api": frozenset({"backend", "endpoint", "health", "status", "server"}),
+    "backend": frozenset({"api", "server", "endpoint", "health"}),
+    "frontend": frozenset({"ui", "panel", "button", "component", "react"}),
+    "ui": frozenset({"frontend", "panel", "button", "component"}),
+    "panel": frozenset({"frontend", "ui", "button", "component"}),
+    "button": frozenset({"frontend", "ui", "label", "accessible"}),
+    "label": frozenset({"a11y", "accessibility", "accessible", "aria", "button"}),
+    "health": frozenset({"api", "backend", "status", "endpoint"}),
+    "status": frozenset({"api", "backend", "health", "ready"}),
+    "review": frozenset({"reviewer", "security", "guidelines"}),
+}
 
 
 def get_context(
@@ -174,29 +250,59 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
     files = found.get("files") if isinstance(found, dict) else []
     if not isinstance(files, list):
         files = []
-    words = _tokens(intent)
+    paths = [str(item.get("path")) for item in files if isinstance(item, dict) and item.get("path")]
+    words = _query_tokens(intent)
+    # Path hints come from the explicit file_path only, not locate hits, so a
+    # weak intent cannot pin a persona through incidental map matches.
+    path_words = _expand(_path_tokens(file_path, []))
     chosen: list[Doc] = []
     personas: list[str] = []
     drafts = 0
+    stable: list[tuple[str, Doc]] = []
+    scored_personas: list[tuple[int, str]] = []
     for doc in list_personas(project):
+        name = str(doc.get("id") or "")
+        distinctive = _persona_tokens(doc, name) - _ROLE
         if doc.get("status") != "stable":
-            distinctive = _tokens(f"{persona_slug(str(doc.get('id') or ''))} {doc.get('title') or ''}") - _ROLE
             if words and distinctive & words:
                 drafts += 1
             continue
-        name = str(doc.get("id") or "")
-        distinctive = _tokens(f"{persona_slug(name)} {doc.get('title') or ''} {doc.get('summary') or ''}") - _ROLE
-        if words and not (distinctive & words):
-            continue
-        if not words:
-            continue
-        personas.append(name)
+        stable.append((name, doc))
+        score = _overlap_score(distinctive, words)
+        if score:
+            scored_personas.append((score, name))
+
+    listed_all = False
+    if scored_personas:
+        scored_personas.sort(key=lambda row: (-row[0], row[1]))
+        personas = [name for _score, name in scored_personas]
+    elif stable:
+        hinted = _personas_from_path_hints(stable, path_words)
+        if hinted:
+            personas = hinted
+        else:
+            personas = [name for name, _doc in stable]
+            listed_all = True
+
+    # When we only listed every persona as a fallback, require a real skill hit
+    # against the raw intent (not alias expansion alone) so weak sentences stay
+    # ok_with_notes instead of pulling random skills.
+    skill_query = words or path_words
+    strict_query = _tokens(intent) or path_words
+    ranked: list[tuple[int, str, Doc]] = []
+    for name in personas:
         for skill in served_skills(project, name):
-            hay = _tokens(f"{skill.get('title') or ''} {skill.get('summary') or ''}")
-            if hay & words:
-                chosen.append(skill)
-    paths = [str(item.get("path")) for item in files if isinstance(item, dict) and item.get("path")]
-    if not chosen and not paths:
+            hay = _skill_tokens(skill)
+            if listed_all:
+                score = _overlap_score(hay, strict_query) if strict_query else 0
+            else:
+                score = _overlap_score(hay, skill_query) if skill_query else 0
+            if score:
+                ranked.append((score, str(skill.get("id") or ""), skill))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    chosen = [skill for _score, _ident, skill in ranked]
+
+    if not personas and not paths:
         summary = "No persona or file matched this task."
         if graph_notes:
             summary = f"{summary} {' '.join(graph_notes)}"
@@ -216,10 +322,15 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
             files=files,
             personas=personas,
         )
+
     items, omitted, used = _fit("", chosen, [], limit, max_items)
     parts: list[str] = []
     if personas:
-        parts.append(", ".join(persona.split(":", 1)[-1] for persona in personas) + ".")
+        labels = ", ".join(persona.split(":", 1)[-1] for persona in personas)
+        if listed_all:
+            parts.append(f"Available personas: {labels}.")
+        else:
+            parts.append(f"{labels}.")
     if paths:
         parts.append("Files: " + ", ".join(paths) + ".")
     if omitted:
@@ -227,8 +338,15 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
     if graph_notes:
         parts.append(" ".join(graph_notes))
     summary = " ".join(parts) or "Files and skills for this task."
-    verdict = "ok" if items else "no_knowledge"
-    directive = "proceed_and_cite" if items else "proceed"
+    if items:
+        verdict = "ok"
+        directive = "proceed_and_cite"
+    elif personas:
+        verdict = "ok_with_notes"
+        directive = "proceed"
+    else:
+        verdict = "no_knowledge"
+        directive = "proceed"
     return _finish(
         project,
         persona="task",
@@ -248,8 +366,98 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
     )
 
 
+def _path_tokens(file_path: str, paths: list[str]) -> set[str]:
+    bits: list[str] = []
+    for raw in (file_path, *paths):
+        if not raw:
+            continue
+        normalized = raw.replace("\\", "/")
+        bits.append(normalized)
+        bits.append(Path(normalized).stem)
+        bits.append(Path(normalized).suffix.lstrip("."))
+        bits.extend(Path(normalized).parts)
+    return _tokens(" ".join(bits)) | {
+        part.lower()
+        for part in bits
+        if part and len(part) >= 2 and part.replace(".", "").isalnum()
+    }
+
+
+def _personas_from_path_hints(
+    stable: list[tuple[str, Doc]],
+    path_words: set[str],
+) -> list[str]:
+    if not path_words:
+        return []
+    matched: list[str] = []
+    for name, _doc in stable:
+        slug = persona_slug(name)
+        for hint, tokens in _PATH_HINTS.items():
+            if hint not in slug:
+                continue
+            if path_words & tokens:
+                matched.append(name)
+                break
+    return matched
+
+
 def _tokens(text: str) -> set[str]:
-    return {token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) >= 4 and token not in _STOP}
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) >= 4 and token not in _STOP
+    }
+
+
+def _expand(words: set[str]) -> set[str]:
+    out = set(words)
+    for word in words:
+        out |= set(_ALIASES.get(word, ()))
+    return out
+
+
+def _query_tokens(text: str) -> set[str]:
+    """Tokenize intent/path text and fold in short alias keys found as whole words."""
+    base = _tokens(text)
+    lower = text.lower()
+    for key in _ALIASES:
+        if re.search(rf"\b{re.escape(key)}\b", lower):
+            base.add(key)
+    return _expand(base)
+
+
+def _overlap_score(hay: set[str], query: set[str]) -> int:
+    return len(hay & query)
+
+
+def _persona_tokens(doc: Doc, name: str) -> set[str]:
+    bits = [
+        persona_slug(name),
+        str(doc.get("title") or ""),
+        str(doc.get("summary") or ""),
+        str(doc.get("description") or ""),
+    ]
+    body = (doc.body or "").strip()
+    if body:
+        bits.append(body.split("\n", 1)[0][:240])
+    return _tokens(" ".join(bits))
+
+
+def _skill_tokens(skill: Doc) -> set[str]:
+    # Do not index the skill id — persona slug tokens there match every skill
+    # under that role and drown out title/summary signal.
+    bits = [
+        str(skill.get("title") or ""),
+        str(skill.get("summary") or ""),
+        str(skill.get("description") or ""),
+        str(skill.get("when_to_use") or ""),
+    ]
+    tags = skill.header.get("tags")
+    if isinstance(tags, list):
+        bits.extend(str(tag) for tag in tags)
+    elif tags:
+        bits.append(str(tags))
+    return _tokens(" ".join(bits))
 
 
 def _refresh_map(maps: Path, notes: list[str]) -> None:
@@ -344,9 +552,12 @@ def _finish(
     files: list[dict[str, Any]] | None = None,
     personas: list[str] | None = None,
 ) -> dict[str, Any]:
+    included = [str(item["id"]) for item in items]
+    cite_ids = [str(item["id"]) for item in items if item.get("kind") == "skill"]
+    if cite_ids:
+        summary = f"{summary} Cite: {', '.join(cite_ids)}."
     if used is None:
         used = count_tokens(summary)
-    included = [str(item["id"]) for item in items]
     record = allocate(
         project,
         {
@@ -395,6 +606,7 @@ def _finish(
             "persona": persona,
             "omitted": omitted,
             "graph_notes": graph_notes,
+            "cite_ids": cite_ids,
             **({"files": files} if files is not None else {}),
             **({"personas": personas} if personas is not None else {}),
         },

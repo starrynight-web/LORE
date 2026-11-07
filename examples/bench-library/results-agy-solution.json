@@ -1,0 +1,160 @@
+{
+  "runner": "agy",
+  "model": "gemini-3.8-flash-medium",
+  "mcp_server": "lore-solo",
+  "cold_map_seconds": 0.8,
+  "runs": [
+    {
+      "arm": "baseline",
+      "run": 1,
+      "exit": 0,
+      "seconds": 123.9,
+      "input_tokens": 408562,
+      "cached_input_tokens": 349938,
+      "fresh_input_tokens": 58624,
+      "output_tokens": 4991,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "baseline",
+      "run": 2,
+      "exit": 0,
+      "seconds": 150.8,
+      "input_tokens": 526975,
+      "cached_input_tokens": 460037,
+      "fresh_input_tokens": 66938,
+      "output_tokens": 5263,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "baseline",
+      "run": 3,
+      "exit": 0,
+      "seconds": 169.6,
+      "input_tokens": 661206,
+      "cached_input_tokens": 584400,
+      "fresh_input_tokens": 76806,
+      "output_tokens": 5434,
+      "tools": [],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true
+    },
+    {
+      "arm": "lore",
+      "run": 1,
+      "exit": 0,
+      "seconds": 129.4,
+      "input_tokens": 509406,
+      "cached_input_tokens": 444788,
+      "fresh_input_tokens": 64618,
+      "output_tokens": 6606,
+      "tools": [
+        "get_context"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true,
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "arm": "lore",
+      "run": 2,
+      "exit": 0,
+      "seconds": 147.6,
+      "input_tokens": 536020,
+      "cached_input_tokens": 468507,
+      "fresh_input_tokens": 67513,
+      "output_tokens": 5926,
+      "tools": [
+        "get_context"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true,
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "arm": "lore",
+      "run": 3,
+      "exit": 0,
+      "seconds": 120.5,
+      "input_tokens": 548429,
+      "cached_input_tokens": 481427,
+      "fresh_input_tokens": 67002,
+      "output_tokens": 1541,
+      "tools": [
+        "get_context"
+      ],
+      "checks": {
+        "saved": true,
+        "theme_import": true,
+        "save_button": true,
+        "ready": true,
+        "review": true,
+        "readme": true
+      },
+      "passed": true,
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    }
+  ],
+  "score": {
+    "baseline_pass_rate": 1.0,
+    "lore_pass_rate": 1.0,
+    "baseline_median_input_tokens": 526975,
+    "lore_median_input_tokens": 536020,
+    "input_token_ratio": 1.017,
+    "baseline_median_fresh_tokens": 66938,
+    "lore_median_fresh_tokens": 67002,
+    "fresh_token_ratio": 1.001,
+    "baseline_median_seconds": 150.8,
+    "lore_median_seconds": 129.4,
+    "time_ratio": 0.858,
+    "gate": true,
+    "tokens": false,
+    "time": true,
+    "fresh_ok": false,
+    "lore_wins": false,
+    "product_claim": false
+  },
+  "note": "agy + gemini-3.8-flash-medium. One get_context returns matching skill summaries and files."
+}

@@ -1,20 +1,18 @@
-# JetBrains IDEs (AI Assistant and Junie)
+# JetBrains (AI Assistant / Junie)
 
-> Config example, not verified.
+> Config example; verify locally.
 
-**AI Assistant:** **Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add**, choose **As JSON**, and paste:
+Add an MCP server named **`lore-solo`** that starts Solo over stdio:
 
 ```json
 {
   "mcpServers": {
-    "lore": {
-      "command": "/home/you/go/bin/lore",
-      "args": ["serve", "--root", "/home/you/path/to/project"]
+    "lore-solo": {
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"]
     }
   }
 }
 ```
 
-**Junie:** **Settings → Tools → Junie → MCP Settings** takes the same `mcpServers` JSON. At project level it lives in `.junie/mcp/mcp.json`.
-
-For rules, Junie reads `.junie/guidelines.md`. Copy the contents of `examples/demo-app/AGENTS.md` into it.
+After `uvx lore-solo install`, you can point `command` at `~/.lore/bin/lore-solo` with `args: ["mcp"]`. Prefer project `AGENTS.md` (written by connect) so the agent calls Lore unprompted.

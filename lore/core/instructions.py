@@ -2,10 +2,12 @@
 
 STANDING_INSTRUCTIONS = (
     "Call get_context once with the task sentence. "
-    "It returns the matching skill summaries and the files to open. Edit those files. "
+    "It returns matching skill summaries, cite_ids, and the files to open. "
+    "Edit only those files. "
+    "Then call check_applied with the decision_id and the skill ids you followed. "
+    "Then call log_decision with a one-line outcome. "
     "If the note says the map is missing or building, call map_codebase once and keep working "
     "from the summaries. Do not walk the tree while the map builds. "
-    "Call get_skill only for the one skill you are about to apply. "
     "Do not read .lore/skills, .lore/personas, or graphify-out/graph.json."
 )
 

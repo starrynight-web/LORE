@@ -44,6 +44,28 @@ def test_task_call_returns_matching_skills_and_files(project: Path) -> None:
     assert BACKEND_MARKER not in json.dumps(envelope)
 
 
+def test_task_without_role_words_uses_file_path_hints(project: Path) -> None:
+    envelope = get_context(
+        project,
+        "",
+        intent="change the panel label to Saved",
+        file_path="src/ui/Button.tsx",
+    )
+    jsonschema.validate(envelope, SCHEMA)
+    assert "persona:frontend-engineer" in envelope["data"]["personas"]
+    assert envelope["verdict"] in {"ok", "ok_with_notes"}
+
+
+def test_task_without_role_or_path_lists_stable_personas(project: Path) -> None:
+    envelope = get_context(project, "", intent="rename the leftover label")
+    jsonschema.validate(envelope, SCHEMA)
+    personas = envelope["data"]["personas"]
+    assert "persona:frontend-engineer" in personas
+    assert "persona:backend-engineer" in personas
+    assert envelope["verdict"] == "ok_with_notes"
+    assert "Available personas" in envelope["summary"]
+
+
 def test_spaced_persona_name_resolves(project: Path) -> None:
     envelope = get_context(project, "frontend engineer")
     assert envelope["verdict"] == "ok"

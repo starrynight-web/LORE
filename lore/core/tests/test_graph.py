@@ -102,6 +102,9 @@ def test_server_instructions_tell_the_agent_to_call_lore(tmp_path: Path) -> None
     assert isinstance(text, str)
     assert "get_context once" in text
     assert "map_codebase" in text
+    assert "check_applied" in text
+    assert "log_decision" in text
+    assert "get_skill" not in text
 
 
 def test_locate_ui_change_stays_on_the_ui_files(tmp_path: Path) -> None:
@@ -133,9 +136,11 @@ def test_running_build_does_not_start_a_second_process(
     assert any(item["source"]["path"] == "src/ui/Button.tsx" for item in first["items"])
 
 
-def test_stale_commit_serves_the_old_map_while_rebuilding(
+def test_stale_commit_coalesces_then_rebuilds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from lore.setup.graph_job import CEILING_SECONDS, QUIET_SECONDS, ensure_fresh
+
     project = _project(tmp_path)
     graph_path = project / "graphify-out" / "graph.json"
     data = json.loads(graph_path.read_text(encoding="utf-8"))
@@ -144,6 +149,7 @@ def test_stale_commit_serves_the_old_map_while_rebuilding(
     _commit(project)
     started = {"count": 0}
     release = threading.Event()
+    clock = {"now": 1_000.0}
 
     def hold(_target: Path) -> None:
         started["count"] += 1
@@ -151,16 +157,62 @@ def test_stale_commit_serves_the_old_map_while_rebuilding(
 
     monkeypatch.setattr("lore.setup.graph_job.run_graphify", hold)
     try:
-        first = get_context(project, "frontend-engineer", file_path="src/ui/Button.tsx")
+        assert ensure_fresh(project, now=lambda: clock["now"]) == "The map will refresh shortly."
+        assert started["count"] == 0
+        clock["now"] += QUIET_SECONDS
+        assert ensure_fresh(project, now=lambda: clock["now"]) == "The map is building."
         for _ in range(50):
             if started["count"] == 1:
                 break
             time.sleep(0.05)
-        second = get_context(project, "frontend-engineer", file_path="src/ui/Button.tsx")
         assert started["count"] == 1
-        assert "The map is building." in first["summary"]
+        second = get_context(project, "frontend-engineer", file_path="src/ui/Button.tsx")
         assert "The map is building." in second["summary"]
         assert any(item["source"]["path"] == "src/ui/Button.tsx" for item in second["items"])
+        assert CEILING_SECONDS > QUIET_SECONDS
+    finally:
+        release.set()
+        _wait_until_settled(project)
+
+
+def test_empty_tree_skips_map_rebuild(tmp_path: Path) -> None:
+    from lore.setup.graph_job import ensure_fresh
+
+    project = init_workspace(tmp_path / "empty")
+    assert ensure_fresh(project) is None
+
+
+def test_stale_map_forces_rebuild_at_ceiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lore.setup.graph_job import CEILING_SECONDS, ensure_fresh
+
+    project = _project(tmp_path)
+    graph_path = project / "graphify-out" / "graph.json"
+    data = json.loads(graph_path.read_text(encoding="utf-8"))
+    data["built_at_commit"] = "0" * 40
+    graph_path.write_text(json.dumps(data), encoding="utf-8")
+    _commit(project)
+    started = {"count": 0}
+    release = threading.Event()
+    clock = {"now": 500.0}
+
+    def hold(_target: Path) -> None:
+        started["count"] += 1
+        release.wait(3)
+
+    monkeypatch.setattr("lore.setup.graph_job.run_graphify", hold)
+    try:
+        assert ensure_fresh(project, now=lambda: clock["now"]) == "The map will refresh shortly."
+        clock["now"] += 10
+        assert ensure_fresh(project, now=lambda: clock["now"]) == "The map will refresh shortly."
+        clock["now"] += CEILING_SECONDS
+        assert ensure_fresh(project, now=lambda: clock["now"]) == "The map is building."
+        for _ in range(50):
+            if started["count"] == 1:
+                break
+            time.sleep(0.05)
+        assert started["count"] == 1
     finally:
         release.set()
         _wait_until_settled(project)
@@ -226,7 +278,11 @@ def _wait_until_settled(project: Path) -> None:
     status_path = project / ".lore" / "graph-status.json"
     for _ in range(50):
         if status_path.is_file():
-            status = json.loads(status_path.read_text(encoding="utf-8"))
+            try:
+                status = json.loads(status_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                time.sleep(0.05)
+                continue
             if status.get("state") != "running":
                 return
         time.sleep(0.05)

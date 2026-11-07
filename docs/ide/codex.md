@@ -1,15 +1,13 @@
 # OpenAI Codex (CLI and IDE extension)
 
-> Config example, not verified.
-
-Codex reads MCP servers from `~/.codex/config.toml`. The CLI and the IDE extension share this file.
+Codex reads MCP servers from `~/.codex/config.toml`. Prefer `uvx lore-solo connect`, which writes a quoted Solo server block and upserts `~/.codex/AGENTS.md`.
 
 ```toml
-[mcp_servers.lore]
-command = "/home/you/go/bin/lore"
-args = ["serve", "--root", "/home/you/path/to/project"]
+[mcp_servers."lore-solo"]
+command = "uvx"
+args = ["lore-solo", "mcp"]
 ```
 
-Or: `codex mcp add lore -- ~/go/bin/lore serve --root "$PWD"`.
+Or after install: `command = "/home/you/.lore/bin/lore-solo"` with `args = ["mcp"]`.
 
-Run `/mcp` in a Codex session to check that `lore` is connected. Codex reads `AGENTS.md` for rules. `lore connect` writes a Lore section into `~/.codex/AGENTS.md`.
+Run `/mcp` in a Codex session to confirm `lore-solo` is connected. Standing instructions in `AGENTS.md` describe the coding loop (`get_context` → edit → `check_applied` → `log_decision`).

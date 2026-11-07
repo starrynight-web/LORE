@@ -98,3 +98,55 @@ Lore wins when the other path is a chain of searches or a folder full of drafts 
 Checklist passed on all six runs. Cold map was 1.0s. Lore tools were one `get_context`, and on two runs a `get_skill` after it. No `list_personas` and no `locate`.
 
 Input ratio 1.468. Fresh ratio 0.729. Time ratio 0.932. The time gate passes. The total-input gate does not. Fresh tokens are under the baseline. Against the chained run at 468,014 input, this is 209,874.
+
+## After the coding-surface slice (2026-11-04)
+
+Code changes aimed at the next token cut and empty-context bugs:
+
+- Default MCP advertises only `get_context` and `map_codebase` (full surface via `--full` / `LORE_MCP_SURFACE=full`).
+- Standing text no longer invites `get_skill`.
+- `find_project` skips `$HOME` so `~/.lore` (install prefix) cannot hide the XDG/AppData library.
+- Task mode falls back through path hints, then lists stable personas instead of returning empty.
+- Map rebuilds coalesce with a quiet window / ceiling; `lore-solo map` exists for manual refresh.
+- Install tries `lore-solo[map]` via wheels and falls back to core on native-build failure (no VS auto-download).
+
+**Gate honesty:** keep reporting **fresh + time + checklist**. Do not claim a 70% total-input win vs a no-skill agent. The fair skillful comparison remains paste-of-twelve (~119,769 input). Re-run `scripts/run_benchmark.py solution` after deploying the coding surface to measure the new median input.
+
+## Agy + Gemini 3.8 Flash Medium (`results-agy-solution.json`)
+
+Runner `agy`, model `gemini-3.8-flash-medium` (effort baked into the model id). Same TASK/checklist as the Codex solution suite. Usage is Codex-shaped: agy uncached `input_tokens` + `cache_read_tokens` → total input; fresh = uncached.
+
+### Invalid first agy suite (do not cite)
+
+The first agy 3+3 (medians baseline 499,023 / 66,240 / 149.8s vs Lore 535,032 / 68,490 / 151.4s) is **invalid**. Every Lore `call_mcp_tool` failed with `tool get_context is not enabled for server lore`. Workspace MCP reused the global server name `lore` while the Go Lore binary stayed in `~/.gemini/config/mcp_config.json` and a stale CLI schema cache under `~/.gemini/antigravity-cli/mcp/lore/`. Confirm was a false green: it counted the failed tool name in the JSONL. Agents still passed the checklist without skill context.
+
+### Valid re-run (MCP fixed)
+
+Workspace MCP server is now `lore-solo` (`.venv/bin/lore-solo mcp`), global `lore` is disabled for the suite, and stale CLI caches for `lore` / `lore-solo` are cleared at start. Confirm and each lore arm require a **DONE** `get_context` (not ERROR). Confirm wrote `dec-0001.md` and `mcp_get_context_ok: true`.
+
+| Arm | Median input | Median fresh | Median seconds | Tools |
+| --- | ---: | ---: | ---: | --- |
+| Baseline | 526,975 | 66,938 | 150.8 | none |
+| Lore | 536,020 | 67,002 | 129.4 | get_context |
+
+Checklist passed on all six runs. All three lore arms had successful `get_context`. Cold map stayed outside the timer.
+
+Input ratio 1.017. Fresh ratio 1.001. Time ratio 0.858. Time gate passes. Fresh is essentially tied with baseline (64 over), so `product_claim` is still false on this runner/model — but the comparison is now a real Lore-served arm, not a failed MCP.
+
+## Quality pivot (token claim retired)
+
+Solo no longer treats 70% / 85–95% total-input reduction as the product claim. See [QUALITY_PLAN.md](../../docs/solo/QUALITY_PLAN.md) and [PROTOCOL.md](PROTOCOL.md). Primary scoreboard is the quality bake-off (`results-agy-quality.json`): Lore vs paste-skills vs no-skills on tasks that punish skill dumps. Coding MCP surface now includes `check_applied` and `log_decision` for a cite-and-receipt loop.
+
+### First quality bake-off (`results-agy-quality.json`)
+
+Runner `agy`, model `gemini-3.8-flash-medium`, one run per scenario×arm. Scenarios: wrong-file, a11y-label, api-shape.
+
+| Arm | Rubric pass rate | Median seconds | Process |
+| --- | ---: | ---: | --- |
+| no_skills | 1.0 | — | n/a |
+| paste_skills | 1.0 | 142.7 | n/a |
+| lore | 1.0 | 121.6 | 1.0 (get_context + check_applied + log_decision) |
+
+`quality_claim`: true (rubric tie at 100%, lore process complete, time vs paste 0.852). Confirm-quality smoke passed (`invocation-agy-quality.json`). Rubrics did not yet separate arms on this model — harden tasks next if we need lore > paste on content alone; the receipt loop and faster-than-paste wall clock already hold.
+
+**Arms update (2026-11-07):** primary comparators are now `no_skills` / `user_picked` / `agent_chosen` / `lore` (see PROTOCOL.md). The paste-all binder arm above is legacy. Fresh agy numbers for the new arms were deferred (no suite re-run in that change).

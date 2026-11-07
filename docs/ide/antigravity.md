@@ -1,22 +1,36 @@
 # Google Antigravity
 
-Add Lore to the global config, `~/.gemini/config/mcp_config.json` (Settings → Customizations → Installed MCP Servers → **Open MCP Config**). In our test, Antigravity ignored the workspace file `.agents/mcp_config.json`, although it did load the workspace rules. Keep any servers already in the file, and add `lore` next to them:
+Add Lore Solo to the global config, `~/.gemini/config/mcp_config.json` (Settings → Customizations → Installed MCP Servers → **Open MCP Config**). Antigravity historically ignored workspace `.agents/mcp_config.json` for MCP (it still loads workspace rules). Keep any servers already in the file, and add **`lore-solo`** (not a bare `lore` key — that collides with older Go binaries and schema caches):
 
 ```json
 {
   "mcpServers": {
-    "lore": {
-      "command": "/home/you/go/bin/lore",
-      "args": ["serve", "--root", "/home/you/path/to/project"]
+    "lore-solo": {
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"],
+      "env": {
+        "LORE_WORKSPACE": "/home/you/path/to/project"
+      }
     }
   }
 }
 ```
 
-Use absolute paths: the global file applies to every project, so `--root` must name the project explicitly. `examples/demo-app/.agents/mcp_config.json` is kept in case a later Antigravity build reads workspace configs.
+Or after `uvx lore-solo install`, point `command` at `~/.lore/bin/lore-solo` with `args: ["mcp"]`. Prefer `lore-solo connect`, which writes this entry and standing rules.
 
-Antigravity shares one token budget between rules, skills and MCP tools. When it's over budget (Customizations shows a warning), it drops large customizations, and that can include Lore's tools. Disable unused skills or MCP servers until the Mcp Tools breakdown lists `lore` with nothing excluded.
+## Rules
 
-Rules: Antigravity loads `AGENTS.md` and `.agents/rules/*.md` (legacy `.agent/rules/` still works). `examples/demo-app/.agents/rules/lore.md` uses `trigger: always_on`.
+Antigravity loads `AGENTS.md` and `.agents/rules/*.md`. Connect writes:
 
-After editing the config, refresh the MCP Servers panel and check that `lore` lists 12 tools.
+- project `AGENTS.md` (Lore standing block)
+- `.agents/rules/lore.md` with `trigger: always_on`
+
+Standing text is the coding loop: `get_context` → edit → `check_applied` → `log_decision`.
+
+## Tools
+
+Default coding surface (4 tools): `get_context`, `map_codebase`, `check_applied`, `log_decision`. Full admin surface: `lore-solo mcp --full`.
+
+Antigravity shares one token budget between rules, skills and MCP tools. When over budget, it can drop Lore’s tools — disable unused skills/servers until Customizations lists `lore-solo` with nothing excluded.
+
+After editing the config, refresh the MCP Servers panel and confirm `lore-solo` lists the coding tools.

@@ -1,10 +1,12 @@
 # How the solo slice works
 
-One developer. One coding agent. Lore gives that agent a persona, the skills filed under that persona, and a short map of the codebase. Every answer is written down as a decision.
+Diagrams of the end-to-end flow (user path, agent path, API ↔ MCP ↔ disk) are in [FLOW.md](FLOW.md).
+
+One developer. One coding agent. Lore is a **gateway + policy layer**: MCP tools are the I/O; standing IDE rules are the autopilot (DevRelay-shaped); **personas** route which approved skills apply so the agent is not left guessing among an overloaded skill folder. Every answer is written down as a decision. The Solo promise is better-guided work — not guaranteed token savings. See [QUALITY_PLAN.md](QUALITY_PLAN.md).
 
 The project folder is the database. Personas and skills are markdown under `.lore/`. The editor starts Lore as a normal local process. The setup site makes those files easier to create. Closing the site does not stop the agent.
 
-Team rules, accounts, and a paid host are later. This page describes the solo slice only. [HOSTING.md](HOSTING.md) is the note about what a later host would sync.
+Default MCP surface (coding): `get_context`, `map_codebase`, `check_applied`, `log_decision`. Admin tools stay behind `lore-solo mcp --full`. Enterprise (org policies, OCR, tenancy) lives on the `enterprise` branch — [HOSTING.md](HOSTING.md).
 
 ## One local program
 
@@ -25,15 +27,16 @@ flowchart LR
 
 | Command | Who starts it | What it does |
 | --- | --- | --- |
-| `uvx lore-solo install` | You, once | Installs Lore Solo into `~/.lore/bin` on macOS, Linux, and Windows |
+| `uvx lore-solo install` | You, once | Installs Lore Solo into `~/.lore/bin` on macOS, Linux, and Windows. Tries map (Graphify) via wheels; falls back to core if a native build fails. |
 | `uvx lore-solo setup` | You, while setting up | Prints `http://127.0.0.1:3000/?key=...` and serves the site until Ctrl+C |
-| `uvx lore-solo connect` | You, or the agent from the prompt | Writes Lore into editors already installed on this computer |
-| `uvx lore-solo mcp` | The editor, for the session | Reads and writes `.lore/` over stdio. No port. No setup key. |
+| `uvx lore-solo connect` | You, or the agent from the prompt | Writes Lore into editors already installed on this computer; sets `LORE_WORKSPACE` |
+| `uvx lore-solo mcp` | The editor, for the session | Reads and writes `.lore/` over stdio. Default coding tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`. No port. No setup key. |
+| `uvx lore-solo map` | You, or a git hook | Starts a codebase map rebuild for the open project |
 | `uvx lore-solo uninstall` | You, when you want the command gone | Removes the `lore-solo` command from `~/.lore`. Personas, skills, and editor registrations stay. |
 
-A clone uses the same verbs: `./scripts/lore-solo install`, `setup`, `connect`, `mcp`, and `uninstall`. On Windows those are `.\scripts\lore-solo.ps1 install`, `setup`, `connect`, `mcp`, and `uninstall`.
+A clone uses the same verbs: `./scripts/lore-solo install`, `setup`, `connect`, `mcp`, `map`, and `uninstall`. On Windows those are `.\scripts\lore-solo.ps1 …`.
 
-The program entry is `lore-solo`, with `install`, `setup`, `uninstall`, `connect`, or `mcp` as the first argument. `python -m lore` reaches the same program.
+The program entry is `lore-solo`, with `install`, `setup`, `uninstall`, `connect`, `mcp`, or `map` as the first argument. `python -m lore` reaches the same program. `$HOME/.lore` is the install prefix only; the persona library is the XDG/AppData path above. Parent walks skip `$HOME` so the install prefix cannot hide the library.
 
 ```mermaid
 flowchart TD
@@ -42,11 +45,13 @@ flowchart TD
   entry --> setup["setup"]
   entry --> uninstall["uninstall"]
   entry --> mcp["mcp"]
+  entry --> mapCmd["map"]
   entry --> connect["connect"]
   setup --> django["Django on 127.0.0.1:7421"]
   setup --> next["Next.js on 127.0.0.1:3000"]
   next -->|"rewrites /api"| django
   mcp --> files["Read and write .lore"]
+  mapCmd --> files
   connect --> editors["Editor config files"]
 ```
 
@@ -176,7 +181,7 @@ The entry the editor stores uses `uvx` when Lore Solo was started that way. A cl
 ```json
 {
   "mcpServers": {
-    "lore": {
+    "lore-solo": {
       "command": "uvx",
       "args": ["lore-solo", "mcp"]
     }

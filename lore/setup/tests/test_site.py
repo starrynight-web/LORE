@@ -153,8 +153,8 @@ def test_approve_survives_after_django_stops() -> None:
         assert "uvx lore-solo connect" in install["prompt"]
         assert "macOS, Linux, or Windows" in install["prompt"]
         written = _request(port, key, "POST", "/api/connect")
-        assert written["mcpServers"]["lore"]["command"] == "lore"
-        assert written["mcpServers"]["lore"]["args"] == ["mcp"]
+        assert written["mcpServers"]["lore-solo"]["command"] == "lore"
+        assert written["mcpServers"]["lore-solo"]["args"] == ["mcp"]
         assert (project / ".cursor" / "mcp.json").is_file()
     finally:
         proc.terminate()

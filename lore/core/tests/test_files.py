@@ -104,6 +104,36 @@ def test_a_project_folder_wins_over_the_shared_library(
     assert find_project(local) == local.resolve()
 
 
+def test_home_install_prefix_does_not_steal_the_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    work = home / "Work" / "app"
+    work.mkdir(parents=True)
+    install = home / ".lore"
+    (install / "bin").mkdir(parents=True)
+    (install / "tools").mkdir(parents=True)
+    (install / "personas").mkdir()
+    (install / "decisions").mkdir()
+    library = home / ".local" / "share" / "lore"
+    (library / ".lore" / "personas").mkdir(parents=True)
+    (library / ".lore" / "personas" / "frontend-engineer.md").write_text("x\n", encoding="utf-8")
+    monkeypatch.setattr("lore.core.paths.Path.home", lambda: home)
+    monkeypatch.setattr("lore.core.paths.library_root", lambda: library)
+    assert find_project(work) == library.resolve()
+
+
+def test_install_prefix_is_not_a_knowledge_store(tmp_path: Path) -> None:
+    from lore.core.paths import is_knowledge_store
+
+    home = tmp_path / "home"
+    lore = home / ".lore"
+    (lore / "bin").mkdir(parents=True)
+    (lore / "tools").mkdir(parents=True)
+    (lore / "decisions").mkdir()
+    assert not is_knowledge_store(home)
+
+
 def test_ready_made_persona_copies_its_skills(tmp_path: Path) -> None:
     from lore.core.workspace import copy_persona, ready_personas
 

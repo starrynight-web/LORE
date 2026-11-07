@@ -67,8 +67,14 @@ case "${1:-setup}" in
     export LORE_CHECKOUT="$ROOT"
     exec uv run --python 3.12 --project "$ROOT" python -m lore uninstall
     ;;
+  map)
+    require_lore
+    cd "${LORE_PROJECT:-$(pwd)}"
+    shift
+    exec "$BIN" map "$@"
+    ;;
   *)
-    echo "usage: scripts/lore-solo install|setup|uninstall|mcp|connect" >&2
+    echo "usage: scripts/lore-solo install|setup|uninstall|mcp|connect|map" >&2
     exit 2
     ;;
 esac

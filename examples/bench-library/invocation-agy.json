@@ -1,0 +1,21 @@
+{
+  "runner": "agy",
+  "model": "gemini-3.8-flash-medium",
+  "mcp_server": "lore-solo",
+  "exit": 0,
+  "seconds": 67.3,
+  "decisions": [
+    "dec-0001.md"
+  ],
+  "tools": [
+    "get_context"
+  ],
+  "mcp_get_context_ok": true,
+  "mcp_get_context_error": "1 validation error for call[get_context]\ntask\n  Unexpected keyword argument [type=unexpected_keyword_argument, input_value='In src/ui/Button.tsx, ch...nly the files you need.', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.14/v/unexpected_keyword_argument",
+  "called_lore_before_narration": true,
+  "event_types": [
+    "init",
+    "result",
+    "step_update"
+  ]
+}

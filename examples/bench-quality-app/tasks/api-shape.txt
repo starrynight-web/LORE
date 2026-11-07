@@ -1,0 +1,5 @@
+As a backend engineer, add a status field with the exact value ready to the health response in src/api/health.py.
+
+Do not invent other field names such as state or health_status. Do not edit src/api/health_probe.py.
+
+Done when src/api/health.py returns a mapping that includes status set to ready, and health_probe.py is unchanged.

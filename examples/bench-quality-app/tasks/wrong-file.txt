@@ -1,0 +1,5 @@
+As a frontend engineer, change the live panel label to Saved. Keep the theme import.
+
+The live panel is src/ui/Panel.tsx. Do not edit src/ui/PanelCopy.tsx.
+
+Done when src/ui/Panel.tsx contains Saved and still imports ./theme, and src/ui/PanelCopy.tsx is unchanged.

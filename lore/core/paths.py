@@ -57,14 +57,27 @@ def project_name() -> str:
     return workspace_root().name or "this project"
 
 
+def _home() -> Path:
+    return Path.home().expanduser().resolve()
+
+
+def is_install_prefix(directory: Path) -> bool:
+    """True when `directory/.lore` is the uv install prefix (bin + tools)."""
+    lore = directory / ".lore"
+    return (lore / "bin").is_dir() and (lore / "tools").is_dir()
+
+
 def is_knowledge_store(directory: Path) -> bool:
     """True when this folder holds personas, not only a codebase-map status file.
 
     Mapping a repo that has no personas creates `.lore/graph-status.json`.
-    That file must not hide the persona library.
+    That file must not hide the persona library. The install prefix under
+    `$HOME/.lore` is also not a knowledge store.
     """
     lore = directory / ".lore"
     if not lore.is_dir():
+        return False
+    if is_install_prefix(directory):
         return False
     names = {entry.name for entry in lore.iterdir()}
     return names != {"graph-status.json"}
@@ -73,11 +86,15 @@ def is_knowledge_store(directory: Path) -> bool:
 def find_project(start: Path) -> Path:
     """Return the directory that holds the persona store.
 
-    A project folder wins. Otherwise the persona library is used, so an agent
-    can call Lore from a project that does not keep its own personas.
+    A project folder wins. `$HOME` is never treated as a project unless the
+    editor opened that folder. Otherwise the persona library is used.
     """
     current = _directory(start)
+    home = _home()
+    opened_home = current == home
     for candidate in (current, *current.parents):
+        if candidate == home and not opened_home:
+            continue
         if is_knowledge_store(candidate):
             return candidate
     library = library_root()
@@ -92,14 +109,19 @@ def map_root(start: Path) -> Path:
     `LORE_WORKSPACE` wins. Otherwise a project `.lore` store owns the map,
     walking up from `start` so a nested working directory still maps the repo.
     A repo with no persona store is mapped itself. The persona library is
-    mapped only when the editor opened that library.
+    mapped only when the editor opened that library. `$HOME` is skipped the
+    same way as in `find_project`.
     """
     forced = os.environ.get("LORE_WORKSPACE", "").strip()
     if forced:
         return Path(forced).expanduser().resolve()
     current = _directory(start)
+    home = _home()
+    opened_home = current == home
     library = library_root().expanduser().resolve()
     for candidate in (current, *current.parents):
+        if candidate == home and not opened_home:
+            continue
         if candidate == library:
             return library
         if is_knowledge_store(candidate):

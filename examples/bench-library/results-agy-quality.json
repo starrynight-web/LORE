@@ -1,0 +1,217 @@
+{
+  "runner": "agy",
+  "model": "gemini-3.8-flash-medium",
+  "mcp_server": "lore-solo",
+  "cold_map_seconds": 0.6,
+  "runs_per_cell": 1,
+  "scenarios": [
+    "wrong-file",
+    "a11y-label",
+    "api-shape"
+  ],
+  "runs": [
+    {
+      "scenario": "wrong-file",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 99.4,
+      "input_tokens": 275189,
+      "cached_input_tokens": 228474,
+      "fresh_input_tokens": 46715,
+      "output_tokens": 2132,
+      "tools": [],
+      "checks": {
+        "panel_saved": true,
+        "theme_import": true,
+        "decoy_untouched": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "wrong-file",
+      "arm": "paste_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 142.7,
+      "input_tokens": 1007464,
+      "cached_input_tokens": 921401,
+      "fresh_input_tokens": 86063,
+      "output_tokens": 7469,
+      "tools": [],
+      "checks": {
+        "panel_saved": true,
+        "theme_import": true,
+        "decoy_untouched": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "wrong-file",
+      "arm": "lore",
+      "run": 1,
+      "exit": 0,
+      "seconds": 123.6,
+      "input_tokens": 474788,
+      "cached_input_tokens": 412268,
+      "fresh_input_tokens": 62520,
+      "output_tokens": 5052,
+      "tools": [
+        "get_context",
+        "check_applied",
+        "log_decision"
+      ],
+      "checks": {
+        "panel_saved": true,
+        "theme_import": true,
+        "decoy_untouched": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "scenario": "a11y-label",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 70.1,
+      "input_tokens": 119420,
+      "cached_input_tokens": 86381,
+      "fresh_input_tokens": 33039,
+      "output_tokens": 834,
+      "tools": [],
+      "checks": {
+        "save_label": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "a11y-label",
+      "arm": "paste_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 101.3,
+      "input_tokens": 527517,
+      "cached_input_tokens": 454645,
+      "fresh_input_tokens": 72872,
+      "output_tokens": 5497,
+      "tools": [],
+      "checks": {
+        "save_label": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "a11y-label",
+      "arm": "lore",
+      "run": 1,
+      "exit": 0,
+      "seconds": 121.6,
+      "input_tokens": 436645,
+      "cached_input_tokens": 376215,
+      "fresh_input_tokens": 60430,
+      "output_tokens": 5875,
+      "tools": [
+        "get_context",
+        "check_applied",
+        "log_decision"
+      ],
+      "checks": {
+        "save_label": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "scenario": "api-shape",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 117.3,
+      "input_tokens": 451296,
+      "cached_input_tokens": 388701,
+      "fresh_input_tokens": 62595,
+      "output_tokens": 2937,
+      "tools": [],
+      "checks": {
+        "status_ready": true,
+        "probe_untouched": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "api-shape",
+      "arm": "paste_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 206.4,
+      "input_tokens": 1306764,
+      "cached_input_tokens": 1183735,
+      "fresh_input_tokens": 123029,
+      "output_tokens": 5963,
+      "tools": [],
+      "checks": {
+        "status_ready": true,
+        "probe_untouched": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "api-shape",
+      "arm": "lore",
+      "run": 1,
+      "exit": 0,
+      "seconds": 93.4,
+      "input_tokens": 287251,
+      "cached_input_tokens": 238833,
+      "fresh_input_tokens": 48418,
+      "output_tokens": 5087,
+      "tools": [
+        "get_context",
+        "check_applied",
+        "log_decision"
+      ],
+      "checks": {
+        "status_ready": true,
+        "probe_untouched": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    }
+  ],
+  "score": {
+    "no_skills_pass_rate": 1.0,
+    "paste_skills_pass_rate": 1.0,
+    "lore_pass_rate": 1.0,
+    "lore_process_rate": 1.0,
+    "lore_median_seconds": 121.6,
+    "paste_median_seconds": 142.7,
+    "time_ratio_vs_paste": 0.852,
+    "primary": true,
+    "process": true,
+    "time_ok": true,
+    "quality_claim": true
+  },
+  "note": "Quality bake-off. Primary gates are rubric + lore process; tokens are secondary only."
+}

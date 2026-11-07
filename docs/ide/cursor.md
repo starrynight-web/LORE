@@ -1,22 +1,24 @@
 # Cursor
 
-Project config, committed with the repo: `.cursor/mcp.json`
+Prefer `uvx lore-solo connect`, which writes `~/.cursor/mcp.json` and `~/.cursor/rules/lore.mdc`.
+
+Project backup (committed): `.cursor/mcp.json`
 
 ```json
 {
   "mcpServers": {
-    "lore": {
-      "command": "${userHome}/go/bin/lore",
-      "args": ["serve", "--root", "${workspaceFolder}"]
+    "lore-solo": {
+      "command": "uvx",
+      "args": ["lore-solo", "mcp"]
     }
   }
 }
 ```
 
-For every project at once, put the same block in `~/.cursor/mcp.json` with an absolute `--root`, or leave `--root` out so Lore finds `.lore/` from the working directory.
+After install, `command` may be `~/.lore/bin/lore-solo` with `args: ["mcp"]`. Connect also sets `LORE_WORKSPACE` to the open folder.
 
-1. Open **Settings → MCP** (Tools & Integrations) and enable `lore`. The status dot turns green and lists the Lore tools.
-2. `lore connect` writes `~/.cursor/rules/lore.mdc` with `alwaysApply: true`, so the agent calls Lore without being asked. The server instructions say the same thing.
-3. Prompts show up as slash commands in chat (`/answer_with_lore`, `/validate_change`, `/explain_conflict`, `/prepare_review_packet`).
+1. Open **Settings → MCP** and enable `lore-solo`. The status should list coding tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`.
+2. Standing rule (`alwaysApply: true`) tells the agent to run the Lore quality loop without being asked.
+3. If the server fails to start, open **Output → MCP Logs**. `LORE_DEBUG=1` in an `env` block turns on debug logs.
 
-If the server fails to start, open **Output → MCP Logs**. Lore writes its own errors to stderr, which shows up there. `LORE_DEBUG=1` in an `env` block turns on debug logs.
+Do not register a server key named only `lore` alongside an old Go binary — Antigravity/Cursor schema caches have collided on that name before.
