@@ -8,13 +8,13 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from lore.connect import MCP_SERVER_NAME
 from lore.core.check_applied import check_applied as run_check_applied
 from lore.core.context import get_context as build_context
 from lore.core.decisions import append_outcome, read_decision
 from lore.core.graph import locate as locate_files
 from lore.core.graph import map_status as read_map_status
 from lore.core.idempotency import recall, remember
-from lore.connect import MCP_SERVER_NAME
 from lore.core.instructions import STANDING_INSTRUCTIONS
 from lore.core.paths import find_project, map_root, workspace_root
 from lore.core.personas import find_skill, persona_id, write_skill

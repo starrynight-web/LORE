@@ -76,8 +76,18 @@ switch ($Command) {
     & $Bin map @MapArgs
     exit $LASTEXITCODE
   }
+  "doctor" {
+    Need-Uv
+    $env:LORE_CHECKOUT = $Root
+    if (Test-Path $Bin) {
+      & $Bin doctor
+      exit $LASTEXITCODE
+    }
+    uv run --python 3.12 --project $Root python -m lore doctor
+    exit $LASTEXITCODE
+  }
   default {
-    Write-Error "usage: scripts/lore-solo.ps1 install|setup|uninstall|mcp|connect|map"
+    Write-Error "usage: scripts/lore-solo.ps1 install|setup|uninstall|mcp|connect|map|doctor"
     exit 2
   }
 }

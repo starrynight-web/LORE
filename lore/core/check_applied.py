@@ -17,7 +17,8 @@ def check_applied(
     cited = [str(item).strip() for item in (rule_ids or []) if str(item).strip()]
     doc = read_decision(project, decision_id)
     header = doc.header if isinstance(doc.header, dict) else {}
-    served_raw = header.get("included") if isinstance(header.get("included"), list) else []
+    included = header.get("included")
+    served_raw: list[Any] = included if isinstance(included, list) else []
     served = {str(item) for item in served_raw if str(item).startswith("skill:")}
 
     if not served:

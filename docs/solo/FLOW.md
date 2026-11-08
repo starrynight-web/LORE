@@ -59,7 +59,8 @@ Two surfaces share one file store. The **setup site** is for people. The **MCP p
 
 ```mermaid
 flowchart LR
-  A[uvx lore-solo install] --> B[uvx lore-solo setup]
+  Z[uvx lore-solo doctor] --> A[uvx lore-solo install]
+  A --> B[uvx lore-solo setup]
   B --> C[Save provider key]
   C --> D[Add skills from skills.sh or files]
   D --> E[Create / draft persona]

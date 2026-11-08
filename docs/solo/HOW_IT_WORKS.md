@@ -27,6 +27,7 @@ flowchart LR
 
 | Command | Who starts it | What it does |
 | --- | --- | --- |
+| `uvx lore-solo doctor` | You, optional | Checks uv, Node/npm, home write access, install, map, and editors. Prints OS-specific install links and what each gap blocks. Exit `1` if a required tool is missing. |
 | `uvx lore-solo install` | You, once | Installs Lore Solo into `~/.lore/bin` on macOS, Linux, and Windows. Tries map (Graphify) via wheels; falls back to core if a native build fails. |
 | `uvx lore-solo setup` | You, while setting up | Prints `http://127.0.0.1:3000/?key=...` and serves the site until Ctrl+C |
 | `uvx lore-solo connect` | You, or the agent from the prompt | Writes Lore into editors already installed on this computer; sets `LORE_WORKSPACE` |
@@ -41,6 +42,7 @@ The program entry is `lore-solo`, with `install`, `setup`, `uninstall`, `connect
 ```mermaid
 flowchart TD
   entry["lore-solo"]
+  entry --> doctor["doctor"]
   entry --> install["install"]
   entry --> setup["setup"]
   entry --> uninstall["uninstall"]

@@ -1,4 +1,4 @@
-"""`lore-solo install`, `setup`, `uninstall`, `connect`, `mcp`, and `map`."""
+"""`lore-solo install`, `setup`, `uninstall`, `connect`, `mcp`, `map`, and `doctor`."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(
-            "usage: lore-solo install|setup|uninstall|connect|mcp|map",
+            "usage: lore-solo install|setup|uninstall|connect|mcp|map|doctor",
             file=sys.stderr,
         )
         return 0
@@ -46,9 +46,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if command == "map":
         return _run_map(rest)
+    if command == "doctor":
+        from lore.doctor_cmd import run as run_doctor
+
+        return run_doctor(rest)
     print(
         "unknown command "
-        f"{command!r}; use install, setup, uninstall, connect, mcp, or map",
+        f"{command!r}; use install, setup, uninstall, connect, mcp, map, or doctor",
         file=sys.stderr,
     )
     return 2

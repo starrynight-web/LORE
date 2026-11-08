@@ -8,11 +8,31 @@ The project folder is the database. Personas and skills are markdown under `.lor
 
 The older architecture documents describe the previous Go design.
 
+## Prerequisites
+
+| Need | Required? | Used for | Get it |
+| --- | --- | --- | --- |
+| [uv](https://docs.astral.sh/uv/) | Yes | `uvx` / install / Python 3.12 toolchain | macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh \| sh` · Windows: `irm https://astral.sh/uv/install.ps1 \| iex` |
+| [Node.js](https://nodejs.org/) 18+ and npm | Yes for setup site | Building and serving the setup website | LTS from nodejs.org (`winget install OpenJS.NodeJS.LTS` on Windows, `brew install node` on macOS) |
+| Network to PyPI / npm | Yes for first install and first setup build | Package and site dependencies | Campus Wi‑Fi / VPN as usual |
+| Writable home (`~/.lore`, persona library) | Yes | Install prefix and shared personas | A normal user account (lab admin locks may block this) |
+| Graphify / C toolchain | No | Codebase map only | `lore-solo install --map`; if no wheel matches, a C++ toolchain (VS Build Tools on Windows) |
+| An IDE with MCP (Cursor, VS Code, …) | No for setup | Agent calls after connect | Install the editor, then `lore-solo connect` |
+
+Check the machine first (works before install, via PyPI):
+
+```bash
+uvx lore-solo doctor
+```
+
+From a clone: `./scripts/lore-solo doctor` or `.\scripts\lore-solo.ps1 doctor`. Doctor prints what is missing, OS-specific install links, and which features each gap blocks. Exit code `1` means a required tool is missing.
+
 ## Quick start
 
 The setup site needs Node.js. The agent does not. With [uv](https://docs.astral.sh/uv/) installed, the same commands work on macOS, Linux, and Windows:
 
 ```bash
+uvx lore-solo doctor
 uvx lore-solo install
 uvx lore-solo setup
 ```
@@ -24,6 +44,7 @@ uvx lore-solo setup
 The other commands are the same shape:
 
 ```bash
+uvx lore-solo doctor
 uvx lore-solo connect
 uvx lore-solo mcp
 uvx lore-solo map
@@ -37,6 +58,7 @@ From a clone of the `solo` branch, the same commands are:
 ```bash
 git clone -b solo https://github.com/starrynight-web/LORE.git lore-solo
 cd lore-solo
+./scripts/lore-solo doctor
 ./scripts/lore-solo install
 ./scripts/lore-solo setup
 ./scripts/lore-solo connect
@@ -46,6 +68,7 @@ cd lore-solo
 On Windows, from that clone:
 
 ```powershell
+.\scripts\lore-solo.ps1 doctor
 .\scripts\lore-solo.ps1 install
 .\scripts\lore-solo.ps1 setup
 .\scripts\lore-solo.ps1 connect
