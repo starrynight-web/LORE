@@ -1,0 +1,1 @@
+Find the live frontend panel and change its const label to "Published". Preserve its theme import and leave src/ui/PanelCopy.tsx untouched. The live file may have moved since a cached map was built; inspect the source rather than trusting stale paths.

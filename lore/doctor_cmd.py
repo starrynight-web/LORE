@@ -14,9 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from lore.connect import host_system
-from lore.install_cmd import find_uv, installed_binary, prefix
+from lore.install_cmd import find_uv, installed_binary, prefix, sanitize_output
 
-MIN_NODE_MAJOR = 18
+MIN_NODE_MAJOR = 22
+SETUP_NODE_MAJOR = 22
 
 
 @dataclass(frozen=True)
@@ -57,33 +58,28 @@ def uv_install_hint(system: str) -> str:
 def node_install_hint(system: str) -> str:
     if system == "windows":
         return (
-            "Install Node.js LTS (18+) from https://nodejs.org/\n"
-            "    Or: winget install OpenJS.NodeJS.LTS"
+            "Install Node.js 22 from https://nodejs.org/download/release/latest-v22.x/\n"
+            "    Pick a 22.x release explicitly — the setup site requires Node 22"
         )
     if system == "darwin":
         return (
-            "Install Node.js LTS (18+) from https://nodejs.org/\n"
-            "    Or: brew install node"
+            "Install Node.js 22: brew install node@22\n"
+            "    node@22 is keg-only — add $(brew --prefix node@22)/bin to PATH"
         )
     return (
-        "Install Node.js LTS (18+) from https://nodejs.org/\n"
-        "    Or use your package manager / nvm / fnm (node + npm both required)"
+        "Install Node.js 22 from https://nodejs.org/download/release/latest-v22.x/\n"
+        "    Or install a 22.x release via your package manager / nvm / fnm"
     )
 
 
 def map_install_hint(system: str) -> str:
-    base = "Install map support: lore-solo install --map (or uvx lore-solo install --map)"
-    if system == "windows":
-        return (
-            f"{base}\n"
-            "    If no Graphify wheel matches, Windows needs Visual Studio Build Tools "
-            "with the C++ workload: https://visualstudio.microsoft.com/visual-cpp-build-tools/\n"
-            "    Core Lore still works without the map."
-        )
+    del system
     return (
-        f"{base}\n"
-        "    If no Graphify wheel matches, a C/C++ toolchain (gcc/clang + headers) "
-        "is needed to compile tree-sitter. Core Lore still works without the map."
+        "Install map support: lore-solo install --map (or uvx lore-solo install --map)\n"
+        "    The map extra needs prebuilt binary packages for this platform; "
+        "Lore does not compile native extensions on install.\n"
+        "    The prebuilt Docker demo image carries the full feature set. "
+        "Core Lore still works without the map."
     )
 
 
@@ -140,14 +136,31 @@ def check_uv(system: str, uv_path: str | None = None) -> Check:
     )
 
 
-def check_node(system: str) -> Check:
+def check_python() -> Check:
+    """Implementation, version, and architecture of this interpreter."""
+    detail = (
+        f"{platform.python_implementation()} {platform.python_version()} "
+        f"({platform.machine()})"
+    )
+    return Check(
+        id="python",
+        name="Python",
+        ok=True,
+        required=True,
+        detail=detail,
+        get_it="",
+        without_it="",
+    )
+
+
+def check_node(system: str, *, required: bool = True, minimum: int = MIN_NODE_MAJOR) -> Check:
     node = shutil.which("node")
     if node is None:
         return Check(
             id="node",
             name="Node.js",
             ok=False,
-            required=True,
+            required=required,
             detail="not found",
             get_it=node_install_hint(system),
             without_it=(
@@ -157,16 +170,16 @@ def check_node(system: str) -> Check:
         )
     version = _run_version([node, "--version"]) or "found"
     major = _parse_node_major(version)
-    if major is not None and major < MIN_NODE_MAJOR:
+    if major is None or major < minimum:
         return Check(
             id="node",
             name="Node.js",
             ok=False,
-            required=True,
-            detail=f"{version} ({node}) — need {MIN_NODE_MAJOR}+",
+            required=required,
+            detail=f"{version} ({node}) — need {minimum}+",
             get_it=node_install_hint(system),
             without_it=(
-                "The setup website may fail to build or start. "
+                "The setup website cannot start. "
                 "Upgrade Node.js, then run `lore-solo setup` again."
             ),
         )
@@ -174,29 +187,29 @@ def check_node(system: str) -> Check:
         id="node",
         name="Node.js",
         ok=True,
-        required=True,
+        required=required,
         detail=f"{version} ({node})",
         get_it="",
         without_it="",
     )
 
 
-def check_npm(system: str) -> Check:
+def check_npm(system: str, *, required: bool = True) -> Check:
     npm = shutil.which("npm")
     if npm is None:
         return Check(
             id="npm",
             name="npm",
             ok=False,
-            required=True,
+            required=required,
             detail="not found",
             get_it=(
-                "npm ships with Node.js. Reinstall Node.js LTS so `npm` is on PATH.\n"
+                "npm ships with Node.js. Reinstall Node.js 22 so `npm` is on PATH.\n"
                 f"    {node_install_hint(system)}"
             ),
             without_it=(
-                "The first `lore-solo setup` cannot build the website "
-                "(`npm ci` / `npm run build`)."
+                "Only needed to build the setup site from a source checkout. "
+                "Published site bundles run without npm."
             ),
         )
     version = _run_version([npm, "--version"]) or "found"
@@ -204,7 +217,7 @@ def check_npm(system: str) -> Check:
         id="npm",
         name="npm",
         ok=True,
-        required=True,
+        required=required,
         detail=f"{version} ({npm})",
         get_it="",
         without_it="",
@@ -272,7 +285,7 @@ def check_map(system: str) -> Check:
         name="Codebase map (Graphify)",
         ok=True,
         required=False,
-        detail=str(exe),
+        detail=sanitize_output(str(exe)),
         get_it="",
         without_it="",
     )
@@ -343,16 +356,104 @@ def check_editors(system: str, home: Path | None = None) -> Check:
     )
 
 
-def gather_checks(system: str | None = None) -> list[Check]:
+def check_skillspector() -> Check:
+    from lore.core.governance import skillspector
+
+    if skillspector.available():
+        return Check(
+            id="skillspector",
+            name="SkillSpector (optional scan)",
+            ok=True,
+            required=False,
+            detail=skillspector.skillspector_path() or "found",
+            get_it="",
+            without_it="",
+        )
+    return Check(
+        id="skillspector",
+        name="SkillSpector (optional scan)",
+        ok=False,
+        required=False,
+        detail="not on PATH",
+        get_it=(
+            "Optional: uv tool install git+https://github.com/NVIDIA/skillspector.git\n"
+            "    Lore still scans with built-in ATR rules when SkillSpector is missing."
+        ),
+        without_it=(
+            "Approve still runs the built-in ATR static scanner. "
+            "NVIDIA SkillSpector enrichment is skipped."
+        ),
+    )
+
+
+def check_knowledge() -> Check:
+    from lore.core.governance import freshness_of, governance_summary
+    from lore.core.paths import LoreNotFound, find_project
+    from lore.core.personas import list_personas, list_skill_files
+
+    try:
+        project = find_project(Path.cwd())
+    except LoreNotFound:
+        return Check(
+            id="knowledge",
+            name="Persona library / .lore",
+            ok=False,
+            required=False,
+            detail="no .lore in this folder",
+            get_it="Run lore-solo setup in a project, or open a folder that already has .lore.",
+            without_it="Doctor cannot report skill scan or freshness counts for this directory.",
+        )
+    personas = list_personas(project)
+    skills = [doc for _path, doc in list_skill_files(project)]
+    high = 0
+    aging = 0
+    for doc in skills:
+        summary = governance_summary(doc)
+        if summary["highest_severity"] in {"critical", "high"}:
+            high += 1
+        if summary["freshness"] == "aging" or freshness_of(doc) == "aging":
+            aging += 1
+    drafts = sum(1 for doc in personas + skills if doc.get("status") != "stable")
+    stable = sum(1 for doc in personas + skills if doc.get("status") == "stable")
+    return Check(
+        id="knowledge",
+        name="Knowledge governance",
+        ok=high == 0,
+        required=False,
+        detail=(
+            f"{len(personas)} personas, {len(skills)} skills "
+            f"({stable} stable, {drafts} draft); "
+            f"{high} with high/critical findings; {aging} aging"
+        ),
+        get_it="Run: lore-solo govern scan   and review findings before approve.",
+        without_it=(
+            "Skills with unresolved high/critical findings should not be approved "
+            "without accept_risk."
+        ),
+    )
+
+
+def gather_checks(system: str | None = None, *, for_setup: bool = False) -> list[Check]:
     host = detect_os(system)
+    if for_setup:
+        return [
+            check_python(),
+            check_node(host, required=True, minimum=SETUP_NODE_MAJOR),
+            check_npm(host, required=False),
+            check_home_writable(),
+            check_lore_command(),
+        ]
     return [
+        check_python(),
         check_uv(host),
-        check_node(host),
-        check_npm(host),
+        check_node(host, required=False),
+        check_npm(host, required=False),
         check_home_writable(),
         check_lore_command(),
         check_map(host),
         check_editors(host),
+        check_skillspector(),
+        check_knowledge(),
     ]
 
 
@@ -391,16 +492,19 @@ def run(argv: list[str] | None = None) -> int:
     args = list(argv or [])
     if args and args[0] in {"-h", "--help"}:
         print(
-            "usage: lore-solo doctor\n"
-            "Check prerequisites on this computer and print OS-specific install hints.",
+            "usage: lore-solo doctor [--setup]\n"
+            "Check prerequisites on this computer and print OS-specific install hints.\n"
+            "  --setup   check the setup-site requirements (Node.js 22)",
             file=sys.stderr,
         )
         return 0
-    if args:
-        print(f"unknown doctor option: {args[0]}", file=sys.stderr)
+    for_setup = "--setup" in args
+    rest = [arg for arg in args if arg != "--setup"]
+    if rest:
+        print(f"unknown doctor option: {rest[0]}", file=sys.stderr)
         return 2
     system = detect_os()
-    checks = gather_checks(system)
+    checks = gather_checks(system, for_setup=for_setup)
     sys.stdout.write(format_report(checks, system))
     if any(c.required and not c.ok for c in checks):
         return 1

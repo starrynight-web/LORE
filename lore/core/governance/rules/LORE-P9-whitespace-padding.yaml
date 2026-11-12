@@ -1,0 +1,16 @@
+# Lore-owned structural rule (not ATR). Mapped to SkillSpector P9 for interop.
+title: Whitespace Padding
+id: LORE-P9
+severity: medium
+category: P9
+owasp: AST01
+description: >
+  Detects large blank-line runs that hide instructions below the visible area of
+  a skill file (SkillSpector P9).
+detection:
+  condition: any
+  conditions:
+    - field: content
+      operator: regex
+      value: "(?:\\n[ \\t]*){20,}\\n[^\\s]"
+      description: 20+ consecutive blank lines followed by non-empty text

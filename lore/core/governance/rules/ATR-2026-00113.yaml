@@ -1,0 +1,30 @@
+# Derived from Agent Threat Rules (MIT). See NOTICE.
+title: Credential File Theft
+id: ATR-2026-00113
+severity: critical
+category: PE3
+owasp: AST01
+description: >
+  Detects instructions or commands that read common credential stores beyond a
+  skill's stated function.
+detection:
+  condition: any
+  conditions:
+    - field: content
+      operator: regex
+      flags: is
+      value: >-
+        (?:cat|type|Get-Content|read(?:_text|_bytes)?|open|send|upload|post|exfiltrate|include)\s+[^\n]{0,120}(?:\.aws/credentials|\.ssh/(?:id_rsa|id_ed25519|id_ecdsa)|\.config/gh/hosts\.ya?ml|\.docker/config\.json|\.kube/config|\.netrc)
+      description: Read or exfil command targeting credential files
+    - field: content
+      operator: regex
+      flags: i
+      value: >-
+        (?:cat|type|Get-Content|read(?:_text|_bytes)?|open)\s+[^\n]{0,80}(?:/\.env\b|\.env\b|credentials|id_rsa|id_ed25519|hosts\.ya?ml)
+      description: Read command targeting credential-like files
+    - field: content
+      operator: regex
+      flags: i
+      value: >-
+        printenv\s*\|\s*(?:grep|rg|findstr).{0,40}(?:key|token|secret|password)
+      description: Environment harvest of secrets

@@ -1,0 +1,36 @@
+# Derived from Agent Threat Rules (MIT). See NOTICE.
+title: Malicious Code in Skill Package
+id: ATR-2026-00121
+severity: critical
+category: SC2
+owasp: AST01
+description: >
+  Detects pipe-to-shell, encoded execution, and remote-fetch-and-run shapes in
+  skill markdown and fenced code.
+detection:
+  condition: any
+  conditions:
+    - field: content
+      operator: regex
+      flags: i
+      value: >-
+        (?:curl|wget|fetch)\s+[^\n|]{0,120}\|\s*(?:ba)?sh\b
+      description: curl/wget piped to a shell
+    - field: content
+      operator: regex
+      flags: i
+      value: >-
+        (?:ba)?sh\s+-c\s+["']?(?:curl|wget|base64)
+      description: Shell -c invoking remote or decoded payload
+    - field: content
+      operator: regex
+      flags: i
+      value: >-
+        (?:echo|printf)\s+[A-Za-z0-9+/=]{40,}\s*\|\s*base64\s+-d\s*\|\s*(?:ba)?sh
+      description: Base64 decode piped to shell
+    - field: content
+      operator: regex
+      flags: i
+      value: >-
+        eval\s*\(\s*(?:compile|__import__|getattr)
+      description: Dynamic Python eval/compile execution

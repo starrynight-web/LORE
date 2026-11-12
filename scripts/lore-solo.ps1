@@ -21,16 +21,17 @@ function Need-Uv {
 }
 
 function Install-Lore {
+  param([string[]]$Rest)
   Need-Uv
   $env:LORE_CHECKOUT = $Root
-  uv run --python 3.12 --project $Root python -m lore install
+  uv run --managed-python --python 3.12 --no-build --locked --project $Root python -m lore install @Rest
   exit $LASTEXITCODE
 }
 
 function Uninstall-Lore {
   Need-Uv
   $env:LORE_CHECKOUT = $Root
-  uv run --python 3.12 --project $Root python -m lore uninstall
+  uv run --managed-python --python 3.12 --no-build --locked --project $Root python -m lore uninstall
   exit $LASTEXITCODE
 }
 
@@ -44,28 +45,38 @@ $Command = "setup"
 if ($args.Count -gt 0) { $Command = $args[0] }
 
 switch ($Command) {
-  "install" { Install-Lore }
+  "install" {
+    $InstallArgs = @()
+    if ($args.Count -gt 1) { $InstallArgs = $args[1..($args.Count - 1)] }
+    Install-Lore -Rest $InstallArgs
+  }
   "uninstall" { Uninstall-Lore }
   { $_ -in "setup", "up" } {
     Require-Lore
+    $SetupArgs = @()
+    if ($args.Count -gt 1) { $SetupArgs = $args[1..($args.Count - 1)] }
     $env:LORE_COMMAND = $Bin
     $env:LORE_LAUNCHER = Join-Path $Root "scripts\lore-solo.ps1"
     $env:LORE_PROJECT_NAME = Split-Path -Leaf (Get-Location)
-    & $Bin setup
+    & $Bin setup @SetupArgs
     exit $LASTEXITCODE
   }
   "mcp" {
     Require-Lore
     if ($env:LORE_PROJECT) { Set-Location $env:LORE_PROJECT }
-    & $Bin mcp
+    $McpArgs = @()
+    if ($args.Count -gt 1) { $McpArgs = $args[1..($args.Count - 1)] }
+    & $Bin mcp @McpArgs
     exit $LASTEXITCODE
   }
   "connect" {
     Require-Lore
+    $ConnectArgs = @()
+    if ($args.Count -gt 1) { $ConnectArgs = $args[1..($args.Count - 1)] }
     $env:LORE_COMMAND = $Bin
     $env:LORE_LAUNCHER = Join-Path $Root "scripts\lore-solo.ps1"
     $env:LORE_HOST_OS = "windows"
-    & $Bin connect
+    & $Bin connect @ConnectArgs
     exit $LASTEXITCODE
   }
   "map" {
@@ -79,11 +90,13 @@ switch ($Command) {
   "doctor" {
     Need-Uv
     $env:LORE_CHECKOUT = $Root
+    $DoctorArgs = @()
+    if ($args.Count -gt 1) { $DoctorArgs = $args[1..($args.Count - 1)] }
     if (Test-Path $Bin) {
-      & $Bin doctor
+      & $Bin doctor @DoctorArgs
       exit $LASTEXITCODE
     }
-    uv run --python 3.12 --project $Root python -m lore doctor
+    uv run --managed-python --python 3.12 --no-build --locked --project $Root python -m lore doctor @DoctorArgs
     exit $LASTEXITCODE
   }
   default {

@@ -32,3 +32,64 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev]"
       - run: pytest lore/core/tests/test_install.py lore/core/tests/test_files.py lore/core/tests/test_connect.py
+      - run: pytest lore/core/tests/test_site_bundle.py lore/core/tests/test_site_scripts.py lore/setup/tests/test_setup_cmd.py
+
+  packaged-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv sync --frozen --extra dev
+      - name: Build Relocatable Setup Bundle
+        run: uv run --frozen python scripts/build_site_bundle.py --output-dir dist/site
+      - name: Frontend Types
+        working-directory: web
+        run: npm exec -- tsc --noEmit
+      - run: uv build --wheel --out-dir dist
+      - name: Isolated Core Wheel
+        run: uv run --frozen python scripts/smoke_install.py --artifacts dist --mode core
+      - name: Isolated Full Wheel And Setup
+        run: uv run --frozen python scripts/smoke_install.py --artifacts dist --mode full --bundle-dir dist/site
+      - name: Worker Lifecycle
+        run: uv run --frozen pytest lore/core/tests/test_map_build.py lore/core/tests/test_graph.py lore/core/tests/test_site_bundle.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.os }}
+          path: |
+            dist/site/*.json
+            dist/smoke-*.json
+          if-no-files-found: warn
+
+  containers:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --extra dev
+      - run: docker build --target mcp -t lore-solo:ci-mcp .
+      - run: docker build --target full -t lore-solo:ci-full .
+      - name: Container Stdio Map And Setup
+        run: uv run --frozen python scripts/smoke_container.py --mcp-image lore-solo:ci-mcp --full-image lore-solo:ci-full --artifacts dist
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-evidence
+          path: dist/smoke-container*
+          if-no-files-found: warn

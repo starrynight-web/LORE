@@ -36,10 +36,13 @@ def check_applied(
         else:
             status = "pass"
             detail = "Cited " + ", ".join(cited)
+    detail = f"{detail} Citation receipt only; code changes are not verified."
 
     append_outcome(project, decision_id, f"check_applied: {status}", detail)
     return {
         "decision_id": decision_id,
+        "check_kind": "citation_receipt",
+        "code_verified": False,
         "status": status,
         "served": sorted(served),
         "cited": cited,

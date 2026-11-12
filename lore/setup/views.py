@@ -9,7 +9,14 @@ from typing import Any
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
-from lore.connect import agent_prompt, install_command, mcp_entry, register_agents
+from lore.connect import (
+    agent_prompt,
+    container_refusal,
+    install_command,
+    mcp_entry,
+    register_agents,
+)
+from lore.container_paths import PathMappingError, active, to_runtime
 from lore.core.codebases import (
     add_codebase,
     delete_codebase,
@@ -20,7 +27,7 @@ from lore.core.codebases import (
 )
 from lore.core.config import load_config, save_config
 from lore.core.decisions import list_decisions
-from lore.core.graph import summarize
+from lore.core.graph import html_current, summarize
 from lore.core.inbox import (
     add_from_registry,
     add_text,
@@ -42,7 +49,6 @@ from lore.core.personas import (
     list_personas,
     list_skill_files,
     locate_skill,
-    set_status,
     skill_belongs,
     update_persona,
     update_skill,
@@ -103,6 +109,12 @@ def _json(request: HttpRequest) -> dict[str, Any]:
 
 
 def _roots() -> list[Path]:
+    if active():
+        roots = [workspace_root().expanduser().resolve()]
+        library = library_root().expanduser().resolve()
+        if library not in roots:
+            roots.append(library)
+        return roots
     roots = [workspace_root().expanduser().resolve(), Path.home().resolve()]
     library = library_root().expanduser().resolve()
     if library not in roots:
@@ -110,14 +122,21 @@ def _roots() -> list[Path]:
     return roots
 
 
+def _contained(resolved: Path) -> bool:
+    return any(resolved == root or root in resolved.parents for root in _roots())
+
+
 def _allowed(raw: str) -> Path:
+    try:
+        raw = to_runtime(raw)
+    except PathMappingError as exc:
+        raise ApiError(400, f"That folder is not reachable here: {exc}") from exc
     try:
         resolved = Path(raw).expanduser().resolve()
     except OSError as exc:
         raise ApiError(400, "That folder cannot be opened.") from exc
-    for root in _roots():
-        if resolved == root or root in resolved.parents:
-            return resolved
+    if _contained(resolved):
+        return resolved
     raise ApiError(400, "That folder is outside this project.")
 
 
@@ -149,6 +168,8 @@ def _project(request: HttpRequest) -> Path:
 
 
 def _skill_payload(doc: Doc) -> dict[str, Any]:
+    from lore.core.governance import governance_summary
+
     return {
         "id": doc.get("id"),
         "title": doc.get("title"),
@@ -156,10 +177,13 @@ def _skill_payload(doc: Doc) -> dict[str, Any]:
         "status": doc.get("status"),
         "body": doc.body,
         "persona": doc.get("persona"),
+        "governance": governance_summary(doc),
     }
 
 
 def _persona_payload(doc: Doc) -> dict[str, Any]:
+    from lore.core.governance import governance_summary
+
     skill_ids = doc.header.get("skill_ids")
     return {
         "id": doc.get("id"),
@@ -168,6 +192,7 @@ def _persona_payload(doc: Doc) -> dict[str, Any]:
         "status": doc.get("status"),
         "body": doc.body,
         "skill_ids": skill_ids if isinstance(skill_ids, list) else [],
+        "governance": governance_summary(doc),
     }
 
 
@@ -356,9 +381,38 @@ def persona_skills(request: HttpRequest, persona_id: str) -> JsonResponse:
 def approve(request: HttpRequest, item_id: str) -> JsonResponse:
     if request.method != "POST":
         raise ApiError(405, "Use POST to approve.")
+    from lore.core.governance import GovernanceBlock, approve_item, governance_summary
+
     project = _project(request)
-    doc = set_status(project, item_id, "stable")
-    return JsonResponse({"id": doc.get("id"), "status": doc.get("status")})
+    accept_risk = False
+    accept_note = ""
+    if request.body:
+        payload = _json(request)
+        accept_risk = bool(payload.get("accept_risk"))
+        accept_note = str(payload.get("note") or payload.get("accept_note") or "")
+    try:
+        doc = approve_item(
+            project,
+            item_id,
+            accept_risk=accept_risk,
+            accept_note=accept_note,
+        )
+    except GovernanceBlock as exc:
+        return JsonResponse(
+            {
+                "error": exc.message,
+                "blocked": True,
+                "governance": exc.governance,
+            },
+            status=409,
+        )
+    return JsonResponse(
+        {
+            "id": doc.get("id"),
+            "status": doc.get("status"),
+            "governance": governance_summary(doc),
+        }
+    )
 
 
 @_api
@@ -473,13 +527,32 @@ def decisions(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"decisions": rows})
 
 
+_HOST_CONNECT = (
+    "lore-solo connect --runtime docker --image <image> "
+    "--workspace <dir> --library <dir>"
+)
+
+
 @_api
 def connect(request: HttpRequest) -> JsonResponse:
     if request.method == "GET":
+        if active():
+            return JsonResponse(
+                {
+                    "command": _HOST_CONNECT,
+                    "prompt": (
+                        "Lore is running inside its container. Connect the "
+                        "editors from the host instead; on the host run:\n\n"
+                        f"{_HOST_CONNECT}\n"
+                    ),
+                }
+            )
         command = install_command()
         return JsonResponse({"command": command, "prompt": agent_prompt(command)})
     if request.method != "POST":
         raise ApiError(405, "Use POST to write the IDE config.")
+    if active():
+        raise ApiError(400, container_refusal())
     project = _project(request)
     cursor = project / ".cursor"
     cursor.mkdir(parents=True, exist_ok=True)
@@ -508,6 +581,8 @@ def connect(request: HttpRequest) -> JsonResponse:
 def connect_agents(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         raise ApiError(405, "Use POST to register Lore with installed agents.")
+    if active():
+        raise ApiError(400, container_refusal())
     return JsonResponse(register_agents())
 
 
@@ -534,7 +609,7 @@ def graph_build(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         raise ApiError(405, "Use POST to map the codebase.")
     project = _project(request)
-    return JsonResponse(start_build(project), status=202)
+    return JsonResponse(start_build(project, force=True), status=202)
 
 
 @_api
@@ -634,18 +709,43 @@ def inbox_adopt(request: HttpRequest, skill_id: str) -> JsonResponse:
     return JsonResponse({"id": saved[0], "status": "draft"})
 
 
+def _row_folder(row: dict[str, str]) -> tuple[Path | None, str]:
+    """Resolve a registry row path, translated for the container mounts."""
+    try:
+        translated = to_runtime(row["path"])
+    except PathMappingError:
+        return None, "the folder is not mounted in this container"
+    try:
+        folder = Path(translated).resolve()
+    except OSError:
+        return None, "the folder cannot be opened"
+    if not _contained(folder):
+        note = (
+            "the folder is not mounted in this container"
+            if active()
+            else "the folder is outside this project"
+        )
+        return None, note
+    return folder, ""
+
+
+def _codebase_folder(row: dict[str, str]) -> Path:
+    folder, note = _row_folder(row)
+    if folder is None:
+        raise ApiError(400, note or "That codebase folder cannot be used.")
+    return folder
+
+
 def _codebase_payload(project: Path, row: dict[str, str]) -> dict[str, Any]:
-    folder = Path(row["path"])
-    mapped = summarize(folder) if folder.is_dir() else {"state": "missing", "links": []}
-    status_path = project / ".lore" / "maps" / f"{row['id']}.json"
-    if status_path.is_file():
-        try:
-            loaded = json.loads(status_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            loaded = {"state": "failed", "error": "The status file could not be read."}
-        if isinstance(loaded, dict):
-            links = mapped.get("links", [])
-            mapped = {**loaded, "links": links}
+    folder, note = _row_folder(row)
+    if folder is None or not folder.is_dir():
+        mapped = {"state": "missing", "links": []}
+        payload = {**row, "map": mapped}
+        if note:
+            payload["note"] = note
+        return payload
+    legacy = project / ".lore" / "maps" / f"{row['id']}.json"
+    mapped = summarize(folder, legacy=legacy)
     return {**row, "map": mapped}
 
 
@@ -669,8 +769,10 @@ def codebases(request: HttpRequest) -> JsonResponse:
 def codebase_detail(request: HttpRequest, codebase_id: str) -> JsonResponse:
     project = _project(request)
     if request.method == "DELETE":
-        row = delete_codebase(project, codebase_id)
-        remove_map(Path(row["path"]))
+        row = get_codebase(project, codebase_id)
+        folder = _codebase_folder(row)
+        delete_codebase(project, codebase_id)
+        remove_map(folder)
         status_path = project / ".lore" / "maps" / f"{codebase_id}.json"
         if status_path.is_file():
             status_path.unlink()
@@ -679,11 +781,10 @@ def codebase_detail(request: HttpRequest, codebase_id: str) -> JsonResponse:
         payload = _json(request)
         if payload.get("build"):
             row = get_codebase(project, codebase_id)
-            folder = Path(row["path"])
+            folder = _codebase_folder(row)
             if not folder.is_dir():
                 raise ApiError(400, "That codebase folder is gone.")
-            status_path = project / ".lore" / "maps" / f"{codebase_id}.json"
-            status = start_build(folder, status_path)
+            status = start_build(folder, force=True)
             return JsonResponse({**row, "map": status})
         row = rename_codebase(project, codebase_id, str(payload.get("name", "")))
         return JsonResponse(_codebase_payload(project, row))
@@ -700,8 +801,12 @@ def codebase_graph(request: HttpRequest, codebase_id: str) -> HttpResponse:
         return JsonResponse({"error": exc.message}, status=exc.status)
     except FileNotFoundError:
         return JsonResponse({"error": "That codebase is not in Lore."}, status=404)
-    html = Path(row["path"]) / "graphify-out" / "graph.html"
-    if not html.is_file():
+    try:
+        folder = _codebase_folder(row)
+    except ApiError as exc:
+        return JsonResponse({"error": exc.message}, status=exc.status)
+    html = folder / "graphify-out" / "graph.html"
+    if not html.is_file() or not html_current(folder):
         return HttpResponse("Map this project.", status=404)
     return HttpResponse(html.read_text(encoding="utf-8"), content_type="text/html")
 
@@ -712,7 +817,7 @@ def graph_page(request: HttpRequest) -> HttpResponse:
     except ApiError as exc:
         return JsonResponse({"error": exc.message}, status=exc.status)
     html = project / "graphify-out" / "graph.html"
-    if not html.is_file():
+    if not html.is_file() or not html_current(project):
         return HttpResponse("Map this project.", status=404)
     return HttpResponse(html.read_text(encoding="utf-8"), content_type="text/html")
 

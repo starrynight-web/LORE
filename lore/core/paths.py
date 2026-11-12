@@ -67,20 +67,36 @@ def is_install_prefix(directory: Path) -> bool:
     return (lore / "bin").is_dir() and (lore / "tools").is_dir()
 
 
-def is_knowledge_store(directory: Path) -> bool:
-    """True when this folder holds personas, not only a codebase-map status file.
+_MAP_ARTIFACTS = {
+    "graph-status.json",
+    "map.lock",
+    "map.log",
+    "map-fingerprint.json",
+    "maps",
+}
+_MAP_ARTIFACT_PREFIXES = (".graph-status-", ".fingerprint-")
 
-    Mapping a repo that has no personas creates `.lore/graph-status.json`.
-    That file must not hide the persona library. The install prefix under
-    `$HOME/.lore` is also not a knowledge store.
+
+def is_knowledge_store(directory: Path) -> bool:
+    """True when this folder holds personas, not only codebase-map artifacts.
+
+    Mapping a repo that has no personas writes `.lore/graph-status.json` plus
+    worker lock/log/fingerprint files. Those must not hide the persona library.
+    The install prefix under `$HOME/.lore` is also not a knowledge store.
     """
     lore = directory / ".lore"
     if not lore.is_dir():
         return False
     if is_install_prefix(directory):
         return False
-    names = {entry.name for entry in lore.iterdir()}
-    return names != {"graph-status.json"}
+    entries = list(lore.iterdir())
+    if not entries:
+        return True
+    return any(
+        entry.name not in _MAP_ARTIFACTS
+        and not entry.name.startswith(_MAP_ARTIFACT_PREFIXES)
+        for entry in entries
+    )
 
 
 def find_project(start: Path) -> Path:

@@ -1,0 +1,30 @@
+# Allowlist: only the inputs the image build needs.
+*
+!lore/
+!web/
+!scripts/
+!dist/
+!pyproject.toml
+!uv.lock
+!build_support.py
+!MANIFEST.in
+!README.md
+!LICENSE
+
+# Never ship these even under allowed roots.
+**/.git
+**/.env
+**/.env.*
+**/.lore/provider.json
+**/node_modules
+**/.next
+**/__pycache__
+**/*.tsbuildinfo
+**/*.log
+**/.venv
+docs/
+examples/
+schemas/
+archive/
+dumps/
+lore_core_dump.txt

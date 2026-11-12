@@ -24,9 +24,14 @@ def test_check_applied_pass_fail_skip(tmp_path: Path) -> None:
 
     ok = check_applied(project, decision_id, cite_ids[:1])
     assert ok["status"] == "pass"
+    assert ok["check_kind"] == "citation_receipt"
+    assert ok["code_verified"] is False
+    assert "not verified" in ok["summary"]
 
     bad = check_applied(project, decision_id, ["skill:nope/missing@v1"])
     assert bad["status"] == "fail"
+    assert bad["check_kind"] == "citation_receipt"
+    assert bad["code_verified"] is False
     assert "skill:nope/missing@v1" in bad["unknown"]
 
     empty = check_applied(project, decision_id, [])
@@ -47,3 +52,6 @@ def test_check_applied_pass_fail_skip(tmp_path: Path) -> None:
     )
     skipped = check_applied(project, str(blank.get("id")), ["skill:x"])
     assert skipped["status"] == "skip"
+    assert skipped["check_kind"] == "citation_receipt"
+    assert skipped["code_verified"] is False
+    assert "not verified" in skipped["summary"]

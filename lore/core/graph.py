@@ -6,10 +6,13 @@ import json
 import os
 import re
 import subprocess
-from pathlib import Path
+import time
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from lore.core.budget import count_tokens
+from lore.core.graph_fingerprint import CODE_SUFFIXES as _CODE_SUFFIXES
+from lore.core.graph_fingerprint import SKIP_DIRS as _SKIP_DIRS
 
 KNOWN_SCHEMA = {1, "1"}
 MAP_NOTE = "Map this project"
@@ -17,39 +20,91 @@ BUILDING_NOTE = "The map is building."
 LOCATE_FILES = 8
 LOCATE_TOKENS = 400
 _HUBS = 3
-_SKIP_DIRS = {
-    ".git",
-    ".lore",
-    ".next",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    "graphify-out",
-    "node_modules",
-}
-_CODE_SUFFIXES = {
-    ".c",
-    ".css",
-    ".go",
-    ".html",
-    ".java",
-    ".js",
-    ".jsx",
-    ".kt",
-    ".mjs",
-    ".php",
-    ".py",
-    ".rb",
-    ".rs",
-    ".scss",
-    ".svelte",
-    ".swift",
-    ".toml",
-    ".ts",
-    ".tsx",
-    ".vue",
-}
+STARTUP_GRACE_SECONDS = 15.0
+
+
+def status_file(project: Path) -> Path:
+    return project / ".lore" / "graph-status.json"
+
+
+def lock_file(project: Path) -> Path:
+    return project / ".lore" / "map.lock"
+
+
+def log_file(project: Path) -> Path:
+    return project / ".lore" / "map.log"
+
+
+def graph_file(project: Path) -> Path:
+    return project / "graphify-out" / "graph.json"
+
+
+def graph_html(project: Path) -> Path:
+    return project / "graphify-out" / "graph.html"
+
+
+def _read_status(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"state": "failed", "error_code": "status_read", "error": "The status file could not be read."}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def write_status(project: Path, payload: dict[str, Any]) -> None:
+    """Atomically replace the canonical status file."""
+    import tempfile
+
+    path = status_file(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=".graph-status-", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(json.dumps(payload, indent=2) + "\n")
+        os.replace(tmp_name, path)
+    except OSError:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def read_status(project: Path, legacy: Path | None = None) -> dict[str, Any]:
+    """Canonical map status with worker-liveness recovery.
+
+    A `running` record only stays running while the build lock is held or the
+    just-scheduled worker is still inside its startup grace window. Anything
+    else becomes `interrupted` and can be retried explicitly.
+    """
+    raw = _read_status(status_file(project))
+    if not raw and legacy is not None:
+        raw = _read_status(legacy)
+    status = dict(raw) if raw else {"state": "missing"}
+    if str(status.get("state") or "") != "running":
+        return status
+    from lore.core.map_lock import lock_held
+
+    if lock_held(lock_file(project)):
+        return status
+    if status.get("pid") is None:
+        started = status.get("started_ts")
+        try:
+            age = time.time() - float(started) if started is not None else None
+        except (TypeError, ValueError):
+            age = None
+        if age is not None and age <= STARTUP_GRACE_SECONDS:
+            return status
+    return {
+        **status,
+        "state": "interrupted",
+        "error_code": status.get("error_code") or "worker_exit",
+        "error": str(status.get("error") or "The map worker stopped before finishing."),
+    }
 
 
 def slice_for(project: Path, file_path: str, notes: list[str]) -> list[dict[str, Any]]:
@@ -74,20 +129,12 @@ def slice_for(project: Path, file_path: str, notes: list[str]) -> list[dict[str,
         chosen = _neighborhood(project, nodes, links, by_id, file_path)
     else:
         chosen = _hubs(nodes, links)
-    return [_item(node, links, by_id) for node in chosen]
+    return [_item(project, node, links, by_id) for node in chosen]
 
 
-def summarize(project: Path) -> dict[str, Any]:
+def summarize(project: Path, legacy: Path | None = None) -> dict[str, Any]:
     """Status plus a short list of links for the codebase page."""
-    status_path = project / ".lore" / "graph-status.json"
-    status: dict[str, Any] = {"state": "missing"}
-    if status_path.is_file():
-        try:
-            loaded = json.loads(status_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            loaded = {"state": "failed", "error": "The status file could not be read."}
-        if isinstance(loaded, dict):
-            status = loaded
+    status = map_status(project, legacy=legacy)
     path = project / "graphify-out" / "graph.json"
     rows: list[dict[str, str]] = []
     if path.is_file():
@@ -121,6 +168,27 @@ def summarize(project: Path) -> dict[str, Any]:
                         break
     status["links"] = rows
     return status
+
+
+def _unrelative(raw: str) -> str:
+    value = raw.replace("\\", "/")
+    while value.startswith("./"):
+        value = value[2:]
+    return value
+
+
+def _contained(project: Path, rel: str) -> bool:
+    normalized = _unrelative(rel)
+    if not normalized or PureWindowsPath(normalized).drive:
+        return False
+    pure = PurePosixPath(normalized)
+    if pure.is_absolute() or ".." in pure.parts:
+        return False
+    try:
+        (project / normalized).resolve().relative_to(project.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _version(data: dict[str, Any]) -> Any:
@@ -175,17 +243,25 @@ def _hubs(nodes: list[dict[str, Any]], links: list[Any]) -> list[dict[str, Any]]
     return ranked[:_HUBS]
 
 
-def _item(node: dict[str, Any], links: list[Any], by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _item(
+    project: Path,
+    node: dict[str, Any],
+    links: list[Any],
+    by_id: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     label = str(node.get("label") or node["id"])
+    source = _source_path(node)
+    if not _contained(project, source):
+        source = ""
     bits: list[str] = []
     for link in links:
         if not isinstance(link, dict) or not _is_import_or_call(str(link.get("relation") or "")):
             continue
-        source = str(link.get("source"))
-        target = str(link.get("target"))
-        if source != str(node["id"]) and target != str(node["id"]):
+        source_id = str(link.get("source"))
+        target_id = str(link.get("target"))
+        if source_id != str(node["id"]) and target_id != str(node["id"]):
             continue
-        other_id = target if source == str(node["id"]) else source
+        other_id = target_id if source_id == str(node["id"]) else source_id
         other = by_id.get(other_id, {})
         other_label = str(other.get("label") or other_id)
         confidence = str(link.get("confidence") or "EXTRACTED")
@@ -202,21 +278,23 @@ def _item(node: dict[str, Any], links: list[Any], by_id: dict[str, dict[str, Any
         "confidence": {"band": "high", "p": 0.9},
         "title": label,
         "text": text,
-        "source": {"path": str(node.get("source_file") or ""), "anchor": "graph"},
+        "source": {"path": source, "anchor": "graph"},
     }
 
 
 def _same_file(project: Path, node: dict[str, Any], file_path: str) -> bool:
-    source = str(node.get("source_file") or "").replace("\\", "/").lstrip("./")
-    if not source:
+    source = _source_path(node)
+    if not source or not _contained(project, source):
         return False
     wanted = file_path.replace("\\", "/")
     if wanted.startswith("/"):
         try:
             wanted = Path(wanted).resolve().relative_to(project.resolve()).as_posix()
-        except ValueError:
-            wanted = Path(wanted).name
-    wanted = wanted.lstrip("./")
+        except (OSError, ValueError):
+            return False
+    wanted = _unrelative(wanted)
+    if ".." in PurePosixPath(wanted).parts:
+        return False
     return source == wanted or source.endswith("/" + wanted)
 
 
@@ -299,37 +377,72 @@ def newest_source_mtime(project: Path) -> float | None:
     return newest
 
 
-def map_is_stale(project: Path) -> bool:
-    """True when the map is missing, or older than the current commit or sources."""
-    graph = project / "graphify-out" / "graph.json"
-    if not graph.is_file():
+def map_is_stale(project: Path, *, current: str | None = None) -> bool:
+    """True when the recorded source fingerprint no longer matches the tree.
+
+    Legacy graphs carry no fingerprint and are stale once so they rebuild.
+    `built_at_commit` stays in the graph as provenance but is never the only
+    freshness signal.
+    """
+    data = _load(project)
+    if data is None:
         return True
-    head = git_head(project)
-    if head is not None:
-        return head != (built_at_commit(project) or "")
-    newest = newest_source_mtime(project)
-    if newest is None:
-        return False
-    try:
-        return newest > graph.stat().st_mtime
-    except OSError:
+    recorded = str(data.get("source_fingerprint") or "")
+    if not recorded:
         return True
+    if current is None:
+        from lore.core.graph_fingerprint import source_fingerprint
+
+        current = source_fingerprint(project)
+    return recorded != current
 
 
-def map_status(project: Path) -> dict[str, Any]:
-    path = project / ".lore" / "graph-status.json"
-    status: dict[str, Any] = {"state": "missing"}
-    if path.is_file():
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            loaded = {"state": "failed", "error": "The status file could not be read."}
-        if isinstance(loaded, dict):
-            status = loaded
+def map_status(project: Path, legacy: Path | None = None) -> dict[str, Any]:
+    status = read_status(project, legacy=legacy)
+    from lore.setup.graph_job import map_capability
+
+    capability = map_capability()
+    status["available"] = capability["available"]
+    status["reason"] = capability["reason"]
+    if capability["reason"] == "disabled" or (
+        not capability["available"]
+        and str(status.get("state") or "")
+        in {
+            "",
+            "missing",
+            "failed",
+            "interrupted",
+        }
+    ):
+        status["state"] = "unavailable"
     commit = built_at_commit(project)
     if commit:
         status["built_at_commit"] = commit
     return status
+
+
+def html_current(project: Path) -> bool:
+    """True when the published HTML matches the published map generation."""
+    status = read_status(project)
+    generation = status.get("html_generation")
+    if not generation:
+        return False
+    data = _load(project)
+    if not isinstance(data, dict):
+        return False
+    return bool(data.get("map_generation") == generation)
+
+
+def map_data(project: Path) -> dict[str, Any]:
+    """Advisory map metadata for a get_context result."""
+    status = map_status(project)
+    state = str(status.get("state") or "missing")
+    return {
+        "state": state,
+        "stale": map_is_stale(project),
+        "available": bool(status.get("available", True)),
+        "advisory": True,
+    }
 
 
 def locate(project: Path, intent: str, file_path: str = "") -> dict[str, Any]:
@@ -353,7 +466,7 @@ def locate(project: Path, intent: str, file_path: str = "") -> dict[str, Any]:
     matched: set[str] = set()
     for node in nodes:
         source = _source_path(node)
-        if not source:
+        if not source or not _contained(project, source):
             continue
         hay = f"{source} {node.get('label') or ''}".lower()
         score = sum(1 for token in tokens if token in hay)
@@ -382,7 +495,7 @@ def locate(project: Path, intent: str, file_path: str = "") -> dict[str, Any]:
         other_id = target_id if source_id in matched else source_id
         other = by_id.get(other_id, {})
         other_path = _source_path(other)
-        if not other_path or other_path in seen:
+        if not other_path or not _contained(project, other_path) or other_path in seen:
             continue
         seen.add(other_path)
         chosen.append(
@@ -409,7 +522,7 @@ def _load(project: Path) -> dict[str, Any] | None:
 
 
 def _source_path(node: dict[str, Any]) -> str:
-    return str(node.get("source_file") or "").replace("\\", "/").lstrip("./")
+    return _unrelative(str(node.get("source_file") or ""))
 
 
 def _fit_files(files: list[dict[str, str]], notes: list[str]) -> dict[str, Any]:

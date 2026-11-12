@@ -42,10 +42,14 @@ export default function ReplayPage() {
               <Badge variant="outline">{row.verdict}</Badge>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">Guidance and agent-reported outcome</p>
               <p>{row.summary}</p>
               {row.included.length ? (
                 <p className="font-mono text-xs whitespace-pre-wrap text-muted-foreground">{row.included.join("\n")}</p>
               ) : null}
+              <p className="text-xs text-muted-foreground">
+                Citation receipts record which guidance was served and cited; they do not independently verify code changes.
+              </p>
             </CardContent>
           </Card>
         ))}

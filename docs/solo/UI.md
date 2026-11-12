@@ -44,7 +44,7 @@ shadcn is the `base-nova` style (`web/components.json`). Components come from Ba
 - `Select` takes an `items` list.
 - Forms use `Field`, `FieldLabel`, and `FieldGroup` with React state. They post JSON through `api()`.
 - Success messages use `toast.success` from `sonner`. Failures use `web/components/error-alert.tsx`.
-- Icons are lucide. Add a component with `npx shadcn@latest add <name>` from `web/`.
+- Icons are lucide. Add a component with an explicitly reviewed generator version — `npx shadcn@<pinned-version> add <name>` from `web/` — not `@latest` (see docs/solo/DEPENDENCY_AUDIT.md; the CLI package is intentionally not a dependency and 4.22.1 in particular carried advisory-flagged transitive deps). The `data-*` variants, accordion keyframes, and `no-scrollbar` the components rely on are vendored in `web/app/ui-utilities.css` under the upstream MIT license (kept in a `/*! ... */` comment in `globals.css` so it survives minification); `components.json` remains as generator metadata.
 
 `web/app/layout.tsx` wraps the tree in `ThemeProvider` (`defaultTheme="system"`) and `TooltipProvider`. Tokens live in `web/app/globals.css`.
 
@@ -56,4 +56,4 @@ Until a model is saved, drafts use the default for that provider: Groq `llama-3.
 
 ## A window later
 
-The setup site can later open in its own application window. The installer would still place the `lore` command where editors can start it. `lore mcp` stays that process. A window has not been built.
+The setup site can later open in its own application window. The installer would still place the `lore-solo` command where editors can start it. `lore-solo mcp` stays that process. A window has not been built.

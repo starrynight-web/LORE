@@ -6,8 +6,9 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { GovernanceBadges } from "@/components/governance-badges"
 import { Shell } from "@/components/Shell"
-import { api, type Skill } from "@/lib/api"
+import { api, ApiError, type GovernanceFinding, type Skill } from "@/lib/api"
 import { personaHref } from "@/lib/routes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,8 @@ export default function SkillPage() {
   const [summary, setSummary] = useState("")
   const [body, setBody] = useState("")
   const [error, setError] = useState("")
+  const [blockFindings, setBlockFindings] = useState<GovernanceFinding[]>([])
+  const [acceptNote, setAcceptNote] = useState("")
 
   function reload() {
     api<Skill>(`/api/skills/${encoded}`)
@@ -53,11 +56,26 @@ export default function SkillPage() {
     reload()
   }
 
-  async function approve() {
+  async function approve(acceptRisk = false) {
     setError("")
-    await api(`/api/items/${encodeURI(id)}/approve`, { method: "POST" })
-    toast.success("Skill approved.")
-    reload()
+    try {
+      await api(`/api/items/${encodeURI(id)}/approve`, {
+        method: "POST",
+        body: JSON.stringify(acceptRisk ? { accept_risk: true, note: acceptNote } : {}),
+      })
+      setBlockFindings([])
+      setAcceptNote("")
+      toast.success(acceptRisk ? "Skill approved with accepted risk." : "Skill approved.")
+      reload()
+    } catch (exc) {
+      if (exc instanceof ApiError && exc.status === 409) {
+        const gov = (exc.body.governance || {}) as { scan?: { findings?: GovernanceFinding[] } }
+        setBlockFindings(gov.scan?.findings || [])
+        setError(exc.message)
+        return
+      }
+      throw exc
+    }
   }
 
   async function remove() {
@@ -73,7 +91,10 @@ export default function SkillPage() {
       {skill ? (
         <Card>
           <CardHeader>
-            <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status}</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status}</Badge>
+              <GovernanceBadges governance={skill.governance} />
+            </div>
             <CardTitle className="text-2xl">{skill.title}</CardTitle>
             <CardDescription>
               {skill.persona ? (
@@ -86,6 +107,26 @@ export default function SkillPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {blockFindings.length > 0 ? (
+              <div className="mb-4 space-y-2 rounded-md border border-destructive/40 p-3 text-sm">
+                <p className="font-medium">Approve blocked by security findings</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  {blockFindings.map((finding) => (
+                    <li key={`${finding.id}-${finding.evidence?.join(",") || ""}`}>
+                      <span className="font-medium">[{finding.severity}]</span> {finding.id}: {finding.title}
+                      {finding.evidence?.length ? ` (${finding.evidence.join(", ")})` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <Field>
+                  <FieldLabel htmlFor="accept-note">Note for accept risk</FieldLabel>
+                  <Input id="accept-note" value={acceptNote} onChange={(event) => setAcceptNote(event.target.value)} placeholder="Why this risk is accepted" />
+                </Field>
+                <Button type="button" variant="destructive" onClick={() => approve(true).catch((exc: Error) => setError(exc.message))}>
+                  Approve anyway
+                </Button>
+              </div>
+            ) : null}
             <form onSubmit={(event) => save(event).catch((exc: Error) => setError(exc.message))}>
               <FieldGroup>
                 <Field>
@@ -104,7 +145,7 @@ export default function SkillPage() {
                 <div className="flex flex-wrap gap-2">
                   <Button type="submit">Save changes</Button>
                   {skill.status !== "stable" ? (
-                    <Button type="button" variant="outline" onClick={() => approve().catch((exc: Error) => setError(exc.message))}>
+                    <Button type="button" variant="outline" onClick={() => approve(false).catch((exc: Error) => setError(exc.message))}>
                       Approve skill
                     </Button>
                   ) : null}

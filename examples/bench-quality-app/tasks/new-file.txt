@@ -1,0 +1,1 @@
+Create src/api/readiness.py containing only def readiness() -> dict[str, str]: returning {"status": "ready"}. Do not change src/api/health.py or src/api/health_probe.py. This is a new-file task; a codebase map cannot list the new file in advance.

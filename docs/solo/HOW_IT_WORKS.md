@@ -2,15 +2,15 @@
 
 Diagrams of the end-to-end flow (user path, agent path, API ↔ MCP ↔ disk) are in [FLOW.md](FLOW.md).
 
-One developer. One coding agent. Lore is a **gateway + policy layer**: MCP tools are the I/O; standing IDE rules are the autopilot (DevRelay-shaped); **personas** route which approved skills apply so the agent is not left guessing among an overloaded skill folder. Every answer is written down as a decision. The Solo promise is better-guided work — not guaranteed token savings. See [QUALITY_PLAN.md](QUALITY_PLAN.md).
+One developer. One coding agent. Lore is a **gateway + policy layer**: MCP tools are the I/O; standing IDE rules are advisory nudges the agent is asked to follow — not enforced (DevRelay-shaped); **personas** route which approved skills apply so the agent is not left guessing among an overloaded skill folder. Every answer is written down as a decision. The Solo promise is better-guided work — not guaranteed token savings. See [QUALITY_PLAN.md](QUALITY_PLAN.md).
 
 The project folder is the database. Personas and skills are markdown under `.lore/`. The editor starts Lore as a normal local process. The setup site makes those files easier to create. Closing the site does not stop the agent.
 
-Default MCP surface (coding): `get_context`, `map_codebase`, `check_applied`, `log_decision`. Admin tools stay behind `lore-solo mcp --full`. Enterprise (org policies, OCR, tenancy) lives on the `enterprise` branch — [HOSTING.md](HOSTING.md).
+Default MCP surface (coding): `get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`. Admin tools stay behind `lore-solo mcp --full`. Enterprise (org policies, OCR, tenancy) lives on the `enterprise` branch — [HOSTING.md](HOSTING.md).
 
 ## One local program
 
-`uvx lore-solo install` puts the `lore-solo` command on this computer. `uvx lore-solo setup` starts the setup site. The same two commands work on macOS, Linux, and Windows. `./scripts/lore-solo install` from a clone of the `solo` branch does the same install into `~/.lore`. The computer does not need a system Python. The editor then starts `lore-solo mcp` itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
+`uvx --managed-python --python 3.12 --no-build lore-solo==0.2.0 install` puts the `lore-solo` command on this computer (`--managed-python --python 3.12` picks the interpreter before dependencies resolve; `--no-build` accepts binary wheels only). After install, `lore-solo setup` starts the setup site. The same two commands work on macOS, Linux, and Windows. `./scripts/lore-solo install` from a clone of the `solo` branch does the same install into `~/.lore`. The computer does not need a system Python. The editor then starts `lore-solo mcp` itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
 
 ```mermaid
 flowchart LR
@@ -28,11 +28,12 @@ flowchart LR
 | Command | Who starts it | What it does |
 | --- | --- | --- |
 | `uvx lore-solo doctor` | You, optional | Checks uv, Node/npm, home write access, install, map, and editors. Prints OS-specific install links and what each gap blocks. Exit `1` if a required tool is missing. |
-| `uvx lore-solo install` | You, once | Installs Lore Solo into `~/.lore/bin` on macOS, Linux, and Windows. Tries map (Graphify) via wheels; falls back to core if a native build fails. |
+| `uvx lore-solo install` | You, once | Installs Lore Solo into `~/.lore/bin` on macOS, Linux, and Windows. Tries map (Graphify) via wheels; falls back to core when a wheel is unavailable for the platform. |
 | `uvx lore-solo setup` | You, while setting up | Prints `http://127.0.0.1:3000/?key=...` and serves the site until Ctrl+C |
 | `uvx lore-solo connect` | You, or the agent from the prompt | Writes Lore into editors already installed on this computer; sets `LORE_WORKSPACE` |
-| `uvx lore-solo mcp` | The editor, for the session | Reads and writes `.lore/` over stdio. Default coding tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`. No port. No setup key. |
+| `uvx lore-solo mcp` | The editor, for the session | Reads and writes `.lore/` over stdio. Default coding tools: `get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`. No port. No setup key. |
 | `uvx lore-solo map` | You, or a git hook | Starts a codebase map rebuild for the open project |
+| `lore-solo container mcp\|setup\|map` | You, or the editor via `connect --runtime docker` | Runs the same verbs inside a locally built image with only `/workspace` and `/library` writable mounts |
 | `uvx lore-solo uninstall` | You, when you want the command gone | Removes the `lore-solo` command from `~/.lore`. Personas, skills, and editor registrations stay. |
 
 A clone uses the same verbs: `./scripts/lore-solo install`, `setup`, `connect`, `mcp`, `map`, and `uninstall`. On Windows those are `.\scripts\lore-solo.ps1 …`.
@@ -59,7 +60,7 @@ flowchart TD
 
 The setup key is generated when the site starts. It changes every start. It guards only the website. The browser stores it in a cookie named `lore_key`. Pages opened without that cookie show the lock screen. MCP never sees the key.
 
-The setup site needs Node.js, because the page is a Next.js app. The agent does not. The first `setup` builds the page when it is not already built.
+The setup site needs Node.js 22 or newer to serve the prebuilt Next.js page. The agent does not need Node at all. npm is only used when a developer builds the page from source — published installs serve the bundled standalone output (see `lore/site_bundle.py`), and a source checkout falls back to `npm run dev` only when its standalone stamp is missing or stale.
 
 ## Where the files live
 
@@ -123,7 +124,7 @@ skill_ids:
 You are the frontend engineer. Use only the skills filed under this persona.
 ```
 
-`status` is `draft` or `stable`. A draft is stored and visible on the Personas page. The agent does not receive it until you approve it. Approving rewrites that one field to `stable`.
+`status` is `draft` or `stable`. A draft is stored and visible on the Personas page. The agent does not receive it until you approve it. Approving runs governance (ATR static scan, optional SkillSpector, freshness stamp) and then sets `status` to `stable`. Critical or high findings block approve unless you accept the risk. Soft-stale skills still serve with `freshness: aging`. Detail: [GOVERNANCE.md](GOVERNANCE.md).
 
 A skill file lives in `.lore/skills/<persona-slug>/` and its header names the same persona. A skill in another persona’s folder is not returned with this persona, even if someone lists it in `skill_ids`.
 

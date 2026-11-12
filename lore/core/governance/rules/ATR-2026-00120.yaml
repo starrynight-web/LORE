@@ -1,0 +1,41 @@
+# Derived from Agent Threat Rules (MIT). See NOTICE.
+# Covers SKILL.md prompt-injection shapes published as ATR-2026-00120.
+title: SKILL.md Prompt Injection
+id: ATR-2026-00120
+severity: critical
+category: P1
+owasp: AST01
+description: >
+  Detects instruction override, concealment, and plain-language exfiltration
+  directives in skill body text (not only inside HTML comments).
+detection:
+  condition: any
+  conditions:
+    - field: content
+      operator: regex
+      flags: i
+      category: P1
+      value: >-
+        (?:ignore|disregard|forget|override|bypass)\s+(?:all\s+)?(?:previous|prior|above|safety|security)?\s*(?:instructions?|rules?|constraints?|guidelines?|restrictions?)
+      description: Instruction override phrase
+    - field: content
+      operator: regex
+      flags: i
+      category: P2
+      value: >-
+        do\s+not\s+(?:mention|tell|inform|reveal|show|display|disclose)\s+(?:this|the\s+user|anyone|them)
+      description: Concealment directive aimed at the agent
+    - field: content
+      operator: regex
+      flags: i
+      category: P3
+      value: >-
+        (?:send|transmit|upload|post|forward)\s+(?:the\s+)?(?:conversation|context|chat|history|messages?|credentials?|api\s*keys?|secrets?)\s+to
+      description: Plain-language exfiltration instruction
+    - field: content
+      operator: regex
+      flags: i
+      category: P3
+      value: >-
+        (?:silently|quietly|secretly|covertly)\s+(?:send|transmit|upload|post|run|execute)
+      description: Covert action language

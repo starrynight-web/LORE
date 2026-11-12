@@ -80,20 +80,46 @@ def served_skills(project: Path, name: str) -> list[Doc]:
     return [doc for path, doc in list_skill_files(project) if is_served(path, doc, name)]
 
 
+def _servable(project: Path, path: Path, doc: Doc, persona: str | None) -> bool:
+    """A stable skill only ships when its owning persona is stable too."""
+    if doc.get("status") != "stable":
+        return False
+    owner_name = persona if persona is not None else path.parent.name
+    if not skill_belongs(path, doc, owner_name):
+        return False
+    owner = find_persona(project, owner_name)
+    return owner is not None and owner.get("status") == "stable"
+
+
 def find_skill(project: Path, skill_name: str, persona: str | None = None) -> Doc | None:
     needle = skill_name.removeprefix("skill:")
+    exact: list[tuple[Path, Doc]] = []
+    loose: list[tuple[Path, Doc]] = []
     for path, doc in list_skill_files(project):
-        ident = doc.get("id").removeprefix("skill:")
-        title = doc.get("title")
+        full = str(doc.get("id") or "")
+        ident = full.removeprefix("skill:")
         tail = ident.split("/")[-1]
-        names = {ident, doc.get("id"), path.stem, path.stem.split("@", 1)[0], title, tail, tail.split("@", 1)[0]}
-        if needle not in names:
+        if needle in {full, ident}:
+            exact.append((path, doc))
             continue
-        if persona is not None and not skill_belongs(path, doc, persona):
-            return None
-        if doc.get("status") != "stable":
-            return None
-        return doc
+        names = {path.stem, path.stem.split("@", 1)[0], doc.get("title"), tail, tail.split("@", 1)[0]}
+        if needle in names:
+            loose.append((path, doc))
+    if exact:
+        for path, doc in exact:
+            if _servable(project, path, doc, persona):
+                return doc
+        return None
+    matches = [
+        (path, doc) for path, doc in loose if _servable(project, path, doc, persona)
+    ]
+    ids = {str(doc.get("id")) for _path, doc in matches}
+    if len(ids) > 1:
+        raise ValueError(
+            f"{skill_name} is ambiguous; use a full skill id: " + ", ".join(sorted(ids))
+        )
+    if matches:
+        return matches[0][1]
     return None
 
 
@@ -164,7 +190,12 @@ def write_skill(
     write_doc(path, doc)
     doc.path = path
     _attach_skill(project, persona, skill)
-    return doc
+    try:
+        from lore.core.governance import stamp_scan
+
+        return stamp_scan(doc, use_skillspector=False)
+    except Exception:  # noqa: BLE001 - draft write must not fail on scan errors
+        return doc
 
 
 def locate_skill(project: Path, skill_name: str) -> tuple[Path, Doc] | None:
@@ -200,6 +231,7 @@ def update_persona(
     doc = find_persona(project, name)
     if doc is None or doc.path is None:
         raise FileNotFoundError(name)
+    before = (doc.get("title"), doc.get("summary"), doc.body)
     if title is not None:
         text = title.strip()
         if not text:
@@ -209,11 +241,28 @@ def update_persona(
         doc.header["summary"] = summary.strip()
     if body is not None:
         doc.body = body
+    promote = False
     if status is not None:
         if status not in {"draft", "stable"}:
             raise ValueError("Status must be draft or stable.")
-        doc.header["status"] = status
+        promote = status == "stable"
+    content_changed = (doc.get("title"), doc.get("summary"), doc.body) != before
+    if content_changed or status is not None:
+        doc.header["status"] = "draft"
+    if content_changed:
+        doc.header.pop("governance", None)
     write_doc(doc.path, doc)
+    if content_changed:
+        try:
+            from lore.core.governance import stamp_scan
+
+            doc = stamp_scan(doc, use_skillspector=False)
+        except Exception:  # noqa: BLE001, S110 - draft write must not fail on scan errors
+            pass
+    if promote:
+        from lore.core.governance import approve_item
+
+        return approve_item(project, doc.get("id"))
     return doc
 
 
@@ -237,6 +286,7 @@ def update_skill(
     if found is None:
         raise FileNotFoundError(skill_name)
     path, doc = found
+    before = (doc.get("title"), doc.get("summary"), doc.body)
     if title is not None:
         text = title.strip()
         if not text:
@@ -246,12 +296,29 @@ def update_skill(
         doc.header["summary"] = summary.strip()
     if body is not None:
         doc.body = body
+    promote = False
     if status is not None:
         if status not in {"draft", "stable"}:
             raise ValueError("Status must be draft or stable.")
-        doc.header["status"] = status
+        promote = status == "stable"
+    content_changed = (doc.get("title"), doc.get("summary"), doc.body) != before
+    if content_changed or status is not None:
+        doc.header["status"] = "draft"
+    if content_changed:
+        doc.header.pop("governance", None)
     write_doc(path, doc)
     doc.path = path
+    if content_changed:
+        try:
+            from lore.core.governance import stamp_scan
+
+            doc = stamp_scan(doc, use_skillspector=False)
+        except Exception:  # noqa: BLE001, S110 - draft write must not fail on scan errors
+            pass
+    if promote:
+        from lore.core.governance import approve_item
+
+        return approve_item(project, doc.get("id"))
     return doc
 
 
@@ -272,8 +339,25 @@ def delete_skill(project: Path, skill_name: str) -> None:
             write_doc(persona.path, persona)
 
 
+def find_any(project: Path, item_id: str) -> Doc | None:
+    """Locate a persona or skill by id (draft or stable)."""
+    wanted = item_id
+    for doc in list_personas(project):
+        if doc.get("id") == wanted or persona_slug(doc.get("id")) == item_id:
+            return doc
+    for _path, doc in list_skill_files(project):
+        if doc.get("id") == wanted or doc.get("id").removeprefix("skill:") == item_id:
+            return doc
+    return None
+
+
 def set_status(project: Path, item_id: str, status: str) -> Doc:
-    doc = _find_any(project, item_id)
+    """Set status. Promoting to stable runs governance approve."""
+    if status == "stable":
+        from lore.core.governance import approve_item
+
+        return approve_item(project, item_id)
+    doc = find_any(project, item_id)
     if doc is None or doc.path is None:
         raise FileNotFoundError(item_id)
     doc.header["status"] = status
@@ -291,14 +375,3 @@ def _attach_skill(project: Path, persona: str, skill: str) -> None:
         ids.append(skill)
     doc.header["skill_ids"] = ids
     write_doc(doc.path, doc)
-
-
-def _find_any(project: Path, item_id: str) -> Doc | None:
-    wanted = item_id
-    for doc in list_personas(project):
-        if doc.get("id") == wanted or persona_slug(doc.get("id")) == item_id:
-            return doc
-    for _path, doc in list_skill_files(project):
-        if doc.get("id") == wanted or doc.get("id").removeprefix("skill:") == item_id:
-            return doc
-    return None

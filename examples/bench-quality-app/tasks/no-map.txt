@@ -1,0 +1,1 @@
+In src/ui/Panel.tsx, change const label to "Published". Preserve the theme import and leave src/ui/PanelCopy.tsx untouched. Codebase mapping is unavailable for this task; use ordinary scoped source inspection as needed.

@@ -1,6 +1,6 @@
 # MCP client compatibility
 
-**Historical:** rows below were recorded against the Go `lore serve` demo (12 tools). Solo uses `lore-solo mcp` with a 4-tool coding surface by default. Re-run [smoke-test.md](smoke-test.md) before treating this matrix as current.
+**Historical:** rows below were recorded against the Go `lore serve` demo (12 tools). Solo uses `lore-solo mcp` with a 5-tool coding surface by default (`get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`). Re-run [smoke-test.md](smoke-test.md) before treating this matrix as current.
 
 Fill this in from smoke-test runs. Use ✅ (works), ⚠️ (partly, add a note), ❌ (not supported), or leave it blank (not tested yet).
 

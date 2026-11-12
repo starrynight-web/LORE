@@ -1,0 +1,23 @@
+# Derived from Agent Threat Rules (MIT). See NOTICE.
+# Python uses real Unicode scalar values (not UTF-16 surrogate-pair regex).
+title: Unicode Tag Character Smuggling
+id: ATR-2026-00129
+severity: critical
+category: P2
+owasp: AST01
+description: >
+  Detects Unicode Tag characters and dense zero-width runs used to smuggle
+  hidden instructions in skill markdown.
+detection:
+  condition: any
+  conditions:
+    - field: content
+      operator: regex
+      value: "(?:[\\U000E0001-\\U000E007F]){3,}"
+      description: 3+ Unicode Tag characters (invisible ASCII smuggling)
+    - field: content
+      operator: regex
+      flags: s
+      value: >-
+        [\u200b\u200c\u200d\u2060\ufeff].*[\u200b\u200c\u200d\u2060\ufeff].*[\u200b\u200c\u200d\u2060\ufeff].*[\u200b\u200c\u200d\u2060\ufeff].*[\u200b\u200c\u200d\u2060\ufeff]
+      description: 5+ zero-width characters spread through text

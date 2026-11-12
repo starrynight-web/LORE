@@ -6,6 +6,7 @@ import json
 import shutil
 from pathlib import Path
 
+from lore.container_paths import to_host
 from lore.core.personas import file_slug
 
 
@@ -56,7 +57,7 @@ def add_codebase(project: Path, name: str, folder: Path) -> dict[str, str]:
     while ident in taken:
         ident = f"{slug}-{number}"
         number += 1
-    row = {"id": ident, "name": title, "path": str(folder.resolve())}
+    row = {"id": ident, "name": title, "path": to_host(str(folder.resolve()))}
     rows.append(row)
     _write(project, rows)
     return row

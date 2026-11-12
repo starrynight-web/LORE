@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastmcp import FastMCP
 
+from lore import container_paths
 from lore.connect import MCP_SERVER_NAME
 from lore.core.check_applied import check_applied as run_check_applied
 from lore.core.context import get_context as build_context
@@ -16,12 +18,38 @@ from lore.core.graph import locate as locate_files
 from lore.core.graph import map_status as read_map_status
 from lore.core.idempotency import recall, remember
 from lore.core.instructions import STANDING_INSTRUCTIONS
+from lore.core.okf import Doc
 from lore.core.paths import find_project, map_root, workspace_root
 from lore.core.personas import find_skill, persona_id, write_skill
 from lore.core.personas import list_personas as load_personas
 from lore.setup.graph_job import start_build
 
-CODING_TOOLS = frozenset({"get_context", "map_codebase", "check_applied", "log_decision"})
+CODING_TOOLS = frozenset(
+    {"get_context", "get_skill", "map_codebase", "check_applied", "log_decision"}
+)
+
+SKILL_PAGE_MAX = 24000
+
+
+def skill_page(doc: Doc, offset: int, limit: int) -> dict[str, Any]:
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+    if limit < 1 or limit > SKILL_PAGE_MAX:
+        raise ValueError(f"limit must be between 1 and {SKILL_PAGE_MAX}")
+    body = doc.body or ""
+    page = body[offset : offset + limit]
+    end = offset + len(page)
+    next_offset: int | None = None if end >= len(body) else end
+    return {
+        "id": doc.get("id"),
+        "title": doc.get("title"),
+        "summary": doc.get("summary"),
+        "body": page,
+        "offset": offset,
+        "next_offset": next_offset,
+        "has_more": next_offset is not None,
+        "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+    }
 
 
 def resolve_surface(argv: list[str] | None = None) -> str:
@@ -55,12 +83,29 @@ def build(project: Path | None = None, surface: str | None = None) -> FastMCP:
     @mcp.tool
     def get_context(intent: str = "", persona: str = "", file_path: str = "") -> dict[str, Any]:
         """Matching skill summaries and files. Call once per task."""
-        return build_context(origin(), persona, intent, file_path)
+        result = build_context(
+            origin(), persona, intent, container_paths.to_runtime(file_path)
+        )
+        return cast(dict[str, Any], container_paths.convert_result(result))
+
+    @mcp.tool
+    def get_skill(
+        name: str,
+        persona: str = "",
+        offset: int = 0,
+        limit: int = 12000,
+    ) -> dict[str, Any]:
+        """Full steps for one stable skill."""
+        owner = persona or None
+        doc = find_skill(root(), name, owner)
+        if doc is None:
+            raise ValueError(f"{name} is not a stable skill for this persona")
+        return skill_page(doc, offset, limit)
 
     @mcp.tool
     def map_codebase() -> dict[str, Any]:
         """Start the codebase map; returns while it runs."""
-        return start_build(maps())
+        return start_build(maps(), force=True)
 
     @mcp.tool
     def check_applied(decision_id: str, rule_ids: list[str] | None = None) -> dict[str, Any]:
@@ -94,20 +139,6 @@ def build(project: Path | None = None, surface: str | None = None) -> FastMCP:
         return payload
 
     if chosen == "full":
-
-        @mcp.tool
-        def get_skill(name: str, persona: str = "") -> dict[str, Any]:
-            """Full steps for one stable skill."""
-            owner = persona or None
-            doc = find_skill(root(), name, owner)
-            if doc is None:
-                raise ValueError(f"{name} is not a stable skill for this persona")
-            return {
-                "id": doc.get("id"),
-                "title": doc.get("title"),
-                "summary": doc.get("summary"),
-                "body": doc.body,
-            }
 
         @mcp.tool
         def list_personas() -> list[dict[str, str]]:
@@ -163,7 +194,10 @@ def build(project: Path | None = None, surface: str | None = None) -> FastMCP:
         @mcp.tool
         def locate(intent: str, file_path: str = "") -> dict[str, Any]:
             """Files for a task; get_context already includes them."""
-            return locate_files(maps(), intent, file_path)
+            result = locate_files(
+                maps(), intent, container_paths.to_runtime(file_path)
+            )
+            return cast(dict[str, Any], container_paths.convert_result(result))
 
     return mcp
 

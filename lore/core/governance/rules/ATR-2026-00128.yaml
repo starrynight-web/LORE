@@ -1,0 +1,29 @@
+# Derived from Agent Threat Rules (MIT). See NOTICE.
+title: Hidden Payload in HTML Comment
+id: ATR-2026-00128
+severity: critical
+category: P2
+owasp: AST01
+description: >
+  Detects malicious instructions hidden inside HTML comments in skill markdown.
+detection:
+  condition: any
+  conditions:
+    - field: content
+      operator: regex
+      flags: is
+      value: >-
+        <!--[\s\S]*?(?:agent\s+should|send\s+all|output\s+all|exfiltrate|curl\s|wget\s|post\s+.{0,40}(?:key|credential|token|password|secret)|api[_-]?key.{0,40}https?://)
+      description: HTML comment with agent-directed exfiltration instructions
+    - field: content
+      operator: regex
+      flags: is
+      value: >-
+        <!--[\s\S]*?(?:ignore|override|bypass|disable|skip|forget)\s+(?:previous|all|safety|security|instruction|rule|restriction|guard)
+      description: HTML comment containing instruction override
+    - field: content
+      operator: regex
+      flags: is
+      value: >-
+        <!--[\s\S]*?do\s+not\s+(?:mention|tell|inform|reveal|show|display|disclose)\s+(?:this|the\s+user|anyone)
+      description: HTML comment with concealment directive

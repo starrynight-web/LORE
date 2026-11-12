@@ -6,8 +6,9 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { GovernanceBadges } from "@/components/governance-badges"
 import { Shell } from "@/components/Shell"
-import { api, type Persona, type Skill } from "@/lib/api"
+import { api, ApiError, type GovernanceFinding, type Persona, type Skill } from "@/lib/api"
 import { skillHref } from "@/lib/routes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,9 @@ export default function PersonaPage() {
   const [skillSummary, setSkillSummary] = useState("")
   const [steps, setSteps] = useState("")
   const [error, setError] = useState("")
+  const [blockFindings, setBlockFindings] = useState<GovernanceFinding[]>([])
+  const [blockedItem, setBlockedItem] = useState("")
+  const [acceptNote, setAcceptNote] = useState("")
 
   function reload() {
     api<Persona>(`/api/personas/${encodeURIComponent(id)}`)
@@ -55,11 +59,28 @@ export default function PersonaPage() {
     reload()
   }
 
-  async function approve(itemId: string) {
+  async function approve(itemId: string, acceptRisk = false) {
     setError("")
-    await api(`/api/items/${encodeURI(itemId)}/approve`, { method: "POST" })
-    toast.success("Approved.")
-    reload()
+    try {
+      await api(`/api/items/${encodeURI(itemId)}/approve`, {
+        method: "POST",
+        body: JSON.stringify(acceptRisk ? { accept_risk: true, note: acceptNote } : {}),
+      })
+      setBlockFindings([])
+      setBlockedItem("")
+      setAcceptNote("")
+      toast.success(acceptRisk ? "Approved with accepted risk." : "Approved.")
+      reload()
+    } catch (exc) {
+      if (exc instanceof ApiError && exc.status === 409) {
+        const gov = (exc.body.governance || {}) as { scan?: { findings?: GovernanceFinding[] } }
+        setBlockedItem(itemId)
+        setBlockFindings(gov.scan?.findings || [])
+        setError(exc.message)
+        return
+      }
+      throw exc
+    }
   }
 
   async function remove() {
@@ -90,11 +111,33 @@ export default function PersonaPage() {
         <>
           <Card>
             <CardHeader>
-              <Badge variant={persona.status === "stable" ? "secondary" : "outline"}>{persona.status}</Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={persona.status === "stable" ? "secondary" : "outline"}>{persona.status}</Badge>
+                <GovernanceBadges governance={persona.governance} />
+              </div>
               <CardTitle className="text-2xl">{persona.title}</CardTitle>
               <CardDescription>{persona.summary || "No summary yet."}</CardDescription>
             </CardHeader>
             <CardContent>
+              {blockFindings.length > 0 ? (
+                <div className="mb-4 space-y-2 rounded-md border border-destructive/40 p-3 text-sm">
+                  <p className="font-medium">Approve blocked for {blockedItem}</p>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {blockFindings.map((finding) => (
+                      <li key={`${finding.id}-${finding.evidence?.join(",") || ""}`}>
+                        <span className="font-medium">[{finding.severity}]</span> {finding.id}: {finding.title}
+                      </li>
+                    ))}
+                  </ul>
+                  <Field>
+                    <FieldLabel htmlFor="accept-note">Note for accept risk</FieldLabel>
+                    <Input id="accept-note" value={acceptNote} onChange={(event) => setAcceptNote(event.target.value)} />
+                  </Field>
+                  <Button type="button" variant="destructive" onClick={() => approve(blockedItem, true).catch((exc: Error) => setError(exc.message))}>
+                    Approve anyway
+                  </Button>
+                </div>
+              ) : null}
               <form onSubmit={(event) => save(event).catch((exc: Error) => setError(exc.message))}>
                 <FieldGroup>
                   <Field>
@@ -131,7 +174,10 @@ export default function PersonaPage() {
               {(persona.skills ?? []).map((skill: Skill) => (
                 <Card key={skill.id}>
                   <CardHeader>
-                    <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status}</Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status}</Badge>
+                      <GovernanceBadges governance={skill.governance} />
+                    </div>
                     <CardTitle>
                       <Link href={skillHref(skill.id)} className="hover:underline">{skill.title}</Link>
                     </CardTitle>

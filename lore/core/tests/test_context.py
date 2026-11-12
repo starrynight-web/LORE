@@ -136,3 +136,134 @@ def test_second_call_writes_the_next_decision(project: Path) -> None:
     second = get_context(project, "frontend-engineer")
     assert first["decision_id"] == "dec-0001"
     assert second["decision_id"] == "dec-0002"
+
+
+def test_budget_counts_final_summary_items_and_files(project: Path) -> None:
+    from lore.core.budget import context_content_text
+
+    envelope = get_context(project, "", intent="frontend engineer function components in the UI")
+    recomputed = count_tokens(
+        context_content_text(
+            envelope["summary"],
+            envelope["items"],
+            envelope["data"].get("files", []),
+        )
+    )
+    assert envelope["budget"]["used"] == recomputed
+    assert recomputed <= envelope["budget"]["limit"]
+
+
+def test_omission_list_stays_out_of_the_summary(project: Path) -> None:
+    for number in range(3, 15):
+        write_skill(
+            project,
+            "frontend-engineer",
+            f"extra-{number}@v1",
+            title=f"Extra {number}",
+            summary=f"Extra skill {number}.",
+            body="not served in the list",
+            status="stable",
+        )
+    envelope = get_context(project, "frontend-engineer")
+    assert "items omitted because of the size cap" in envelope["summary"]
+    for ident in envelope["data"]["omitted"]:
+        assert ident not in envelope["summary"]
+    assert envelope["data"]["omitted_count"] == len(envelope["data"]["omitted"])
+    assert "metadata_truncated" not in envelope["data"]
+
+
+def test_omitted_id_metadata_is_capped(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for number in range(3, 10):
+        write_skill(
+            project,
+            "frontend-engineer",
+            f"extra-{number}@v1",
+            title=f"Extra {number}",
+            summary=f"Extra skill {number}.",
+            body="not served in the list",
+            status="stable",
+        )
+    monkeypatch.setattr("lore.core.context.OMITTED_LIMIT", 3)
+    envelope = get_context(project, "frontend-engineer")
+    assert len(envelope["data"]["omitted"]) == 3
+    assert envelope["data"]["omitted_count"] > 3
+    assert envelope["data"]["metadata_truncated"] is True
+
+
+def test_tiny_budget_still_returns_a_bounded_answer(project: Path) -> None:
+    (project / ".lore" / "lore.config.yaml").write_text(
+        "token_budget: 1\nmax_items: 8\n", encoding="utf-8"
+    )
+    envelope = get_context(project, "frontend-engineer")
+    assert envelope["budget"]["used"] <= 1
+    assert envelope["items"] == []
+
+
+def test_result_reports_map_state(project: Path) -> None:
+    envelope = get_context(project, "frontend-engineer")
+    mapped = envelope["data"]["map"]
+    assert mapped["advisory"] is True
+    assert mapped["available"] is False
+    assert mapped["state"] == "unavailable"
+    assert isinstance(mapped["stale"], bool)
+
+
+def test_task_result_always_lists_files(project: Path) -> None:
+    envelope = get_context(project, "", intent="opaque task with no useful hints")
+    assert envelope["data"]["files"] == []
+
+
+def test_skills_dropped_by_the_budget_downgrade_the_directive(project: Path) -> None:
+    (project / ".lore" / "lore.config.yaml").write_text(
+        "token_budget: 8\nmax_items: 8\n", encoding="utf-8"
+    )
+    envelope = get_context(
+        project, "", intent="frontend engineer function components in the UI"
+    )
+    assert all(item["kind"] != "skill" for item in envelope["items"])
+    assert envelope["directive"] == "proceed"
+    assert envelope["verdict"] != "ok"
+
+
+def test_huge_file_names_do_not_bloat_the_summary(project: Path) -> None:
+    huge = "components" + "x" * 400
+    graph = json.loads(
+        (project / "graphify-out" / "graph.json").read_text(encoding="utf-8")
+    )
+    graph["nodes"].append(
+        {
+            "id": "huge-node",
+            "label": f"{huge}.tsx",
+            "source_file": f"src/ui/{huge}.tsx",
+        }
+    )
+    (project / "graphify-out" / "graph.json").write_text(
+        json.dumps(graph), encoding="utf-8"
+    )
+    (project / ".lore" / "lore.config.yaml").write_text(
+        "token_budget: 100\nmax_items: 8\n", encoding="utf-8"
+    )
+    envelope = get_context(project, "", intent=f"change the {huge} component")
+    assert envelope["budget"]["used"] <= envelope["budget"]["limit"]
+    assert huge not in envelope["summary"]
+    for file_id in envelope["data"]["omitted"]:
+        assert file_id not in envelope["summary"]
+
+
+def test_unicode_summaries_still_fit_the_budget(project: Path) -> None:
+    write_skill(
+        project,
+        "frontend-engineer",
+        "unicode-practices@v1",
+        title="コンポーネント",
+        summary="🚀をむ。Unicode token boundaries must not break the budget.",
+        body="\n",
+        status="stable",
+    )
+    (project / ".lore" / "lore.config.yaml").write_text(
+        "token_budget: 60\nmax_items: 8\n", encoding="utf-8"
+    )
+    envelope = get_context(project, "", intent=" components unicode")
+    assert envelope["budget"]["used"] <= envelope["budget"]["limit"]

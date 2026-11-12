@@ -29,7 +29,8 @@ need_uv() {
 install_lore() {
   need_uv
   export LORE_CHECKOUT="$ROOT"
-  exec uv run --python 3.12 --project "$ROOT" python -m lore install
+  exec uv run --managed-python --python 3.12 --no-build --locked --project "$ROOT" \
+    python -m lore install "$@"
 }
 
 require_lore() {
@@ -39,46 +40,52 @@ require_lore() {
   fi
 }
 
-case "${1:-setup}" in
+CMD="${1:-setup}"
+if [ $# -gt 0 ]; then
+  shift
+fi
+
+case "$CMD" in
   install)
-    install_lore
+    install_lore "$@"
     ;;
   setup|up)
     require_lore
     export LORE_COMMAND="$BIN"
     export LORE_LAUNCHER="$ROOT/scripts/lore-solo"
     export LORE_PROJECT_NAME=$(basename "$(pwd)")
-    exec "$BIN" setup
+    exec "$BIN" setup "$@"
     ;;
   mcp)
     require_lore
     cd "${LORE_PROJECT:-$(pwd)}"
-    exec "$BIN" mcp
+    exec "$BIN" mcp "$@"
     ;;
   connect)
     require_lore
     export LORE_COMMAND="$BIN"
     export LORE_LAUNCHER="$ROOT/scripts/lore-solo"
     export LORE_HOST_OS="$(uname -s)"
-    exec "$BIN" connect
+    exec "$BIN" connect "$@"
     ;;
   uninstall)
     need_uv
     export LORE_CHECKOUT="$ROOT"
-    exec uv run --python 3.12 --project "$ROOT" python -m lore uninstall
+    exec uv run --managed-python --python 3.12 --no-build --locked --project "$ROOT" \
+      python -m lore uninstall
     ;;
   doctor)
     need_uv
     export LORE_CHECKOUT="$ROOT"
     if [ -x "$BIN" ]; then
-      exec "$BIN" doctor
+      exec "$BIN" doctor "$@"
     fi
-    exec uv run --python 3.12 --project "$ROOT" python -m lore doctor
+    exec uv run --managed-python --python 3.12 --no-build --locked --project "$ROOT" \
+      python -m lore doctor "$@"
     ;;
   map)
     require_lore
     cd "${LORE_PROJECT:-$(pwd)}"
-    shift
     exec "$BIN" map "$@"
     ;;
   *)

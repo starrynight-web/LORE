@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { GovernanceBadges } from "@/components/governance-badges"
 import { Onboarding } from "@/components/onboarding"
 import { Shell } from "@/components/Shell"
 import { api, type Persona, type Skill, type WaitingSkill } from "@/lib/api"
@@ -103,7 +104,10 @@ export default function SkillsPage() {
           {skills.map((skill) => (
             <Card key={skill.id}>
               <CardHeader>
-                <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status === "stable" ? "ready" : "draft"}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status === "stable" ? "ready" : "draft"}</Badge>
+                  <GovernanceBadges governance={skill.governance} />
+                </div>
                 <CardTitle>
                   <Link href={skillHref(skill.id)} className="hover:underline">{skill.title}</Link>
                 </CardTitle>

@@ -7,10 +7,10 @@ Solo and Enterprise share a story — MCP into the same agent harnesses, small c
 - Local personas and skills under `.lore/` (markdown OKF).
 - Optional Graphify map under `graphify-out/` (file store, not a graph database).
 - MCP server display name: **`lore-solo`**.
-- Coding tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`.
+- Coding tools: `get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`.
 - Setup key only guards the local website. No accounts, Stripe, or Postgres.
 
-Graphify’s native stack (`graphifyy` → `tree-sitter`) may need a C/C++ toolchain when no wheel matches (on Windows that means MSVC). Core Lore installs without map; see GitHub #2 and `lore-solo install --no-map`.
+Graphify’s native stack (`graphifyy` → `tree-sitter`) installs from binary wheels under the packaged constraints — no C/C++ toolchain is needed or downloaded. Where no wheel covers the platform, core Lore installs without map; see `lore-solo install --no-map` and `lore-solo install --map` for the explicit choices.
 
 ## Enterprise (`enterprise` branch)
 

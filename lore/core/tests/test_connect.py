@@ -24,9 +24,18 @@ def test_uvx_is_the_command_when_nothing_is_installed(
     monkeypatch.setattr("lore.connect.Path.home", lambda: tmp_path)
     monkeypatch.setattr("lore.connect.shutil.which", lambda _name: None)
     monkeypatch.chdir(tmp_path)
+    from lore.release import published_spec
+
     assert mcp_entry("cursor") == {
         "command": "uvx",
-        "args": ["lore-solo", "mcp"],
+        "args": [
+            "--managed-python",
+            "--python",
+            "3.12",
+            "--no-build",
+            published_spec(with_map=False),
+            "mcp",
+        ],
         "env": {"LORE_WORKSPACE": str(tmp_path)},
     }
     assert install_command() == "uvx lore-solo connect"
@@ -102,7 +111,8 @@ def test_register_keeps_servers_already_in_the_file(
     rule = (tmp_path / ".cursor" / "rules" / "lore.mdc").read_text(encoding="utf-8")
     assert "alwaysApply: true" in rule
     assert "get_context once" in rule
-    assert "get_skill" not in rule
+    assert "get_skill" in rule
+    assert "Edit only those files" not in rule
     agents = (tmp_path / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
     claude = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
     assert "get_context once" in agents
@@ -113,3 +123,27 @@ def test_register_keeps_servers_already_in_the_file(
     assert "trigger: always_on" in anti
     copilot = (tmp_path / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")
     assert "get_context once" in copilot
+
+
+def test_upsert_rule_refreshes_the_managed_block_and_keeps_user_text(tmp_path: Path) -> None:
+    from lore.connect import _upsert_rule
+    from lore.core.instructions import RULE_BEGIN, RULE_END, STANDING_INSTRUCTIONS
+
+    path = tmp_path / "AGENTS.md"
+    path.write_text(
+        "Team notes stay.\n\n"
+        f"{RULE_BEGIN}\nold lore text\n{RULE_END}\n\n"
+        "Trailing user notes.\n",
+        encoding="utf-8",
+    )
+    _upsert_rule(path)
+    text = path.read_text(encoding="utf-8")
+    assert "Team notes stay." in text
+    assert "Trailing user notes." in text
+    assert "old lore text" not in text
+    assert STANDING_INSTRUCTIONS in text
+    assert text.count(RULE_BEGIN) == 1
+    _upsert_rule(path)
+    again = path.read_text(encoding="utf-8")
+    assert again.count(RULE_BEGIN) == 1
+    assert "Trailing user notes." in again

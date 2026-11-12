@@ -1,0 +1,170 @@
+name: release-artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version already set in pyproject.toml
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --extra dev
+      - name: Validate Source Version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          uv run --frozen python - <<'PY'
+          import os
+          import pathlib
+          import sys
+          import tomllib
+
+          sys.path.insert(0, ".")
+          import lore
+
+          project = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]
+          version = str(project["version"])
+          assert lore.__version__ == version, (
+              f"lore.__version__ {lore.__version__} != pyproject {version}"
+          )
+          requested = os.environ["REQUESTED_VERSION"].removeprefix("refs/tags/").removeprefix("v")
+          assert requested == version, f"requested {requested} != pyproject {version}"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"version={version}\n")
+          PY
+      - run: uv run --frozen ruff check lore
+      - run: uv run --frozen mypy
+      - run: uv run --frozen pytest
+
+  site:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-amd64
+          - os: windows-2022
+            platform: windows-amd64
+          - os: macos-15
+            platform: macos-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      LORE_RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Validate Source Version
+        run: python -c 'import os, tomllib; assert tomllib.load(open("pyproject.toml", "rb"))["project"]["version"] == os.environ["LORE_RELEASE_VERSION"]'
+      - run: uv sync --frozen --extra dev
+      - run: uv run --frozen python scripts/build_site_bundle.py --output-dir dist/site
+      - run: uv build --wheel --out-dir dist
+      - run: uv run --frozen python scripts/smoke_install.py --artifacts dist --mode full --bundle-dir dist/site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-${{ matrix.platform }}
+          path: dist/site/*
+          if-no-files-found: error
+
+  wheel:
+    needs: [verify, site]
+    runs-on: ubuntu-22.04
+    env:
+      LORE_RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: site-*
+          path: dist/site
+          merge-multiple: true
+      - run: uv sync --frozen --extra dev
+      - name: Pin Verified Frontend Artifacts
+        run: uv run --frozen python scripts/assemble_site_manifest.py --artifacts dist/site --output lore/site_bundles.json --version "$LORE_RELEASE_VERSION"
+      - name: Export Frozen Dependencies
+        run: uv export --frozen --extra map --no-dev --no-emit-project --no-hashes --output-file lore/release_constraints.txt
+      - name: Build Release Packages
+        env:
+          LORE_RELEASE_BUILD: "1"
+        run: uv build --out-dir dist
+      - name: Check Package Metadata
+        run: uvx twine check --strict dist/*.whl dist/*.tar.gz
+      - name: Prove Sdist Rebuilds Wheel
+        env:
+          LORE_RELEASE_BUILD: "1"
+        run: |
+          mkdir -p /tmp/sdist-check
+          tar -xzf dist/lore_solo-*.tar.gz -C /tmp/sdist-check
+          unpacked=$(find /tmp/sdist-check -maxdepth 1 -mindepth 1 -type d | head -1)
+          uv build --wheel --out-dir /tmp/sdist-check/out "$unpacked"
+          find /tmp/sdist-check/out -name '*.whl' | grep -q .
+      - run: uv run --frozen python scripts/smoke_install.py --artifacts dist --mode core
+      - run: uv run --frozen python scripts/smoke_install.py --artifacts dist --mode full --bundle-dir dist/site
+      - name: Stage Verified Release Inputs
+        run: |
+          mkdir -p dist/release-bundle
+          cp dist/*.whl dist/*.tar.gz lore/site_bundles.json lore/release_constraints.txt dist/release-bundle/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist/release-bundle/*
+          if-no-files-found: error
+
+  images:
+    needs: wheel
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: site-*
+          path: dist/site
+          merge-multiple: true
+      - run: uv sync --frozen --extra dev
+      - run: docker build --build-arg LORE_RELEASE_ARTIFACTS=1 --target mcp -t lore-solo:release-mcp .
+      - run: docker build --build-arg LORE_RELEASE_ARTIFACTS=1 --target full -t lore-solo:release-full .
+      - run: uv run --frozen python scripts/smoke_container.py --mcp-image lore-solo:release-mcp --full-image lore-solo:release-full --artifacts dist
+      - name: Save Tested Images Without Publishing
+        run: docker save -o lore-images.tar lore-solo:release-mcp lore-solo:release-full
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-images
+          path: lore-images.tar
+          if-no-files-found: error

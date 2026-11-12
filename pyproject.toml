@@ -1,6 +1,6 @@
 [project]
 name = "lore-solo"
-version = "0.1.2"
+version = "0.2.0"
 description = "Governed persona and skill context for a solo developer’s coding agent."
 readme = "README.md"
 license = "MIT"
@@ -42,6 +42,10 @@ build_py = "build_support.BuildPy"
 
 [tool.setuptools.packages.find]
 include = ["lore*"]
+
+[tool.setuptools.package-data]
+"lore" = ["release_constraints.txt", "site_bundles.json"]
+"lore.core.governance" = ["rules/*.yaml", "rules/NOTICE"]
 
 [tool.pytest.ini_options]
 testpaths = ["lore"]

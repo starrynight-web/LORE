@@ -1,3 +1,15 @@
+export class ApiError extends Error {
+  status: number
+  body: Record<string, unknown>
+
+  constructor(message: string, status: number, body: Record<string, unknown> = {}) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+    this.body = body
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -11,12 +23,32 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     data = text ? (JSON.parse(text) as T & { error?: string }) : ({} as T & { error?: string });
   } catch {
-    throw new Error("The setup site could not complete that.");
+    throw new ApiError("The setup site could not complete that.", response.status);
   }
   if (!response.ok) {
-    throw new Error(data.error || "The setup site could not complete that.");
+    throw new ApiError(data.error || "The setup site could not complete that.", response.status, data as Record<string, unknown>);
   }
   return data;
+}
+
+export type GovernanceSummary = {
+  score: number
+  highest_severity: string
+  finding_count: number
+  freshness: string
+  verified_at?: string | null
+  accepted_risk: boolean
+  skillspector: boolean
+  tool: string
+}
+
+export type GovernanceFinding = {
+  id: string
+  category?: string
+  severity: string
+  title: string
+  evidence?: string[]
+  description?: string
 }
 
 export type Persona = {
@@ -27,6 +59,7 @@ export type Persona = {
   body: string;
   skill_ids: string[];
   skills?: Skill[];
+  governance?: GovernanceSummary;
 };
 
 export type Skill = {
@@ -36,6 +69,7 @@ export type Skill = {
   status: string;
   body: string;
   persona?: string;
+  governance?: GovernanceSummary;
 };
 
 export type Onboarding = { completed: boolean; step: string }

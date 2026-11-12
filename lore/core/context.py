@@ -8,9 +8,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from lore.core.budget import count_tokens
+from lore.core.budget import context_content_text, count_tokens
 from lore.core.config import load_config
 from lore.core.decisions import allocate
+from lore.core.graph import map_data
 from lore.core.okf import Doc
 from lore.core.paths import find_project, map_root
 from lore.core.personas import find_persona, list_personas, persona_id, persona_slug, served_skills
@@ -173,6 +174,8 @@ def get_context(
             drafts=0,
             limit=limit,
             graph_notes=graph_notes,
+            maps=maps,
+            max_items=max_items,
         )
 
     if doc.get("status") != "stable":
@@ -190,15 +193,15 @@ def get_context(
             drafts=1,
             limit=limit,
             graph_notes=graph_notes,
+            maps=maps,
+            max_items=max_items,
         )
 
     skills = served_skills(project, wanted)
     drafts = _draft_count(project, wanted)
     summary = doc.get("summary") or doc.get("title") or wanted
-    items, omitted, used = _fit(summary, skills, graph_items, limit, max_items)
-    if omitted:
-        summary = f"{summary} Left out because of the size cap: {', '.join(omitted)}."
-    if not items:
+    candidates = [_skill_item(doc) for doc in skills] + graph_items
+    if not candidates:
         summary = f"{wanted} is stable and has no skills to apply."
         if graph_notes:
             summary = f"{summary} {' '.join(graph_notes)}"
@@ -211,10 +214,12 @@ def get_context(
             directive="proceed",
             summary=summary,
             items=[],
-            omitted=omitted,
+            omitted=[],
             drafts=drafts,
             limit=limit,
             graph_notes=graph_notes,
+            maps=maps,
+            max_items=max_items,
         )
 
     if graph_notes:
@@ -227,12 +232,13 @@ def get_context(
         verdict="ok",
         directive="proceed_and_cite",
         summary=summary,
-        items=items,
-        omitted=omitted,
+        items=candidates,
+        omitted=[],
         drafts=drafts,
         limit=limit,
         graph_notes=graph_notes,
-        used=used,
+        maps=maps,
+        max_items=max_items,
     )
 
 
@@ -250,6 +256,10 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
     files = found.get("files") if isinstance(found, dict) else []
     if not isinstance(files, list):
         files = []
+    omitted_raw = found.get("omitted") if isinstance(found, dict) else []
+    if not isinstance(omitted_raw, list):
+        omitted_raw = []
+    omitted_files = [f"file:{item}" for item in omitted_raw if item]
     paths = [str(item.get("path")) for item in files if isinstance(item, dict) and item.get("path")]
     words = _query_tokens(intent)
     # Path hints come from the explicit file_path only, not locate hits, so a
@@ -315,15 +325,17 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
             directive="proceed",
             summary=summary,
             items=[],
-            omitted=[],
+            omitted=omitted_files,
             drafts=drafts,
             limit=limit,
             graph_notes=graph_notes,
             files=files,
             personas=personas,
+            maps=maps,
+            max_items=max_items,
         )
 
-    items, omitted, used = _fit("", chosen, [], limit, max_items)
+    candidates = [_skill_item(doc) for doc in chosen]
     parts: list[str] = []
     if personas:
         labels = ", ".join(persona.split(":", 1)[-1] for persona in personas)
@@ -331,14 +343,10 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
             parts.append(f"Available personas: {labels}.")
         else:
             parts.append(f"{labels}.")
-    if paths:
-        parts.append("Files: " + ", ".join(paths) + ".")
-    if omitted:
-        parts.append("Left out because of the size cap: " + ", ".join(omitted) + ".")
     if graph_notes:
         parts.append(" ".join(graph_notes))
     summary = " ".join(parts) or "Files and skills for this task."
-    if items:
+    if candidates:
         verdict = "ok"
         directive = "proceed_and_cite"
     elif personas:
@@ -355,14 +363,15 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
         verdict=verdict,
         directive=directive,
         summary=summary,
-        items=items,
-        omitted=omitted,
+        items=candidates,
+        omitted=omitted_files,
         drafts=drafts,
         limit=limit,
         graph_notes=graph_notes,
-        used=used,
         files=files,
         personas=personas,
+        maps=maps,
+        max_items=max_items,
     )
 
 
@@ -476,36 +485,30 @@ def _graph_items(project: Path, file_path: str, notes: list[str]) -> list[dict[s
     return slice_for(project, file_path, notes)
 
 
-def _fit(
-    summary: str,
-    skills: list[Doc],
-    graph_items: list[dict[str, Any]],
-    limit: int,
-    max_items: int,
-) -> tuple[list[dict[str, Any]], list[str], int]:
-    items: list[dict[str, Any]] = []
-    omitted: list[str] = []
-    used = count_tokens(summary)
-    pending: list[tuple[str, dict[str, Any]]] = []
-    for doc in skills:
-        pending.append((doc.get("id"), _skill_item(doc)))
-    for item in graph_items:
-        pending.append((str(item["id"]), item))
-    for ident, item in pending:
-        if len(items) >= max_items:
-            omitted.append(ident)
-            continue
-        piece = f"{item.get('title', '')}\n{item['text']}"
-        cost = count_tokens(piece)
-        if used + cost > limit:
-            omitted.append(ident)
-            continue
-        items.append(item)
-        used += cost
-    return items, omitted, used
+OMITTED_LIMIT = 128
+
+
+def _shorten(text: str, limit: int) -> str:
+    if limit <= 0:
+        return ""
+    if count_tokens(text) <= limit:
+        return text
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if count_tokens(text[:mid]) <= limit:
+            lo = mid
+        else:
+            hi = mid - 1
+    out = text[:lo]
+    while out and count_tokens(out) > limit:
+        out = out[:-1]
+    return out
 
 
 def _skill_item(doc: Doc) -> dict[str, Any]:
+    from lore.core.governance import freshness_of
+
     path = ""
     if doc.path is not None:
         path = doc.path.as_posix()
@@ -515,7 +518,7 @@ def _skill_item(doc: Doc) -> dict[str, Any]:
         "role": "applies",
         "authority": "reviewed",
         "status": "stable",
-        "freshness": "current",
+        "freshness": freshness_of(doc),
         "origin": "human_authored",
         "confidence": {"band": "high", "p": 0.92},
         "title": doc.get("title"),
@@ -548,16 +551,45 @@ def _finish(
     drafts: int,
     limit: int,
     graph_notes: list[str],
-    used: int | None = None,
+    maps: Path | None = None,
+    max_items: int = 8,
     files: list[dict[str, Any]] | None = None,
     personas: list[str] | None = None,
 ) -> dict[str, Any]:
+    items = list(items)
+    files = None if files is None else list(files)
+    omitted_ids = [str(item) for item in omitted]
+    while len(items) > max_items:
+        omitted_ids.append(str(items.pop()["id"]))
+    while True:
+        cite_ids = [str(item["id"]) for item in items if item.get("kind") == "skill"]
+        parts = [summary]
+        if files:
+            parts.append("Files: " + ", ".join(str(entry["path"]) for entry in files) + ".")
+        if omitted_ids:
+            parts.append(f"{len(omitted_ids)} items omitted because of the size cap.")
+        if cite_ids:
+            parts.append("Cite: " + ", ".join(cite_ids) + ".")
+        final_summary = " ".join(part for part in parts if part)
+        used = count_tokens(context_content_text(final_summary, items, files))
+        if used <= limit:
+            break
+        if files:
+            omitted_ids.append("file:" + str(files.pop()["path"]))
+        elif items:
+            omitted_ids.append(str(items.pop()["id"]))
+        else:
+            final_summary = _shorten(final_summary, limit)
+            used = count_tokens(context_content_text(final_summary, [], []))
+            break
+    has_skill = any(item.get("kind") == "skill" for item in items)
+    if directive == "proceed_and_cite" and not has_skill:
+        directive = "proceed"
+        if verdict == "ok":
+            verdict = "ok_with_notes"
     included = [str(item["id"]) for item in items]
-    cite_ids = [str(item["id"]) for item in items if item.get("kind") == "skill"]
-    if cite_ids:
-        summary = f"{summary} Cite: {', '.join(cite_ids)}."
-    if used is None:
-        used = count_tokens(summary)
+    omitted_count = len(omitted_ids)
+    kept_omitted = omitted_ids[:OMITTED_LIMIT]
     record = allocate(
         project,
         {
@@ -566,10 +598,10 @@ def _finish(
             "directive": directive,
             "persona": persona,
             "included": included,
-            "omitted": omitted,
+            "omitted": kept_omitted,
             "client": os.environ.get("LORE_CLIENT", "").strip() or "Unknown",
         },
-        summary + "\n",
+        final_summary + "\n",
     )
     task: dict[str, str] = {}
     if file_path:
@@ -582,7 +614,7 @@ def _finish(
         "tool": "get_context",
         "verdict": verdict,
         "directive": directive,
-        "summary": summary,
+        "summary": final_summary,
         "items": items,
         "conflicts": [],
         "violations": [],
@@ -591,7 +623,7 @@ def _finish(
             "draft": drafts,
             "quarantine": 0,
             "out_of_scope": 0,
-            "stale": 0,
+            "stale": sum(1 for item in items if item.get("freshness") == "aging"),
             "low_confidence": 0,
             "denied": 0,
         },
@@ -604,11 +636,14 @@ def _finish(
         + [f"lore://skills/{str(item['id']).removeprefix('skill:')}" for item in items if item["kind"] == "skill"],
         "data": {
             "persona": persona,
-            "omitted": omitted,
+            "omitted": kept_omitted,
+            "omitted_count": omitted_count,
             "graph_notes": graph_notes,
             "cite_ids": cite_ids,
+            **({"metadata_truncated": True} if omitted_count > len(kept_omitted) else {}),
             **({"files": files} if files is not None else {}),
             **({"personas": personas} if personas is not None else {}),
+            **({"map": map_data(maps)} if maps is not None else {}),
         },
         "as_of": date.today().isoformat(),
         "constants": {

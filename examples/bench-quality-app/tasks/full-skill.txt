@@ -1,0 +1,1 @@
+In src/ui/Panel.tsx, add the approved frontend release stamp as a literal data-release-stamp attribute on the section. Use the release-stamp skill for its exact value. Keep src/api/health.py and src/ui/PanelCopy.tsx unchanged.

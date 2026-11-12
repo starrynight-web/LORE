@@ -1,0 +1,1 @@
+In src/api/health.py, import ready_state from .service_state without an alias and use it to compute the returned status value. Keep the payload key status. Do not change src/api/service_state.py or src/api/health_probe.py.

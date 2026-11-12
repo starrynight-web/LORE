@@ -8,6 +8,7 @@ deprecated; connect still strips leftover ``lore`` MCP keys if present.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import platform
@@ -15,6 +16,7 @@ import shutil
 from pathlib import Path
 
 from lore.core.instructions import RULE_BEGIN, RULE_END, STANDING_INSTRUCTIONS
+from lore.core.paths import library_root
 
 # JSON / TOML key and FastMCP advertised name (keep in sync with mcp_server.build).
 MCP_SERVER_NAME = "lore-solo"
@@ -32,7 +34,19 @@ def invocation() -> tuple[str, list[str]]:
     found = shutil.which("lore-solo")
     if found:
         return found, ["mcp"]
-    return "uvx", ["lore-solo", "mcp"]
+    from lore.release import published_spec
+
+    return (
+        "uvx",
+        [
+            "--managed-python",
+            "--python",
+            "3.12",
+            "--no-build",
+            published_spec(with_map=False),
+            "mcp",
+        ],
+    )
 
 
 def lore_command() -> str:
@@ -62,13 +76,12 @@ def mcp_entry(
     client: str = "",
     args: list[str] | None = None,
 ) -> dict[str, object]:
-    chosen, chosen_args = invocation()
     if command is not None:
         chosen = command
-    if args is not None:
-        chosen_args = args
-    elif command is not None:
-        chosen_args = ["mcp"]
+        chosen_args = args if args is not None else ["mcp"]
+    else:
+        chosen, default_args = invocation()
+        chosen_args = args if args is not None else default_args
     entry: dict[str, object] = {"command": chosen, "args": chosen_args}
     if kind == "vscode":
         entry["type"] = "stdio"
@@ -242,16 +255,63 @@ def _targets(home: Path, system: str) -> list[tuple[str, Path, str, str]]:
     return rows
 
 
+def container_refusal() -> str:
+    return (
+        "Lore is running inside its container, so it cannot write editor "
+        "configs here. On the host, run: lore-solo connect --runtime docker "
+        "--image <image> --workspace <dir> --library <dir>"
+    )
+
+
+def _docker_invocation(
+    command: str, args: list[str], image: str | None
+) -> tuple[str, list[str]]:
+    if not image or not image.strip():
+        raise SystemExit("--image is required with --runtime docker")
+    from lore.container_cmd import ContainerError, _validate_image, _validate_root
+
+    try:
+        checked_image = _validate_image(image.strip())
+        host_workspace = _validate_root(_workspace(), "workspace")
+        host_library = _validate_root(library_root(), "library")
+    except ContainerError as exc:
+        raise SystemExit(str(exc)) from exc
+    if host_workspace == host_library:
+        raise SystemExit("--workspace and --library must be different directories")
+    base = list(args)
+    if base and base[-1] == "mcp":
+        base = base[:-1]
+    return command, base + [
+        "container",
+        "mcp",
+        "--image",
+        checked_image,
+        "--workspace",
+        host_workspace,
+        "--library",
+        host_library,
+    ]
+
+
 def register_agents(
     home: Path | None = None,
     system: str | None = None,
+    *,
+    runtime: str = "native",
+    image: str | None = None,
 ) -> dict[str, list[str]]:
     """Write Lore into each detected editor. Other servers in those files stay."""
+    from lore.container_paths import active
+
+    if active():
+        raise SystemExit(container_refusal())
     if home is None:
         raw = os.environ.get("LORE_HOST_HOME", "")
         home = Path(raw) if raw else Path.home()
     host = host_system(system)
     command, args = invocation()
+    if runtime == "docker":
+        command, args = _docker_invocation(command, args, image)
     written: list[str] = []
     skipped: list[str] = []
     for label, path, key, editor in _targets(home, host):
@@ -269,6 +329,20 @@ def register_agents(
         _write_project_files(_workspace(), home=home, command=command, args=args)
     )
     return {"written": written, "skipped": skipped}
+
+
+def run_connect(argv: list[str] | None = None) -> dict[str, list[str]]:
+    parser = argparse.ArgumentParser(prog="lore-solo connect")
+    parser.add_argument("--runtime", choices=["native", "docker"], default="native")
+    parser.add_argument("--image", default=None)
+    parser.add_argument("--workspace", type=Path, default=None)
+    parser.add_argument("--library", type=Path, default=None)
+    args = parser.parse_args(list(argv or []))
+    if args.workspace is not None:
+        os.environ["LORE_WORKSPACE"] = str(args.workspace)
+    if args.library is not None:
+        os.environ["LORE_LIBRARY"] = str(args.library)
+    return register_agents(runtime=args.runtime, image=args.image)
 
 
 def cursor_rule() -> str:

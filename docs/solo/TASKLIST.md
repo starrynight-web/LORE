@@ -16,6 +16,7 @@ Work these after the historical phases below. Check a box only when the exit lin
 - [x] **V.4** Quality bake-off arms: `no_skills` / `user_picked` / `agent_chosen` / `lore`; harness + PROTOCOL (agy re-run deferred).
 - [x] **V.5** Devin connect writer + IDE docs refreshed to Solo coding surface.
 - [x] **V.6** Stronger persona/skill matching than bare word intersection (still summaries-only, draft-gated).
+- [x] **V.7** Governance on approve: built-in ATR static scan + optional SkillSpector; freshness stamps; critical/high block unless `accept_risk`; setup badges + `lore-solo govern` CLI. See [GOVERNANCE.md](GOVERNANCE.md).
 
 **Exit for this section:** each checked item matches the matching engineering change on `solo`.
 
@@ -23,12 +24,13 @@ Work these after the historical phases below. Check a box only when the exit lin
 
 The phases below are the build record. A few of their lines describe an earlier setup site. The running program matches this section and [HOW_IT_WORKS.md](HOW_IT_WORKS.md). The page layout is in [UI.md](UI.md).
 
-- `lore-solo install` puts the command on this computer. `lore-solo setup` prints `http://127.0.0.1:3000/?key=...` and serves until Ctrl+C. `lore-solo uninstall` removes the command and leaves personas, skills, and editor registrations in place. The editor starts `lore-solo mcp` as a local process. Docker is not used. There is no LAN address. `uvx lore-solo install` and `uvx lore-solo setup` are the same commands on macOS, Linux, and Windows.
+- `lore-solo install` puts the command on this computer. `lore-solo setup` prints `http://127.0.0.1:3000/?key=...` and serves until Ctrl+C. `lore-solo uninstall` removes the command and leaves personas, skills, and editor registrations in place. The editor starts `lore-solo mcp` as a local process. A container runtime is optional (`lore-solo container mcp|setup|map` against locally built `mcp`/`full` images, with only `/workspace` and `/library` writable). There is no LAN address. `uvx lore-solo install` and `uvx lore-solo setup` are the same commands on macOS, Linux, and Windows.
 - Personas live in the operating system’s application-data folder, or in a project that already has `.lore`. The site does not ask you to pick a folder.
 - Setup is four steps: a provider key, skills, a persona, then adding Lore to an editor. The codebase map is the Codebase page.
 - Settings lists models from the saved provider. Drafts use the model saved there. Defaults until then: Groq `llama-3.3-70b-versatile`, OpenRouter `openai/gpt-4o-mini`, Gemini `gemini-2.5-flash`, OpenAI `gpt-4o-mini`, Anthropic `claude-haiku-4-5`.
 - The site uses the shadcn dashboard shell (inset sidebar, header, cards). `docs/new/` stays on this computer and is not part of the published tree.
-- A desktop window around the setup site is possible later. `lore mcp` stays the process the editor starts. That window has not been built.
+- A desktop window around the setup site is possible later. `lore-solo mcp` stays the process the editor starts. That window has not been built.
+- Release state: release assets ship only after the native platform matrix and the Docker image gates in `release.yml` pass; PyPI publication is a separate user-owned step on the verified artifacts. Windows x86_64 and macOS arm64 are exercised by the release workflow runners — local verification covered Linux only. Docker is an optional path, not the primary distribution. See [RELEASING.md](RELEASING.md), [GOVERNANCE.md](GOVERNANCE.md), [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md), and [CHANGELOG.md](../../CHANGELOG.md).
 
 ## Words
 
@@ -37,7 +39,7 @@ The phases below are the build record. A few of their lines describe an earlier 
 - **OKF.** A markdown file with a small YAML header and a body. This is how personas and skills are stored.
 - **MCP.** The plug an IDE uses to start a helper program and talk to it as text. The helper is `lore-solo mcp`. It does not use a website.
 - **Graphify.** The `graphifyy` library, shipped inside Lore. A button runs it. It leaves a map of the code in the project folder. `lore mcp` only reads that map.
-- **Draft / stable.** New personas and skills are drafts. The agent does not receive a draft. Approve flips the file to `stable`.
+- **Draft / stable.** New personas and skills are drafts. The agent does not receive a draft. Approve scans for malicious patterns, stamps freshness, then flips the file to `stable` (or blocks on critical/high findings).
 - **Token budget.** A size cap. 800 tokens is about a page. At most 8 items. `get_context` returns summaries, not full skill text, so this cap stays enough.
 
 ## Already done

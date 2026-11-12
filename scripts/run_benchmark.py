@@ -12,15 +12,19 @@ Primary Solo claim is quality (see docs/solo/QUALITY_PLAN.md), not token cuts.
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
+import math
 import os
 import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from lore.core.instructions import STANDING_INSTRUCTIONS
 
@@ -50,8 +54,11 @@ LORE_TOOLS = (
     "locate",
     "map_status",
 )
-CODING_MCP_TOOLS = ["get_context", "map_codebase", "check_applied", "log_decision"]
-QUALITY_SCENARIOS = ("wrong-file", "a11y-label", "api-shape")
+CODING_MCP_TOOLS = ["get_context", "get_skill", "map_codebase", "check_applied", "log_decision"]
+QUALITY_SCENARIOS = (
+    "wrong-file", "a11y-label", "api-shape", "full-skill", "new-file",
+    "cross-file", "stale-map", "no-map",
+)
 # Practical baselines: explicit user pick (right skills) and agent-chosen from disk.
 QUALITY_USER_PICKS: dict[str, tuple[str, ...]] = {
     "wrong-file": (
@@ -66,6 +73,11 @@ QUALITY_USER_PICKS: dict[str, tuple[str, ...]] = {
         ".lore/skills/backend-engineer/create-a-backend@v1.md",
         ".lore/skills/backend-engineer/supabase-postgres-best-practices@v1.md",
     ),
+    "full-skill": (".lore/skills/frontend-engineer/release-stamp@v1.md",),
+    "new-file": (".lore/skills/backend-engineer/create-a-backend@v1.md",),
+    "cross-file": (".lore/skills/backend-engineer/create-a-backend@v1.md",),
+    "stale-map": (".lore/skills/frontend-engineer/frontend-design@v1.md",),
+    "no-map": (".lore/skills/frontend-engineer/frontend-design@v1.md",),
 }
 AGENT_CHOSEN_RULE = (
     "Skills for this project live under .lore/skills/. "
@@ -101,6 +113,7 @@ def _user_picked_rule(scenario: str) -> str:
 
 
 def main() -> None:
+    _require_agent_approval()
     command = sys.argv[1] if len(sys.argv) > 1 else "bench"
     if command == "confirm":
         raise SystemExit(confirm())
@@ -228,24 +241,26 @@ def confirm_quality() -> int:
 
 def quality(runs: int = 1, dest: Path | None = None) -> int:
     """Quality bake-off: no_skills / user_picked / agent_chosen / lore."""
+    _require_agent_approval()
+    if runs < 1:
+        raise ValueError("runs must be positive")
     TMP.mkdir(parents=True, exist_ok=True)
+    session = Path(tempfile.mkdtemp(prefix="quality-", dir=TMP))
     with _global_lore_disabled():
         _clear_agy_mcp_cache("lore", WORKSPACE_MCP_NAME)
-        cold = _cold_map(QUALITY_APP)
+        cold = _cold_map(QUALITY_APP, destination=session / "cold-map-quality")
         rows: list[dict[str, Any]] = []
         aborted: str | None = None
         for scenario in QUALITY_SCENARIOS:
             prompt = (QUALITY_APP / "tasks" / f"{scenario}.txt").read_text(encoding="utf-8")
             originals = _quality_snapshots(QUALITY_APP)
-            for arm in ("no_skills", "user_picked", "agent_chosen", "lore"):
-                if aborted and arm == "lore":
-                    break
-                for number in range(1, runs + 1):
-                    if aborted and arm == "lore":
+            arms = ("no_skills", "user_picked", "agent_chosen", "lore")
+            for number in range(1, runs + 1):
+                order = (number - 1 + QUALITY_SCENARIOS.index(scenario)) % len(arms)
+                for arm in arms[order:] + arms[:order]:
+                    if aborted:
                         break
-                    work = TMP / f"agy-quality-{scenario}-{arm}-{number}"
-                    if work.exists():
-                        shutil.rmtree(work)
+                    work = session / f"{scenario}-{arm}-{number}"
                     shutil.copytree(QUALITY_APP, work)
                     if arm == "lore":
                         (work / "AGENTS.md").write_text(STANDING_INSTRUCTIONS + "\n", encoding="utf-8")
@@ -257,7 +272,7 @@ def quality(runs: int = 1, dest: Path | None = None) -> int:
                         status = work / ".lore" / "graph-status.json"
                         if status.is_file():
                             status.unlink()
-                        _install_map_from(work, "cold-map-quality")
+                        _install_map_from(work, str(session / "cold-map-quality"))
                         _write_workspace_mcp(work, arm="lore", library=LIBRARY)
                     elif arm == "user_picked":
                         shutil.copytree(LIBRARY / ".lore", work / ".lore")
@@ -279,10 +294,22 @@ def quality(runs: int = 1, dest: Path | None = None) -> int:
                         _write_workspace_mcp(work, arm="baseline", library=LIBRARY)
                     else:
                         _write_workspace_mcp(work, arm="baseline", library=LIBRARY)
-                    log = TMP / f"agy-quality-{scenario}-{arm}-{number}.jsonl"
+                    if arm != "no_skills":
+                        _install_quality_skill(work)
+                    if scenario == "stale-map":
+                        (work / "src/ui/Panel.tsx").rename(work / "src/ui/LivePanel.tsx")
+                    if arm == "lore" and scenario == "no-map":
+                        path = work / ".agents/mcp_config.json"
+                        config = json.loads(path.read_text(encoding="utf-8"))
+                        config["mcpServers"][WORKSPACE_MCP_NAME]["env"]["LORE_MAP_ENABLED"] = "0"
+                        path.write_text(json.dumps(config), encoding="utf-8")
+                        graph = work / "graphify-out"
+                        if graph.exists():
+                            shutil.rmtree(graph)
+                    log = session / f"{scenario}-{arm}-{number}.jsonl"
                     started = time.monotonic()
                     code = _agy(work, prompt, log=log, timeout=600)
-                    elapsed = round(time.monotonic() - started, 1)
+                    elapsed = time.monotonic() - started
                     events = _events(log)
                     usage = _usage(events)
                     checks = _quality_rubric(scenario, work, originals)
@@ -298,7 +325,11 @@ def quality(runs: int = 1, dest: Path | None = None) -> int:
                         "output_tokens": usage.get("output_tokens"),
                         "tools": _tool_order(events),
                         "checks": checks,
-                        "passed": all(checks.values()),
+                        "passed": all(checks.values()) and code == 0,
+                        "map_mode": (
+                            "disabled" if scenario == "no-map"
+                            else "stale" if scenario == "stale-map" else "warm"
+                        ),
                     }
                     if arm == "lore":
                         process = _lore_process(events, work)
@@ -317,9 +348,18 @@ def quality(runs: int = 1, dest: Path | None = None) -> int:
                         break
             if aborted:
                 break
-        score = _quality_score(rows)
+        score = _quality_score(rows, expected_runs=runs)
         result: dict[str, Any] = {
             "runner": "agy",
+            "protocol_version": 2,
+            "environment": {"platform": sys.platform, "python": sys.version.split()[0]},
+            "library_sha256": _quality_library_hash(),
+            "task_sha256": {
+                name: hashlib.sha256(
+                    (QUALITY_APP / "tasks" / f"{name}.txt").read_bytes()
+                ).hexdigest() for name in QUALITY_SCENARIOS
+            },
+            "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "model": MODEL,
             "mcp_server": WORKSPACE_MCP_NAME,
             "cold_map_seconds": cold,
@@ -335,10 +375,28 @@ def quality(runs: int = 1, dest: Path | None = None) -> int:
         if aborted:
             result["aborted"] = aborted
             result["note"] += f" ABORTED: {aborted}"
-        path = dest or (LIBRARY / "results-agy-quality.json")
+        path = dest or (session / "results.json")
         _write(path, result)
         print(json.dumps(score, indent=2))
-        return 0 if score.get("quality_claim") and not aborted else 1
+        return 0 if score.get("workflow_gate") and not aborted else 1
+
+
+def _install_quality_skill(work: Path) -> None:
+    source = ROOT / "examples/bench-quality-skills/release-stamp@v1.md"
+    target = work / ".lore/skills/frontend-engineer/release-stamp@v1.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+
+
+def _quality_library_hash() -> str:
+    digest = hashlib.sha256()
+    for root in (LIBRARY / ".lore", ROOT / "examples/bench-quality-skills"):
+        for path in sorted(root.rglob("*.md")):
+            if "decisions" not in path.relative_to(root).parts:
+                digest.update(path.relative_to(ROOT).as_posix().encode("utf-8"))
+                digest.update(b"\0")
+                digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def bench(runs: int = 3, dest: Path | None = None, note: str = "", label: str = "") -> int:
@@ -573,23 +631,25 @@ def _dig(payload: Any, key: str) -> Any:
     return None
 
 
-def _cold_map(app: Path | None = None) -> float:
+def _cold_map(app: Path | None = None, *, destination: Path | None = None) -> float:
     if not GRAPHIFY.is_file():
         raise SystemExit(
             f"Graphify missing at {GRAPHIFY}. Install map support: uv sync --extra map"
         )
     source = app or APP
-    work = TMP / ("cold-map-quality" if app is not None else "cold-map")
+    work = destination or TMP / ("cold-map-quality" if app is not None else "cold-map")
     if work.exists():
         shutil.rmtree(work)
     shutil.copytree(source, work)
     started = time.monotonic()
-    subprocess.run(
+    result = subprocess.run(
         [str(GRAPHIFY), "extract", str(work), "--code-only", "--out", str(work)],
         check=False,
         capture_output=True,
         text=True,
     )
+    if result.returncode != 0 or not (work / "graphify-out/graph.json").is_file():
+        raise SystemExit("Cold mapping failed; no evaluation was run.")
     return round(time.monotonic() - started, 1)
 
 
@@ -606,7 +666,16 @@ def _install_map(work: Path) -> None:
     _install_map_from(work, "cold-map")
 
 
+def _require_agent_approval() -> None:
+    if os.environ.get("LORE_BENCH_ALLOW_PAID") != "1":
+        raise SystemExit(
+            "Agent evaluations require explicit approval. After approval, set "
+            "LORE_BENCH_ALLOW_PAID=1. No model request was sent."
+        )
+
+
 def _agy(work: Path, prompt: str, *, log: Path, timeout: int) -> int:
+    _require_agent_approval()
     log.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "agy",
@@ -623,20 +692,30 @@ def _agy(work: Path, prompt: str, *, log: Path, timeout: int) -> int:
         f"{timeout}s",
         "--disable-slash-commands",
     ]
-    env = os.environ.copy()
-    try:
-        completed = subprocess.run(
-            cmd,
-            cwd=work,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout + 30,
-        )
-    except subprocess.TimeoutExpired as exc:
-        log.write_text((exc.stdout or "") if isinstance(exc.stdout, str) else "", encoding="utf-8")
-        return 124
+    with tempfile.TemporaryDirectory(prefix="lore-benchmark-home-") as isolated:
+        env = os.environ.copy()
+        env.update({
+            "HOME": isolated,
+            "USERPROFILE": isolated,
+            "XDG_CONFIG_HOME": str(Path(isolated) / "config"),
+            "XDG_CACHE_HOME": str(Path(isolated) / "cache"),
+            "XDG_DATA_HOME": str(Path(isolated) / "data"),
+            "APPDATA": str(Path(isolated) / "appdata"),
+            "LOCALAPPDATA": str(Path(isolated) / "localappdata"),
+        })
+        try:
+            completed = subprocess.run(
+                cmd,
+                cwd=work,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout + 30,
+            )
+        except subprocess.TimeoutExpired as exc:
+            log.write_text((exc.stdout or "") if isinstance(exc.stdout, str) else "", encoding="utf-8")
+            return 124
     log.write_text(completed.stdout or "", encoding="utf-8")
     if completed.returncode != 0:
         (log.with_suffix(".err")).write_text(completed.stderr or "", encoding="utf-8")
@@ -671,13 +750,7 @@ def _write_workspace_mcp(work: Path, *, arm: str, library: Path) -> None:
 
 def _clear_agy_mcp_cache(*names: str) -> None:
     """Drop stale Antigravity MCP tool-schema caches so lore-solo schemas refresh."""
-    for root in MCP_CACHE_ROOTS:
-        if not root.is_dir():
-            continue
-        for name in names:
-            target = root / name
-            if target.is_dir():
-                shutil.rmtree(target)
+    del names
 
 
 class _global_lore_disabled:
@@ -687,7 +760,7 @@ class _global_lore_disabled:
     Suites still clear Antigravity schema caches for leftover ``lore`` names.
     """
 
-    def __enter__(self) -> _global_lore_disabled:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_exc: object) -> None:
@@ -789,16 +862,34 @@ def _lore_process(events: list[dict[str, Any]], work: Path) -> dict[str, Any]:
     # Prefer decision-file evidence for check_applied pass when tool DONE fired.
     check_pass = False
     if check_ok:
-        check_pass = True
-        for path in sorted((work / ".lore" / "decisions").glob("dec-*.md")):
-            body = path.read_text(encoding="utf-8", errors="replace")
-            if "check_applied: fail" in body:
+        from lore.core.okf import read_doc
+
+        decisions = sorted((work / ".lore" / "decisions").glob("dec-*.md"))
+        check_pass = bool(decisions)
+        for path in decisions:
+            doc = read_doc(path)
+            receipts = [
+                line.strip() for line in doc.body.splitlines()
+                if line.strip() in {
+                    "check_applied: pass", "check_applied: fail", "check_applied: skip",
+                }
+            ]
+            served = doc.header.get("included", [])
+            if (
+                not receipts
+                or not isinstance(served, list)
+                or receipts[-1] == "check_applied: fail"
+                or (
+                    receipts[-1] == "check_applied: skip"
+                    and isinstance(served, list)
+                    and any(str(item).startswith("skill:") for item in served)
+                )
+            ):
                 check_pass = False
                 break
-            if "check_applied: pass" in body or "check_applied: skip" in body:
-                check_pass = True
     return {
         "get_context": get_ok,
+        "get_skill": _mcp_tool_done(events, "get_skill"),
         "check_applied": check_ok and check_pass,
         "log_decision": log_ok,
         "ok": bool(get_ok and check_ok and check_pass and log_ok),
@@ -820,6 +911,51 @@ def _quality_rubric(scenario: str, work: Path, originals: dict[str, str]) -> dic
     copy = _text(work / "src" / "ui" / "PanelCopy.tsx")
     health = _text(work / "src" / "api" / "health.py")
     probe = _text(work / "src" / "api" / "health_probe.py")
+    if scenario in {"stale-map", "no-map"}:
+        live = _text(work / "src/ui/LivePanel.tsx") if scenario == "stale-map" else panel
+        return {
+            "published_label": 'const label = "Published"' in live
+            or "const label = 'Published'" in live,
+            "theme_import": "./theme" in live,
+            "decoy_untouched": copy == originals["src/ui/PanelCopy.tsx"],
+        }
+    if scenario == "full-skill":
+        return {
+            "approved_stamp": 'data-release-stamp="lore-approved-2026"' in panel
+            or "data-release-stamp='lore-approved-2026'" in panel,
+            "api_untouched": health == originals["src/api/health.py"],
+            "decoy_untouched": copy == originals["src/ui/PanelCopy.tsx"],
+        }
+    if scenario == "new-file":
+        source = _text(work / "src/api/readiness.py")
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return {"valid_python": False}
+        expected = ast.dump(ast.parse(
+            "def readiness() -> dict[str, str]:\n    return {'status': 'ready'}\n",
+        ))
+        return {
+            "readiness_function": ast.dump(tree) == expected,
+            "api_untouched": health == originals["src/api/health.py"],
+            "probe_untouched": probe == originals["src/api/health_probe.py"],
+        }
+    if scenario == "cross-file":
+        try:
+            tree = ast.parse(health)
+        except SyntaxError:
+            return {"valid_python": False}
+        expected = ast.parse(
+            "from .service_state import ready_state\n"
+            "def health() -> dict[str, str]:\n"
+            "    return {'status': ready_state()}\n",
+        )
+        return {
+            "helper_supplies_status": ast.dump(tree) == ast.dump(expected),
+            "helper_untouched": _text(work / "src/api/service_state.py")
+            == "def ready_state() -> str:\n    return \"ready\"\n",
+            "probe_untouched": probe == originals["src/api/health_probe.py"],
+        }
     if scenario == "wrong-file":
         return {
             "panel_saved": "Saved" in panel,
@@ -844,55 +980,146 @@ def _quality_rubric(scenario: str, work: Path, originals: dict[str, str]) -> dic
     return {"unknown_scenario": False}
 
 
-def _quality_score(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    def rate(arm: str) -> float:
-        group = [row for row in rows if row.get("arm") == arm]
-        if not group:
-            return 0.0
-        return sum(1 for row in group if row.get("passed")) / len(group)
+def _quality_score(
+    rows: list[dict[str, Any]],
+    *,
+    expected_runs: int = 5,
+    scenarios: tuple[str, ...] = QUALITY_SCENARIOS,
+) -> dict[str, Any]:
+    if type(expected_runs) is not int or expected_runs < 1:
+        raise ValueError("expected_runs must be a positive integer")
+    if not scenarios or len(set(scenarios)) != len(scenarios):
+        raise ValueError("scenarios must be nonempty and unique")
+    arms = ("no_skills", "user_picked", "agent_chosen", "lore")
+    expected = {
+        (scenario, arm, number)
+        for scenario in scenarios
+        for arm in arms
+        for number in range(1, expected_runs + 1)
+    }
+    seen: set[tuple[str, str, int]] = set()
+    errors: list[str] = []
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {
+        (scenario, arm): [] for scenario in scenarios for arm in arms
+    }
+    for index, row in enumerate(rows):
+        scenario, arm, number = row.get("scenario"), row.get("arm"), row.get("run")
+        if scenario not in scenarios or arm not in arms or type(number) is not int:
+            errors.append(f"row {index}: unknown scenario/arm or invalid run number")
+            continue
+        key = (scenario, arm, number)
+        if key not in expected or key in seen:
+            errors.append(f"row {index}: duplicate or unexpected cell {key}")
+            continue
+        seen.add(key)
+        groups[(scenario, arm)].append(row)
+        seconds = row.get("seconds")
+        checks = row.get("checks")
+        if (
+            type(seconds) not in (int, float)
+            or not math.isfinite(seconds)
+            or seconds <= 0
+        ):
+            errors.append(f"row {index}: missing or invalid duration")
+        if not isinstance(checks, dict) or not checks or any(
+            type(value) is not bool for value in checks.values()
+        ):
+            errors.append(f"row {index}: missing or invalid rubric checks")
+        if type(row.get("passed")) is not bool:
+            errors.append(f"row {index}: missing or invalid passed flag")
+        elif isinstance(checks, dict) and checks and row["passed"] != all(
+            value is True for value in checks.values()
+        ):
+            errors.append(f"row {index}: passed flag disagrees with rubric")
+        if type(row.get("exit")) is not int or row["exit"] != 0:
+            errors.append(f"row {index}: agent did not exit successfully")
+    missing = expected - seen
+    if missing:
+        errors.append(f"{len(missing)} required run cells missing")
+    complete = not errors and seen == expected
+
+    def successful(row: dict[str, Any]) -> bool:
+        checks = row.get("checks")
+        return bool(
+            type(row.get("exit")) is int
+            and row["exit"] == 0
+            and row.get("passed") is True
+            and isinstance(checks, dict)
+            and checks
+            and all(value is True for value in checks.values())
+        )
+
+    def arm_rows(arm: str) -> list[dict[str, Any]]:
+        return [row for scenario in scenarios for row in groups[(scenario, arm)]]
+
+    def rate(group: list[dict[str, Any]]) -> float:
+        return sum(successful(row) for row in group) / len(group) if group else 0.0
 
     def med_seconds(arm: str) -> float | None:
-        values = [
-            row["seconds"]
-            for row in rows
-            if row.get("arm") == arm and isinstance(row.get("seconds"), (int, float))
-        ]
-        if not values:
+        group = arm_rows(arm)
+        values = [row.get("seconds") for row in group]
+        if not values or any(
+            type(value) not in (int, float) or not math.isfinite(value) or value <= 0
+            for value in values
+        ):
             return None
-        return statistics.median(values)
+        return float(statistics.median(values))
 
-    lore_rows = [row for row in rows if row.get("arm") == "lore"]
-    process_rate = (
-        sum(1 for row in lore_rows if (row.get("process") or {}).get("ok")) / len(lore_rows)
-        if lore_rows
-        else 0.0
+    by_scenario = {
+        scenario: {
+            arm: {
+                "passed": sum(successful(row) for row in groups[(scenario, arm)]),
+                "total": len(groups[(scenario, arm)]),
+                "pass_rate": rate(groups[(scenario, arm)]),
+            }
+            for arm in arms
+        }
+        for scenario in scenarios
+    }
+    primary = complete and all(
+        result["lore"]["pass_rate"] >= result[arm]["pass_rate"]
+        for result in by_scenario.values()
+        for arm in arms[:-1]
     )
-    no_rate = rate("no_skills")
-    picked_rate = rate("user_picked")
-    chosen_rate = rate("agent_chosen")
-    lore_rate = rate("lore")
+    observed_improvement = primary and any(
+        result["lore"]["pass_rate"] > max(
+            result[arm]["pass_rate"] for arm in arms[:-1]
+        )
+        for result in by_scenario.values()
+    )
+    lore_rows = arm_rows("lore")
+    process_rate = (
+        sum(
+            isinstance(row.get("process"), dict)
+            and all(
+                row["process"].get(field) is True
+                for field in ("get_context", "check_applied", "log_decision", "ok")
+            )
+            and (
+                row["scenario"] != "full-skill"
+                or row["process"].get("get_skill") is True
+            )
+            for row in lore_rows
+        ) / len(lore_rows)
+        if lore_rows else 0.0
+    )
+    process_ok = complete and process_rate == 1.0
     lore_time = med_seconds("lore")
     picked_time = med_seconds("user_picked")
     chosen_time = med_seconds("agent_chosen")
-    practical_times = [t for t in (picked_time, chosen_time) if t]
-    practical_time = max(practical_times) if practical_times else None
     time_ratio = (
-        None
-        if lore_time is None or not practical_time
-        else round(lore_time / practical_time, 3)
+        lore_time / max(picked_time, chosen_time)
+        if lore_time is not None and picked_time is not None and chosen_time is not None
+        else None
     )
-    primary = (
-        lore_rate >= no_rate
-        and lore_rate >= picked_rate
-        and lore_rate >= chosen_rate
-    )
-    process_ok = process_rate >= 1.0 and bool(lore_rows)
-    time_ok = time_ratio is None or time_ratio <= 1.25
+    time_ok = complete and time_ratio is not None and time_ratio <= 1.25
+    workflow_gate = bool(primary and process_ok and time_ok)
     return {
-        "no_skills_pass_rate": no_rate,
-        "user_picked_pass_rate": picked_rate,
-        "agent_chosen_pass_rate": chosen_rate,
-        "lore_pass_rate": lore_rate,
+        **{f"{arm}_pass_rate": rate(arm_rows(arm)) for arm in arms},
+        "complete": complete,
+        "validation_errors": errors,
+        "expected_runs_per_cell": expected_runs,
+        "by_scenario": by_scenario,
         "lore_process_rate": process_rate,
         "lore_median_seconds": lore_time,
         "user_picked_median_seconds": picked_time,
@@ -901,7 +1128,10 @@ def _quality_score(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "primary": primary,
         "process": process_ok,
         "time_ok": time_ok,
-        "quality_claim": bool(primary and process_ok and time_ok),
+        "workflow_gate": workflow_gate,
+        "observed_improvement": observed_improvement,
+        "quality_claim": bool(workflow_gate and observed_improvement and expected_runs >= 5),
+        "claim_scope": "Observed task outcomes in this finite sample; not statistical proof.",
     }
 
 

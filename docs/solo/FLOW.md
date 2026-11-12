@@ -51,7 +51,7 @@ Two surfaces share one file store. The **setup site** is for people. The **MCP p
 | Org policies / OCR / tenancy governance | That is Enterprise — [HOSTING.md](HOSTING.md) |
 | Cloud accounts / team sync | Not built on Solo; see HOSTING |
 | Conflict detection across orgs | Empty fields in the Solo envelope |
-| Full skill bodies on every turn | Summaries only unless the agent calls `get_skill` (full surface) |
+| Full skill bodies on every turn | Summaries only unless the agent calls `get_skill` (coding surface) |
 
 ---
 
@@ -70,11 +70,11 @@ flowchart LR
   H --> I[Work in the IDE with the agent]
 ```
 
-1. **Install** puts `lore-solo` in `~/.lore/bin` (needs `uv`; Graphify’s native build needs a C toolchain — see GitHub #2).
+1. **Install** puts `lore-solo` in `~/.lore/bin` (needs `uv`; Graphify and the rest install from binary wheels under the packaged constraints — no C toolchain).
 2. **Setup** opens `http://127.0.0.1:3000/?key=…`. Django API is on `:7421`. `/api` is rewritten from Next to Django.
 3. **Provider** key stays in the persona library; used only to draft personas.
 4. **Skills** land in the inbox, then under a persona as drafts.
-5. **Approve** flips `status: draft` → `stable`. Only stable skills are served to agents.
+5. **Approve** runs governance (ATR scan + optional SkillSpector; freshness stamp), then flips `status: draft` → `stable` (or 409 until fixed / accept risk). Only stable skills are served to agents. See [GOVERNANCE.md](GOVERNANCE.md).
 6. **Connect** writes MCP + standing rules into editors that already exist on this machine.
 7. **Codebase** runs Graphify into `graphify-out/` for the chosen project.
 
@@ -118,7 +118,7 @@ sequenceDiagram
 | `map_codebase` | Build the codebase map (coding surface) |
 | `check_applied` | Receipt: cited skill ids must match what that decision served |
 | `log_decision` | Append a one-line outcome to the decision |
-| `get_skill` | Full skill body when summaries are not enough (full surface) |
+| `get_skill` | Full skill body when summaries are not enough (coding surface) |
 | `list_personas` | Stable persona names (full surface) |
 | `locate` / `map_status` | Map helpers (full surface; locate also folded into task-mode `get_context`) |
 | `ingest` / `trace` | Draft ingest / read a decision (full surface) |

@@ -1,4 +1,4 @@
-"""`lore-solo install`, `setup`, `uninstall`, `connect`, `mcp`, `map`, and `doctor`."""
+"""`lore-solo install`, `setup`, `uninstall`, `connect`, `container`, `mcp`, `map`, `doctor`, and `govern`."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(
-            "usage: lore-solo install|setup|uninstall|connect|mcp|map|doctor",
+            "usage: lore-solo install|setup|uninstall|connect|container|mcp|map|doctor|govern",
             file=sys.stderr,
         )
         return 0
@@ -31,14 +31,18 @@ def main(argv: list[str] | None = None) -> int:
         run_uninstall(rest)
         return 0
     if command == "connect":
-        from lore.connect import register_agents
+        from lore.connect import run_connect
 
-        result = register_agents()
+        result = run_connect(rest)
         for path in result["written"]:
             print(path)
         for skipped in result["skipped"]:
             print(f"skipped {skipped}", file=sys.stderr)
         return 0 if result["written"] else 1
+    if command == "container":
+        from lore.container_cmd import run as run_container
+
+        return run_container(rest)
     if command == "mcp":
         from lore.mcp import run as run_mcp
 
@@ -50,9 +54,13 @@ def main(argv: list[str] | None = None) -> int:
         from lore.doctor_cmd import run as run_doctor
 
         return run_doctor(rest)
+    if command == "govern":
+        from lore.govern_cmd import run as run_govern
+
+        return run_govern(rest)
     print(
         "unknown command "
-        f"{command!r}; use install, setup, uninstall, connect, mcp, map, or doctor",
+        f"{command!r}; use install, setup, uninstall, connect, container, mcp, map, doctor, or govern",
         file=sys.stderr,
     )
     return 2
@@ -60,12 +68,18 @@ def main(argv: list[str] | None = None) -> int:
 
 def _run_map(argv: list[str]) -> int:
     from lore.core.paths import map_root
-    from lore.setup.graph_job import start_build
+    from lore.setup.graph_job import start_build, wait_for_build
 
     start = Path(argv[0]) if argv else Path.cwd()
-    status = start_build(map_root(start))
-    print(status.get("state", "running"))
-    return 0
+    status = start_build(map_root(start), force=True)
+    status = wait_for_build(map_root(start), status)
+    state = str(status.get("state", "running"))
+    detail = str(status.get("detail") or status.get("reason") or "")
+    print(f"{state}: {detail}" if detail else state)
+    error = str(status.get("error") or "")
+    if error:
+        print(error, file=sys.stderr)
+    return 0 if state == "ready" else 1
 
 
 if __name__ == "__main__":

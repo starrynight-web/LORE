@@ -63,6 +63,60 @@ def test_mismatched_skill_is_hidden_from_the_website_list() -> None:
     assert "React practices" in titles
 
 
+def test_find_skill_blocks_drafts_mismatches_and_unknown_ids(tmp_path: Path) -> None:
+    import shutil
+
+    from lore.core.personas import find_skill, write_skill
+
+    project = tmp_path / "app"
+    shutil.copytree(PACK, project)
+    write_skill(
+        project,
+        "draft-persona",
+        "sneaky-steps",
+        title="Sneaky steps",
+        summary="Stable file under a draft persona.",
+        body="SNEAKY_STEPS",
+        status="stable",
+    )
+    assert find_skill(project, "skill:draft-persona/secret-steps@v1") is None
+    assert find_skill(project, "secret-steps", persona="draft-persona") is None
+    assert find_skill(project, "sneaky-steps") is None
+    assert find_skill(project, "sneaky-steps", persona="draft-persona") is None
+    assert find_skill(project, "wrong-owner") is None
+    assert find_skill(project, "wrong-owner", persona="backend-engineer") is None
+    assert find_skill(project, "not-a-skill") is None
+
+
+def test_find_skill_disambiguates_short_names_by_persona(tmp_path: Path) -> None:
+    import shutil
+
+    from lore.core.personas import find_skill, write_skill
+
+    project = tmp_path / "app"
+    shutil.copytree(PACK, project)
+    write_skill(
+        project,
+        "backend-engineer",
+        "react-practices",
+        title="Backend react practices",
+        summary="Backend-only react guidance.",
+        body="backend steps",
+        status="stable",
+    )
+    with pytest.raises(ValueError, match="ambiguous"):
+        find_skill(project, "react-practices")
+    frontend = find_skill(project, "react-practices", persona="frontend-engineer")
+    assert frontend is not None
+    assert frontend.get("id") == "skill:frontend-engineer/react-practices@v1"
+    backend = find_skill(project, "react-practices", persona="backend-engineer")
+    assert backend is not None
+    assert backend.get("id") == "skill:backend-engineer/react-practices@v1"
+    canonical = find_skill(project, "skill:backend-engineer/react-practices@v1")
+    assert canonical is not None
+    assert canonical.get("id") == "skill:backend-engineer/react-practices@v1"
+
+
 def test_library_paths_follow_the_operating_system(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -151,3 +205,26 @@ def test_ready_made_persona_copies_its_skills(tmp_path: Path) -> None:
 def test_finds_lore_from_a_nested_file() -> None:
     nested = PACK / "src" / "ui" / "Button.tsx"
     assert find_project(nested) == PACK
+
+
+def test_map_only_artifacts_do_not_hide_the_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lore.core.paths import is_knowledge_store
+
+    repo = tmp_path / "repo"
+    lore = repo / ".lore"
+    lore.mkdir(parents=True)
+    (lore / "graph-status.json").write_text('{"state": "ready"}', encoding="utf-8")
+    (lore / "map.lock").write_text("", encoding="utf-8")
+    (lore / "map.log").write_text("", encoding="utf-8")
+    (lore / "map-fingerprint.json").write_text("{}", encoding="utf-8")
+    (lore / ".graph-status-ab12.tmp").write_text("{}", encoding="utf-8")
+    (lore / ".fingerprint-cd34.tmp").write_text("{}", encoding="utf-8")
+    (lore / "maps").mkdir()
+    assert not is_knowledge_store(repo)
+    library = tmp_path / "library"
+    (library / ".lore" / "personas").mkdir(parents=True)
+    (library / ".lore" / "personas" / "frontend-engineer.md").write_text("x\n", encoding="utf-8")
+    monkeypatch.setenv("LORE_LIBRARY", str(library))
+    assert find_project(repo) == library.resolve()

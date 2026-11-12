@@ -47,3 +47,7 @@ Thumbs.db
 .env
 .env.*
 **/.lore/provider.json
+
+# Private working material — never shipped
+/docs/new/
+/lore_core_dump.txt

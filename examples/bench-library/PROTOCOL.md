@@ -19,6 +19,16 @@ Same model within a suite (Antigravity: `gemini-3.8-flash-medium`). New headless
 
 Legacy **paste_skills** (read all twelve skill bodies) is retired as a primary comparator; historical numbers stay in HURDLES only.
 
+### Completeness And Isolation
+
+Each declared scenario must contain exactly one record for every arm and repetition number. The scorer expects five repetitions per cell unless another positive count is explicitly declared. Missing or duplicate cells, unknown arms, nonzero agent exits, empty or non-boolean rubric checks, inconsistent pass flags, and missing/nonpositive/nonfinite durations fail the completeness gate.
+
+The eight scenarios include the original wrong-file, accessibility-label, and API-shape tasks plus full-skill retrieval, new-file creation, cross-file changes, stale-map recovery, and no-map fallback. The Lore full-skill scenario additionally requires successful `get_skill` tool evidence. Citation receipts and agent-reported outcomes are process evidence, not independent verification that code follows a skill.
+
+Arm order rotates between scenarios/repetitions. Each agent process receives an isolated home/configuration/cache environment and its own worktree; the runner does not rewrite global editor/MCP configuration. This is experiment isolation, not an operating-system security sandbox. Model-backed commands require explicit approval and the `LORE_BENCH_ALLOW_PAID=1` gate.
+
+New quality results go to a unique run directory with task/library hashes and environment metadata. Historical result files are not overwritten.
+
 ### Scoreboard
 
 - **Primary:** rubric pass rate for lore ≥ `user_picked`, ≥ `agent_chosen`, and ≥ `no_skills`.
@@ -27,7 +37,9 @@ Legacy **paste_skills** (read all twelve skill bodies) is retired as a primary c
 - Tokens / fresh tokens may be logged; they are not fail lines.
 - Cold Graphify extract is timed once outside the session timer when the lore arm needs a map.
 
-`quality_claim` is true only when primary and process gates pass and the time secondary ceiling holds.
+`workflow_gate` requires complete cells, the primary non-regression gate, all Lore process receipts, and the time ceiling. Equal pass rates can establish workflow success but are not an observed quality advantage.
+
+`observed_improvement` additionally requires Lore's pass rate to exceed every comparator in at least one scenario without regressing in another. `quality_claim` requires that observed improvement, the workflow gate, and at least five repetitions per cell. It means observed outcomes in this finite fixture sample, not statistical proof or general superiority. Retired `paste_skills` results and historical `quality_claim: true` fields do not qualify under this protocol.
 
 ## Legacy token comparison (historical)
 
