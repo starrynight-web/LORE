@@ -49,7 +49,7 @@ candidate commit is fully green.**
 1. Land everything on the release branch; bump `pyproject.toml`,
    `lore/__init__.py`, and the `lore_version` placeholder in
    `lore/site_bundles.json` together; `uv lock` refreshes the root version.
-2. Push the source, wait for the full CI suite on that commit, then tag `v0.2.0`
+2. Push the source, wait for the full CI suite on that commit, then tag `v0.2.1`
    and push the tag. The release workflow runs on the tag.
 3. Download the `release-packages` artifact, verify it contains the wheel,
    sdist, pinned `site_bundles.json`, and `release_constraints.txt`, then
@@ -62,11 +62,11 @@ candidate commit is fully green.**
    directory:
 
    ```bash
-   mkdir -p dist/pypi-0.2.0
-   # copy the verified release wheel + sdist into dist/pypi-0.2.0/
-   cd dist/pypi-0.2.0
-   uvx twine check --strict lore_solo-0.2.0-py3-none-any.whl lore_solo-0.2.0.tar.gz
-   uvx twine upload lore_solo-0.2.0-py3-none-any.whl lore_solo-0.2.0.tar.gz
+   mkdir -p dist/pypi-0.2.1
+   # copy the verified release wheel + sdist into dist/pypi-0.2.1/
+   cd dist/pypi-0.2.1
+   uvx twine check --strict lore_solo-0.2.1-py3-none-any.whl lore_solo-0.2.1.tar.gz
+   uvx twine upload lore_solo-0.2.1-py3-none-any.whl lore_solo-0.2.1.tar.gz
    ```
 
 ## What Docker is (and is not)

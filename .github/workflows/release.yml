@@ -81,9 +81,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Validate Source Version
-        run: python -c 'import os, tomllib; assert tomllib.load(open("pyproject.toml", "rb"))["project"]["version"] == os.environ["LORE_RELEASE_VERSION"]'
       - run: uv sync --frozen --extra dev
+      - name: Validate Source Version
+        run: uv run --frozen python -c 'import os, tomllib; assert tomllib.load(open("pyproject.toml", "rb"))["project"]["version"] == os.environ["LORE_RELEASE_VERSION"]'
       - run: uv run --frozen python scripts/build_site_bundle.py --output-dir dist/site
       - run: uv build --wheel --out-dir dist
       - run: uv run --frozen python scripts/smoke_install.py --artifacts dist --mode full --bundle-dir dist/site

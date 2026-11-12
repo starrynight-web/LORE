@@ -1,11 +1,38 @@
 # Changelog
 
-## 0.2.0 — 2026-11-12
+## 0.2.1 — 2026-11-12
 
 GitHub release artifacts are produced by the tag-triggered release workflow
 once its native platform matrix and Docker image gates pass. PyPI publication
 is a separate, user-owned step on those verified artifacts — this entry does
 not assert that upload has happened.
+
+0.2.1 carries the full 0.2.0 feature set (see below) plus release-pipeline
+fixes.
+
+### Fixed
+
+- Release workflow: the `site` job's source-version check now runs after
+  `uv sync` via `uv run --frozen python`, so `tomllib` resolves under the
+  managed Python 3.12 on every runner — Ubuntu's system Python 3.10 lacks it.
+- CI portability (pushed ahead of this tag): `--bundle-dir` resolves to an
+  absolute path before the setup subprocess changes directory; unit fixtures
+  provide a fake `lore-solo` binary and fake Graphify executable instead of
+  relying on installed tools; the POSIX file-mode assertion is skipped on
+  Windows where permission bits are not representable.
+
+### Notes
+
+- The `v0.2.0` tag remains untouched in history: its release-artifact workflow
+  failed before packaging (the Ubuntu `tomllib` issue above), and nothing was
+  ever published to GitHub Releases or PyPI for it. Tags are not retargeted or
+  overwritten; 0.2.1 is the first 0.2.x intended for publication.
+
+## 0.2.0 — 2026-11-12 (unpublished candidate)
+
+This version was tagged but its release workflow failed during the artifact
+stage, so it was never published. It exists for history only; 0.2.1 includes
+everything below.
 
 ### Added
 

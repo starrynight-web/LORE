@@ -6,8 +6,8 @@
 #          `setup`, `map`, or `mcp` inside the container.
 #
 # No official image is published; build local versioned tags explicitly:
-#   docker build --target mcp  -t lore-solo:0.2.0-mcp .
-#   docker build --target full -t lore-solo:0.2.0-full .
+#   docker build --target mcp  -t lore-solo:0.2.1-mcp .
+#   docker build --target full -t lore-solo:0.2.1-full .
 #
 # A default build always compiles the wheel and the frontend from this
 # checkout's source and ignores anything under dist/.
