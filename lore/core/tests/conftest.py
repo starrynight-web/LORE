@@ -23,8 +23,12 @@ def map_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def enable_map(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
-    """Mapping enabled with a stubbed scheduler; returns recorded start_build calls."""
+def enable_map(monkeypatch: pytest.MonkeyPatch, fake_graphify: Path) -> list[dict[str, Any]]:
+    """Mapping enabled with a stubbed scheduler; returns recorded start_build calls.
+
+    The fake Graphify executable is provisioned too: map_capability probes the
+    LORE_GRAPHIFY binary and CI dev envs have no real graphifyy installed.
+    """
     monkeypatch.setenv("LORE_MAP_ENABLED", "1")
     calls: list[dict[str, Any]] = []
 

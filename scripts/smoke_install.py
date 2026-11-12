@@ -483,7 +483,7 @@ def _fixture_processes(root: str | Path) -> list[str] | None:
 def _pick_bundle(bundle_dir: Path | None, version: str, platform_key: str) -> Path | None:
     if bundle_dir is None or not version or not platform_key:
         return None
-    wanted = bundle_dir / f"lore-site-{version}-{platform_key}.zip"
+    wanted = (bundle_dir / f"lore-site-{version}-{platform_key}.zip").resolve()
     return wanted if wanted.is_file() else None
 
 

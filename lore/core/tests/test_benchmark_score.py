@@ -234,6 +234,9 @@ def test_quality_runner_rotates_arms_preserves_history_and_sets_map_modes(
     monkeypatch.setattr(_BENCHMARK, "time", clock)
     monkeypatch.setenv("LORE_BENCH_ALLOW_PAID", "1")
     monkeypatch.setattr(_BENCHMARK, "TMP", tmp_path / "runs")
+    fake_lore = tmp_path / 'lore-solo'
+    fake_lore.write_text('unit-test placeholder; never executed\n', encoding='utf-8')
+    monkeypatch.setattr(_BENCHMARK, 'LORE', fake_lore)
     monkeypatch.setattr(_BENCHMARK, "_cold_map", lambda *_args, **_kw: 0.0)
     monkeypatch.setattr(_BENCHMARK, "_lore_process", lambda *_args: dict.fromkeys(
         ("get_context", "get_skill", "check_applied", "log_decision", "ok"), True,

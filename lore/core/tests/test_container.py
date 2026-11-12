@@ -667,11 +667,11 @@ def test_run_returns_child_code_and_restores_sigterm(
             pass
 
     _stub_run_env(monkeypatch, Done)
+    lib = tmp_path / "lib"
+    lib.mkdir()
     before = sig.getsignal(sig.SIGTERM) if hasattr(sig, "SIGTERM") else None
     code = container_cmd.run(
-        ["mcp", "--image", "x:1", "--workspace", str(tmp_path), "--library", str(tmp_path / "lib")]
-        if (tmp_path / "lib").exists()
-        else ["mcp", "--image", "x:1", "--workspace", str(tmp_path)]
+        ["mcp", "--image", "x:1", "--workspace", str(tmp_path), "--library", str(lib)]
     )
     assert code == 7
     if before is not None:

@@ -270,6 +270,9 @@ def test_safe_extract_bad_zip(tmp_path: Path) -> None:
         safe_extract(archive, tmp_path / "out")
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX permission bits are not representable on Windows"
+)
 def test_extracted_modes_are_safe(tmp_path: Path) -> None:
     archive = _write_zip(tmp_path / "ok.zip", {"run.sh": "echo hi", "data.txt": "x"})
     out = tmp_path / "out"

@@ -768,6 +768,7 @@ def test_release_assets_wrong_platform_archive_fails(
 
 def test_smoke_install_pick_bundle_matches_version_platform(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mod = _load("smoke_install")
     bundle_dir = tmp_path / "bundles"
@@ -776,9 +777,14 @@ def test_smoke_install_pick_bundle_matches_version_platform(
     (bundle_dir / "lore-site-8.0.0-linux-amd64.zip").write_text("x")
     wanted = bundle_dir / "lore-site-9.9.9-linux-amd64.zip"
     wanted.write_text("x")
-    assert mod._pick_bundle(bundle_dir, "9.9.9", "linux-amd64") == wanted
+    assert mod._pick_bundle(bundle_dir, "9.9.9", "linux-amd64") == wanted.resolve()
     assert mod._pick_bundle(bundle_dir, "9.9.9", "macos-arm64") is None
     assert mod._pick_bundle(None, "9.9.9", "linux-amd64") is None
+    # A relative bundle dir still yields an absolute path so the setup
+    # subprocess (which chdirs into the workspace) can find the archive.
+    monkeypatch.chdir(tmp_path)
+    assert mod._pick_bundle(Path("bundles"), "9.9.9", "linux-amd64") == wanted.resolve()
+    assert mod._pick_bundle(Path("bundles"), "9.9.9", "linux-amd64").is_absolute()
 
 
 def test_smoke_install_wheel_constraints_from_wheel(tmp_path: Path) -> None:
