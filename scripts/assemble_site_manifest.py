@@ -97,9 +97,19 @@ def collect(artifacts: Path, version: str) -> dict[str, Any]:
         build_ids.add(str(entry["build_id"]))
         entries[platform_key] = entry
     if not entries:
-        raise SystemExit(f"no lore-site-{version}-*.json fragments in {artifacts}")
+        found = sorted(path.name for path in artifacts.rglob(f"lore-site-{version}-*.json"))
+        hint = f" (found nested: {', '.join(found)})" if found else ""
+        raise SystemExit(
+            f"no lore-site-{version}-*.json fragments in {artifacts}{hint}"
+        )
     if len(build_ids) > 1:
-        raise SystemExit("bundle fragments were built from different sources")
+        detail = ", ".join(
+            f"{platform}={entry['build_id'][:12]}…"
+            for platform, entry in sorted(entries.items())
+        )
+        raise SystemExit(
+            "bundle fragments were built from different sources: " + detail
+        )
     return entries
 
 
