@@ -1,0 +1,11 @@
+# Optional CPU-based Document Layout Detection dependencies for LORE Visual Extraction
+# Model: PaddlePaddle/PP-DocLayout-S (PicoDet-S, Apache-2.0)
+# Python support: 3.9 - 3.13 (aligns with container python:3.12-slim in Dockerfile;
+# prebuilt paddlepaddle wheels are not yet published for Python 3.14).
+# CPU CPU install example:
+#   pip install paddlepaddle>=3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+#   pip install -r requirements-layout.txt
+paddlepaddle>=3.0.0
+paddleocr>=3.0.0
+numpy>=1.24.0
+

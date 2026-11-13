@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 from typing import Dict, Any, List, Optional
@@ -7,6 +8,12 @@ from django.db import transaction
 from apps.sources.models import SourceDocument, DocumentVersion, DocumentPage
 from apps.knowledge.models import DocumentChunk
 from apps.ingestion.models import IngestionJob, IngestionPipelineRun
+from apps.ingestion.batch import (
+    get_workload_queue_name,
+    purge_unsettled_partial_state,
+    sync_batch_status,
+)
+from apps.ingestion.pipeline.extractors import classify_ingestion_workload
 from apps.ingestion.settlement import SettlementGateCoordinator, SettlementReasonCode
 from apps.ingestion.quality import DocumentQualityService, QualityAuditReport
 from apps.retrieval.services import HybridRetrievalService, ContextReranker
@@ -38,8 +45,45 @@ class SequentialPipelineCoordinator:
         'run_4_decision',
     ]
 
+    @staticmethod
+    def _is_job_cancelled(job: IngestionJob) -> bool:
+        row = IngestionJob.objects.filter(id=job.id).values('status', 'is_cancellation_requested').first()
+        if not row:
+            return False
+        return bool(row['is_cancellation_requested'] or row['status'] == 'cancelled')
+
     @classmethod
-    def orchestrate_pipeline(cls, job_id: str, raise_exceptions: bool = False) -> Dict[str, Any]:
+    def _abort_cancelled_job(
+        cls,
+        job: IngestionJob,
+        doc: SourceDocument,
+        run_records: Dict[str, IngestionPipelineRun],
+        pipeline_summary: Dict[str, Any],
+        remaining_stages: List[str],
+    ) -> Dict[str, Any]:
+        purge_unsettled_partial_state(doc, reset_status='failed', force=True)
+        cls._mark_remaining_stages(run_records, remaining_stages, 'skipped')
+        now = timezone.now()
+        job.status = 'cancelled'
+        job.current_stage = 'cancelled'
+        job.is_cancellation_requested = True
+        job.cancelled_at = job.cancelled_at or now
+        job.completed_at = now
+        job.error_message = job.error_message or 'Ingestion job cancelled before completion.'
+        job.error_category = 'CANCELLED'
+        job.pipeline_summary = pipeline_summary
+        job.save()
+        if job.batch_id:
+            sync_batch_status(job.batch_id)
+        return pipeline_summary
+
+    @classmethod
+    def orchestrate_pipeline(
+        cls,
+        job_id: str,
+        raise_exceptions: bool = False,
+        worker_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Executes the 4-run sequential pipeline for the given IngestionJob.
         """
@@ -48,7 +92,53 @@ class SequentialPipelineCoordinator:
         ).get(id=job_id)
         doc = job.document
 
-        job.started_at = timezone.now()
+        # Idempotent short-circuit if already cleanly settled
+        if job.status == 'ready' and doc.status == 'ready' and job.pipeline_summary:
+            if job.batch_id:
+                sync_batch_status(job.batch_id)
+            return dict(job.pipeline_summary)
+
+        run_records: Dict[str, IngestionPipelineRun] = {}
+        for stage_name in cls.STAGES_ORDER:
+            run_rec, _ = IngestionPipelineRun.objects.get_or_create(
+                job=job,
+                stage=stage_name,
+                defaults={
+                    'document': doc,
+                    'status': 'pending',
+                    'attempt_count': job.attempt_count,
+                }
+            )
+            run_records[stage_name] = run_rec
+
+        pipeline_summary: Dict[str, Any] = {
+            'document_id': str(doc.id),
+            'document_title': doc.title,
+            'version_number': doc.current_version_number,
+            'runs': {},
+            'started_at': timezone.now().isoformat(),
+        }
+
+        if cls._is_job_cancelled(job):
+            return cls._abort_cancelled_job(job, doc, run_records, pipeline_summary, list(cls.STAGES_ORDER))
+
+        # Recovery safety: never publish partial chunks/vectors left by an interrupted attempt
+        if doc.status != 'ready':
+            purge_unsettled_partial_state(doc, reset_status='extracting')
+
+        now = timezone.now()
+        if not job.workload_class or job.workload_class == 'lightweight':
+            inferred_wc = classify_ingestion_workload(
+                doc_type=doc.document_type,
+                filename=doc.original_filename,
+                mime_type=getattr(doc, 'mime_type', ''),
+            )
+            job.workload_class = inferred_wc
+        if not job.queue_name:
+            job.queue_name = get_workload_queue_name(job.workload_class)
+        job.started_at = now
+        job.heartbeat_at = now
+        job.worker_id = worker_id or f"worker-{os.getpid()}"
         job.status = 'extracting'
         job.current_stage = 'extraction'
         job.save()
@@ -63,28 +153,7 @@ class SequentialPipelineCoordinator:
                 'is_current': True
             }
         )
-
-        pipeline_summary: Dict[str, Any] = {
-            'document_id': str(doc.id),
-            'document_title': doc.title,
-            'version_number': doc_version.version_number,
-            'runs': {},
-            'started_at': timezone.now().isoformat(),
-        }
-
-        # Initialize or fetch run records
-        run_records: Dict[str, IngestionPipelineRun] = {}
-        for stage_name in cls.STAGES_ORDER:
-            run_rec, _ = IngestionPipelineRun.objects.get_or_create(
-                job=job,
-                stage=stage_name,
-                defaults={
-                    'document': doc,
-                    'status': 'pending',
-                    'attempt_count': job.attempt_count,
-                }
-            )
-            run_records[stage_name] = run_rec
+        pipeline_summary['version_number'] = doc_version.version_number
 
         try:
             # ==================================================================
@@ -109,24 +178,41 @@ class SequentialPipelineCoordinator:
                 'diagnostics': run1_rec.diagnostics,
             }
 
-            if run1_rec.status == 'failed':
+            if run1_rec.status in ('failed', 'quarantined'):
                 cls._mark_remaining_stages(run_records, ['run_2_quality', 'run_3_retrieval', 'run_4_decision'], 'skipped')
-                job.status = 'failed'
-                job.current_stage = 'failed'
-                job.error_message = run1_rec.error_message or "Run 1 Initial Ingestion failed."
-                job.error_category = run1_result.get('error_category', 'RUN_1_FAILED')
+                is_quarantined = (run1_rec.status == 'quarantined')
+                job.status = 'quarantined' if is_quarantined else 'failed'
+                job.current_stage = 'quarantined' if is_quarantined else 'failed'
+                job.error_message = run1_rec.error_message or (
+                    "Run 1 quarantined at Stage 2 security screening." if is_quarantined
+                    else "Run 1 Initial Ingestion failed."
+                )
+                job.error_category = run1_result.get(
+                    'error_category',
+                    'SECURITY_QUARANTINED' if is_quarantined else 'RUN_1_FAILED'
+                )
+                job.heartbeat_at = timezone.now()
                 job.completed_at = timezone.now()
                 job.pipeline_summary = pipeline_summary
                 job.save()
-                if raise_exceptions:
+                if job.batch_id:
+                    sync_batch_status(job.batch_id)
+                if raise_exceptions and not is_quarantined:
                     raise RuntimeError(job.error_message)
                 return pipeline_summary
+
+            if cls._is_job_cancelled(job):
+                return cls._abort_cancelled_job(
+                    job, doc, run_records, pipeline_summary,
+                    ['run_2_quality', 'run_3_retrieval', 'run_4_decision'],
+                )
 
             # ==================================================================
             # RUN 2: QUALITY VALIDATION AND REFINEMENT
             # ==================================================================
             job.current_stage = 'chunking'
-            job.save()
+            job.heartbeat_at = timezone.now()
+            job.save(update_fields=['current_stage', 'heartbeat_at', 'updated_at'])
 
             run2_rec = run_records['run_2_quality']
             run2_rec.status = 'running'
@@ -148,23 +234,34 @@ class SequentialPipelineCoordinator:
             }
 
             if run2_rec.status == 'failed':
+                purge_unsettled_partial_state(doc, reset_status='failed', force=True)
                 cls._mark_remaining_stages(run_records, ['run_3_retrieval', 'run_4_decision'], 'skipped')
                 job.status = 'failed'
                 job.current_stage = 'failed'
                 job.error_message = run2_rec.error_message or "Run 2 Quality Refinement failed."
                 job.error_category = 'RUN_2_QUALITY_FAILED'
+                job.heartbeat_at = timezone.now()
                 job.completed_at = timezone.now()
                 job.pipeline_summary = pipeline_summary
                 job.save()
+                if job.batch_id:
+                    sync_batch_status(job.batch_id)
                 if raise_exceptions:
                     raise RuntimeError(job.error_message)
                 return pipeline_summary
+
+            if cls._is_job_cancelled(job):
+                return cls._abort_cancelled_job(
+                    job, doc, run_records, pipeline_summary,
+                    ['run_3_retrieval', 'run_4_decision'],
+                )
 
             # ==================================================================
             # RUN 3: RETRIEVAL OPTIMIZATION
             # ==================================================================
             job.current_stage = 'indexing'
-            job.save()
+            job.heartbeat_at = timezone.now()
+            job.save(update_fields=['current_stage', 'heartbeat_at', 'updated_at'])
 
             run3_rec = run_records['run_3_retrieval']
             run3_rec.status = 'running'
@@ -185,9 +282,18 @@ class SequentialPipelineCoordinator:
                 'diagnostics': run3_rec.diagnostics,
             }
 
+            if cls._is_job_cancelled(job):
+                return cls._abort_cancelled_job(
+                    job, doc, run_records, pipeline_summary,
+                    ['run_4_decision'],
+                )
+
             # ==================================================================
             # RUN 4: EVALUATION AND IMPROVEMENT DECISION
             # ==================================================================
+            job.heartbeat_at = timezone.now()
+            job.save(update_fields=['heartbeat_at', 'updated_at'])
+
             run4_rec = run_records['run_4_decision']
             run4_rec.status = 'running'
             run4_rec.started_at = timezone.now()
@@ -207,6 +313,9 @@ class SequentialPipelineCoordinator:
                 'diagnostics': run4_rec.diagnostics,
             }
 
+            if cls._is_job_cancelled(job):
+                return cls._abort_cancelled_job(job, doc, run_records, pipeline_summary, [])
+
             # Final Job State Resolution
             final_status = 'ready'
             if run1_rec.status == 'needs_review' or run2_rec.status == 'needs_review':
@@ -216,6 +325,7 @@ class SequentialPipelineCoordinator:
 
             job.status = final_status
             job.current_stage = 'completed'
+            job.heartbeat_at = timezone.now()
             job.completed_at = timezone.now()
             job.pipeline_summary = pipeline_summary
             job.save()
@@ -235,20 +345,30 @@ class SequentialPipelineCoordinator:
                 }
             )
 
+            if job.batch_id:
+                sync_batch_status(job.batch_id)
+
             return pipeline_summary
 
         except Exception as e:
-            logger.exception(f"Sequential pipeline failed for job {job_id}: {e}")
+            from apps.governance.modes import sanitize_sensitive_data
+            safe_err = sanitize_sensitive_data(str(e))
+            logger.error(f"Sequential pipeline failed for job {job_id}: {safe_err}")
+            purge_unsettled_partial_state(doc, reset_status='failed', force=True)
             job.status = 'failed'
             job.current_stage = 'failed'
-            job.error_message = str(e)
+            job.error_message = safe_err
             job.error_category = 'pipeline_exception'
+            job.heartbeat_at = timezone.now()
             job.completed_at = timezone.now()
             job.pipeline_summary = pipeline_summary
             job.save()
 
             doc.status = 'failed'
             doc.save(update_fields=['status'])
+
+            if job.batch_id:
+                sync_batch_status(job.batch_id)
 
             if raise_exceptions:
                 raise
@@ -260,7 +380,9 @@ class SequentialPipelineCoordinator:
         """Run 1: Initial Ingestion & Indexing via SettlementGateCoordinator."""
         t0 = time.time()
         require_approval = False
-        if job.stage_timings and job.stage_timings.get('require_approval'):
+        job_timings = dict(job.stage_timings or {})
+        visual_document = job_timings.get('visual_document')
+        if job_timings.get('require_approval'):
             require_approval = True
         elif getattr(doc, 'require_approval', False):
             require_approval = True
@@ -268,12 +390,15 @@ class SequentialPipelineCoordinator:
         settlement = SettlementGateCoordinator.execute_settlement(
             doc=doc,
             doc_version=doc_version,
-            require_approval=require_approval
+            require_approval=require_approval,
+            visual_document=visual_document,
         )
         elapsed_ms = int((time.time() - t0) * 1000)
 
         status_map = {
             'ready': 'passed',
+            'approved': 'passed',
+            'active': 'passed',
             'needs_review': 'needs_review',
             'quarantined': 'quarantined',
             'failed': 'failed'
@@ -287,16 +412,21 @@ class SequentialPipelineCoordinator:
             'page_count': doc.page_count,
             'ocr_confidence': doc.ocr_confidence
         }
+        if 'visual_extraction' in settlement:
+            diagnostics['visual_extraction'] = settlement['visual_extraction']
 
         # Sync stage_timings on job
         timings = dict(settlement.get('stages', {}))
+        if 'routing' in job_timings:
+            timings['routing'] = job_timings['routing']
         for stage_data in list(timings.values()):
             if isinstance(stage_data, dict) and 'details' in stage_data:
                 for k in ('chunking_ms', 'embedding_ms', 'indexing_ms', 'ocr_ms', 'extraction_ms'):
                     if k in stage_data['details'] and k not in timings:
                         timings[k] = stage_data['details'][k]
         job.stage_timings = timings
-        job.save(update_fields=['stage_timings'])
+        job.heartbeat_at = timezone.now()
+        job.save(update_fields=['stage_timings', 'heartbeat_at', 'updated_at'])
 
         err_msg = ""
         err_cat = ""

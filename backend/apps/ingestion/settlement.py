@@ -33,7 +33,21 @@ from apps.retrieval.vector_store import QdrantVectorStore
 from apps.retrieval.embeddings import get_embedding_adapter
 from apps.retrieval.cache import TenantSafeCacheService
 from apps.audit.models import AuditEvent
-from apps.ingestion.pipeline.extractors import UnifiedDocumentExtractor
+from apps.ingestion.pipeline.extractors import (
+    UnifiedDocumentExtractor,
+    WorkerExtractorRegistry,
+    classify_ingestion_workload,
+)
+_REAL_UNIFIED_EXTRACTOR_CLS = UnifiedDocumentExtractor
+from apps.ingestion.pipeline.visual_schema import (
+    VisualDocument,
+    assess_visual_document_settlement_readiness,
+    build_settlement_visual_provenance,
+    extract_visual_document_screenable_text,
+    pages_to_visual_document,
+    validate_visual_document_payload,
+    visual_document_to_canonical_pages,
+)
 from apps.sources.services import StorageSecurityService
 
 logger = logging.getLogger(__name__)
@@ -62,6 +76,10 @@ class SettlementReasonCode(str, Enum):
     S3_LOW_CONFIDENCE_QUARANTINE = "S3_LOW_CONFIDENCE_QUARANTINE"
     S3_EXTRACTION_FAILED = "S3_EXTRACTION_FAILED"
     S3_EMPTY_EXTRACTION = "S3_EMPTY_EXTRACTION"
+    S3_VISUAL_SCHEMA_VALIDATED = "S3_VISUAL_SCHEMA_VALIDATED"
+    S3_VISUAL_SCHEMA_INVALID = "S3_VISUAL_SCHEMA_INVALID"
+    S3_VISUAL_INCOMPLETE_REVIEW = "S3_VISUAL_INCOMPLETE_REVIEW"
+    S3_VISUAL_REJECTED = "S3_VISUAL_REJECTED"
 
     # Stage 4: Deduplication & Version Identity
     S4_DEDUP_UNIQUE = "S4_DEDUP_UNIQUE"
@@ -261,32 +279,130 @@ class SecurityScreeningService:
 class ExtractionValidationService:
     """
     Stage 3: Extraction & Groundedness Quality Validation (lore.md §7 S3)
-    Extracts text/structure, calculates per-page and aggregate confidence.
-    Enforces ocr.md Rule X001: confidence < 0.70 routes to review queue.
+    Extracts text/structure, validates optional lore.visual/1.0 payloads,
+    calculates per-page and aggregate confidence, and enforces ocr.md Rule X001:
+    confidence < 0.70 or incomplete/uncertain visual extraction routes to review queue.
     """
+    _DEFAULT_VISUAL_PROVENANCE_KEY = "visual_extraction"
+
     @classmethod
-    def extract_and_validate(cls, doc: SourceDocument, doc_version: DocumentVersion) -> Tuple[SettlementStageResult, List[Dict[str, Any]]]:
+    def extract_and_validate(
+        cls,
+        doc: SourceDocument,
+        doc_version: DocumentVersion,
+        visual_document: Optional[Any] = None,
+        extractor: Optional[UnifiedDocumentExtractor] = None,
+    ) -> Tuple[SettlementStageResult, List[Dict[str, Any]]]:
         t0 = time.time()
         file_path = doc.file_obj.path
-        extractor = UnifiedDocumentExtractor()
+        if extractor is not None:
+            active_extractor = extractor
+        elif UnifiedDocumentExtractor is not _REAL_UNIFIED_EXTRACTOR_CLS:
+            active_extractor = UnifiedDocumentExtractor()
+        else:
+            active_extractor = WorkerExtractorRegistry.get_extractor_for_document(
+                doc_type=doc.document_type,
+                filename=doc.original_filename,
+                mime_type=getattr(doc, 'mime_type', ''),
+            )
+        workload_class = classify_ingestion_workload(
+            doc_type=doc.document_type,
+            filename=doc.original_filename,
+            mime_type=getattr(doc, 'mime_type', ''),
+        )
+
+        vdoc: Optional[VisualDocument] = None
+        visual_readiness: Optional[Dict[str, Any]] = None
+        visual_provenance: Optional[Dict[str, Any]] = None
+        source_file_hash = getattr(doc_version, 'file_hash', '') or getattr(doc, 'file_hash', '') or ''
 
         try:
-            pages_data = extractor.extract_document(
-                file_path_or_bytes=file_path,
-                doc_type=doc.document_type,
-                filename=doc.original_filename
-            )
+            if visual_document is not None:
+                vdoc = (
+                    visual_document
+                    if isinstance(visual_document, VisualDocument)
+                    else validate_visual_document_payload(visual_document)
+                )
+                if vdoc.source_document_id != str(doc.id):
+                    raise ValueError(
+                        f"VisualDocument.source_document_id ({vdoc.source_document_id!r}) "
+                        f"does not match SourceDocument.id ({str(doc.id)!r})"
+                    )
+                pages_data = visual_document_to_canonical_pages(
+                    vdoc,
+                    source_file_hash=source_file_hash,
+                )
+            else:
+                pages_data = active_extractor.extract_document(
+                    file_path_or_bytes=file_path,
+                    doc_type=doc.document_type,
+                    filename=doc.original_filename
+                )
+                if pages_data and any(
+                    isinstance(p, dict)
+                    and (p.get('visual_regions') or p.get('visual_provenance') or p.get('schema_version'))
+                    for p in pages_data
+                ):
+                    vdoc = pages_to_visual_document(
+                        pages_data,
+                        source_document_id=str(doc.id),
+                        document_version=getattr(doc_version, 'version_number', None),
+                        title=doc.title,
+                        filename=doc.original_filename,
+                        document_type=doc.document_type,
+                    )
+                    pages_data = visual_document_to_canonical_pages(
+                        vdoc,
+                        baseline_pages=pages_data,
+                        source_file_hash=source_file_hash,
+                    )
         except Exception as ex:
-            logger.error(f"Extraction failed for doc {doc.id}: {ex}")
+            from apps.governance.modes import sanitize_sensitive_data
+            logger.error(f"Extraction failed for doc {doc.id}: {sanitize_sensitive_data(str(ex))}")
             elapsed = int((time.time() - t0) * 1000)
+            fail_codes = [SettlementReasonCode.S3_EXTRACTION_FAILED.value]
+            if visual_document is not None or "Visual" in type(ex).__name__ or "visual" in str(ex).lower() or "schema" in str(ex).lower():
+                fail_codes.append(SettlementReasonCode.S3_VISUAL_SCHEMA_INVALID.value)
             return SettlementStageResult(
                 stage_number=3,
                 stage_name="extraction_and_validation",
                 status="failed",
-                reason_codes=[SettlementReasonCode.S3_EXTRACTION_FAILED.value],
+                reason_codes=fail_codes,
                 details={"error": str(ex)},
                 duration_ms=elapsed
             ), []
+
+        if vdoc is not None:
+            visual_readiness = assess_visual_document_settlement_readiness(vdoc)
+            visual_provenance = build_settlement_visual_provenance(
+                vdoc,
+                source_file_hash=source_file_hash,
+                doc_version_number=getattr(doc_version, 'version_number', None),
+            )
+            if visual_readiness["is_rejected"]:
+                elapsed = int((time.time() - t0) * 1000)
+                is_empty = (
+                    not pages_data
+                    or all(len(p.get('text', '').strip()) == 0 for p in pages_data)
+                )
+                reason_code = (
+                    SettlementReasonCode.S3_EMPTY_EXTRACTION.value
+                    if is_empty
+                    else SettlementReasonCode.S3_EXTRACTION_FAILED.value
+                )
+                return SettlementStageResult(
+                    stage_number=3,
+                    stage_name="extraction_and_validation",
+                    status="failed",
+                    reason_codes=[reason_code, SettlementReasonCode.S3_VISUAL_REJECTED.value],
+                    details={
+                        "error": "; ".join(visual_readiness["rejected_reasons"]) or "Visual extraction rejected.",
+                        "visual_schema_version": vdoc.schema_version,
+                        "visual_readiness": visual_readiness,
+                        "visual_provenance": visual_provenance,
+                    },
+                    duration_ms=elapsed
+                ), []
 
         # Validate extracted substance
         if not pages_data or all(len(p.get('text', '').strip()) == 0 for p in pages_data):
@@ -300,34 +416,50 @@ class ExtractionValidationService:
                 duration_ms=elapsed
             ), []
 
+        # Preserve caller/DB governance fields as hard ceiling when visual extraction runs
+        initial_authority = doc.authority_level
+        initial_gov_status = doc.governance_status
+        initial_approval_date = doc.approval_date
+
         # Save pages to database atomically
         with transaction.atomic():
             DocumentPage.objects.filter(document=doc).delete()
             pages_to_create = []
             for p in pages_data:
+                p_text = p.get('text', '')
+                p_conf = p.get('confidence')
+                db_conf = float(p_conf) if p_conf is not None else 0.0
                 pages_to_create.append(DocumentPage(
                     document=doc,
                     document_version=doc_version,
                     page_number=p['page_number'],
-                    text=p['text'],
-                    confidence=p.get('confidence', 1.0),
-                    words_count=p.get('words_count', len(p['text'].split())),
+                    text=p_text,
+                    confidence=db_conf,
+                    words_count=p.get('words_count', len(p_text.split())),
                     width=p.get('width', 0.0),
                     height=p.get('height', 0.0),
-                    extraction_type=p.get('extraction_type', 'digital'),
-                    engine=p.get('engine', 'native'),
-                    engine_version=p.get('engine_version', ''),
+                    extraction_type=str(p.get('extraction_type', 'digital'))[:50],
+                    engine=str(p.get('engine', 'native'))[:50],
+                    engine_version=str(p.get('engine_version', ''))[:50],
                     is_repaired=p.get('is_repaired', False),
-                    bounding_boxes=p.get('bounding_boxes', [])
+                    bounding_boxes=list(p.get('bounding_boxes', []) or []),
                 ))
             DocumentPage.objects.bulk_create(pages_to_create)
 
-            avg_conf = sum(p.get('confidence', 1.0) for p in pages_data) / max(len(pages_data), 1)
+            if vdoc is not None and visual_readiness is not None:
+                measured_conf = visual_readiness.get("measured_confidence")
+                avg_conf = float(measured_conf) if measured_conf is not None else 0.0
+            else:
+                avg_conf = sum(
+                    float(p['confidence']) if p.get('confidence') is not None else 1.0
+                    for p in pages_data
+                ) / max(len(pages_data), 1)
             doc.page_count = len(pages_data)
             doc.ocr_confidence = round(avg_conf, 3)
             doc.save(update_fields=['page_count', 'ocr_confidence'])
 
             # Extract and persist canonical document identity & governance metadata
+            existing_notes = dict(doc.validation_notes) if isinstance(doc.validation_notes, dict) else {}
             try:
                 from apps.ingestion.metadata import DocumentMetadataExtractor
                 meta = DocumentMetadataExtractor.extract_metadata(
@@ -346,9 +478,6 @@ class ExtractionValidationService:
                 if meta.get('owner_name'):
                     doc.owner_name = meta['owner_name']
                     update_fields.append('owner_name')
-                if meta.get('governance_status'):
-                    doc.governance_status = meta['governance_status']
-                    update_fields.append('governance_status')
                 if meta.get('effective_from'):
                     doc.effective_from = meta['effective_from']
                     doc.effective_date = meta['effective_from']
@@ -357,49 +486,128 @@ class ExtractionValidationService:
                     doc.effective_to = meta['effective_to']
                     doc.expiration_date = meta['effective_to']
                     update_fields.extend(['effective_to', 'expiration_date'])
-                if meta.get('approval_date'):
-                    doc.approval_date = meta['approval_date']
-                    update_fields.append('approval_date')
                 if meta.get('superseded_by'):
                     doc.superseded_by = meta['superseded_by']
                     update_fields.append('superseded_by')
-                if meta.get('authority_level'):
-                    doc.authority_level = meta['authority_level']
-                    update_fields.append('authority_level')
+
+                # CRITICAL GOVERNANCE INVARIANT: explicit visual_document payloads or
+                # non-digital (OCR/scanned) visual forms must NEVER elevate authority_level,
+                # inject approval_date, or promote governance_status='approved'/'active'.
+                # Native digital PDFs routed through the adapter still preserve canonical
+                # DocumentMetadataExtractor governance status & authority metadata.
+                is_non_digital_visual_form = (
+                    vdoc is not None
+                    and any(getattr(el, 'element_type', None) == 'form' for el in getattr(vdoc, 'elements', []))
+                    and not any(
+                        str(p.get('extraction_type', '')).startswith(('digital', 'pymupdf_digital', 'native'))
+                        for p in (pages_data or [])
+                    )
+                )
+                if visual_document is not None or is_non_digital_visual_form:
+                    doc.authority_level = initial_authority
+                    doc.approval_date = initial_approval_date
+                    if initial_gov_status:
+                        doc.governance_status = initial_gov_status
+                    else:
+                        extracted_gov = meta.get('governance_status', '')
+                        if extracted_gov in ('draft', 'superseded', 'needs_review', 'future-effective'):
+                            doc.governance_status = extracted_gov
+                            update_fields.append('governance_status')
+                        else:
+                            doc.governance_status = initial_gov_status
+                else:
+                    if meta.get('governance_status'):
+                        doc.governance_status = meta['governance_status']
+                        update_fields.append('governance_status')
+                    if meta.get('approval_date'):
+                        doc.approval_date = meta['approval_date']
+                        update_fields.append('approval_date')
+                    if meta.get('authority_level'):
+                        doc.authority_level = meta['authority_level']
+                        update_fields.append('authority_level')
+
                 if meta.get('notes'):
-                    doc.validation_notes = {'notes': meta['notes']}
+                    existing_notes['notes'] = meta['notes']
+                if visual_provenance is not None:
+                    existing_notes[cls._DEFAULT_VISUAL_PROVENANCE_KEY] = visual_provenance
+                if existing_notes:
+                    doc.validation_notes = existing_notes
                     update_fields.append('validation_notes')
                 doc.save(update_fields=list(set(update_fields)))
             except Exception as meta_ex:
                 logger.warning(f"Metadata extraction non-fatal error for doc {doc.id}: {meta_ex}")
+                if visual_provenance is not None:
+                    existing_notes[cls._DEFAULT_VISUAL_PROVENANCE_KEY] = visual_provenance
+                    doc.validation_notes = existing_notes
+                    doc.save(update_fields=['validation_notes'])
 
         elapsed = int((time.time() - t0) * 1000)
 
-        # Enforce quality threshold (ocr.md Rule X001)
-        if doc.ocr_confidence < 0.70 and doc.document_type in ('pdf', 'image'):
+        # Enforce quality / completeness / confidence gate (ocr.md Rule X001 & visual contract)
+        partial_error_pages = [
+            p.get('page_number')
+            for p in pages_data
+            if isinstance(p, dict)
+            and (
+                p.get('status') in ('page_error', 'render_failed', 'corrupt_pdf', 'ocr_failed', 'extraction_failed')
+                or p.get('extraction_type') == 'pdf_malformed'
+            )
+        ]
+        visual_needs_review = bool(visual_readiness and visual_readiness.get("is_incomplete_or_uncertain"))
+        low_conf_gate = doc.ocr_confidence < 0.70 and (doc.document_type in ('pdf', 'image') or vdoc is not None)
+        if low_conf_gate or visual_needs_review or partial_error_pages:
+            review_codes = [SettlementReasonCode.S3_LOW_CONFIDENCE_QUARANTINE.value]
+            if vdoc is not None or partial_error_pages:
+                if vdoc is not None:
+                    review_codes.append(SettlementReasonCode.S3_VISUAL_SCHEMA_VALIDATED.value)
+                if visual_needs_review or partial_error_pages:
+                    review_codes.append(SettlementReasonCode.S3_VISUAL_INCOMPLETE_REVIEW.value)
+            details: Dict[str, Any] = {
+                "page_count": len(pages_data),
+                "ocr_confidence": doc.ocr_confidence,
+                "threshold": 0.70,
+                "workload_class": workload_class,
+                "partial_error_pages": partial_error_pages,
+                "action": "routed_to_review_queue"
+            }
+            if vdoc is not None and visual_readiness is not None:
+                details["visual_schema_version"] = vdoc.schema_version
+                details["visual_readiness"] = visual_readiness
+                details["review_reasons"] = list(visual_readiness.get("review_reasons", []))
+                if partial_error_pages:
+                    details["review_reasons"].append(f"partial_extraction_error_on_pages:{partial_error_pages}")
+                details["uncertainty"] = visual_readiness.get("uncertainty", {})
+                details["source_file_hash"] = source_file_hash
+            elif partial_error_pages:
+                details["review_reasons"] = [f"partial_extraction_error_on_pages:{partial_error_pages}"]
             return SettlementStageResult(
                 stage_number=3,
                 stage_name="extraction_and_validation",
                 status="needs_review",
-                reason_codes=[SettlementReasonCode.S3_LOW_CONFIDENCE_QUARANTINE.value],
-                details={
-                    "page_count": len(pages_data),
-                    "ocr_confidence": doc.ocr_confidence,
-                    "threshold": 0.70,
-                    "action": "routed_to_review_queue"
-                },
+                reason_codes=review_codes,
+                details=details,
                 duration_ms=elapsed
             ), pages_data
+
+        pass_codes = [SettlementReasonCode.S3_EXTRACTION_PASSED.value]
+        if vdoc is not None:
+            pass_codes.append(SettlementReasonCode.S3_VISUAL_SCHEMA_VALIDATED.value)
+        pass_details: Dict[str, Any] = {
+            "page_count": len(pages_data),
+            "ocr_confidence": doc.ocr_confidence,
+            "workload_class": workload_class,
+        }
+        if vdoc is not None and visual_provenance is not None:
+            pass_details["visual_schema_version"] = vdoc.schema_version
+            pass_details["visual_provenance"] = visual_provenance
+            pass_details["source_file_hash"] = source_file_hash
 
         return SettlementStageResult(
             stage_number=3,
             stage_name="extraction_and_validation",
             status="passed",
-            reason_codes=[SettlementReasonCode.S3_EXTRACTION_PASSED.value],
-            details={
-                "page_count": len(pages_data),
-                "ocr_confidence": doc.ocr_confidence
-            },
+            reason_codes=pass_codes,
+            details=pass_details,
             duration_ms=elapsed
         ), pages_data
 
@@ -504,12 +712,19 @@ class ConflictPreScanService:
     Detects equal-rank contradictions or subordinate dominance before publication.
     """
     @classmethod
-    def pre_scan(cls, doc: SourceDocument, pages_data: List[Dict[str, Any]]) -> SettlementStageResult:
+    def pre_scan(
+        cls,
+        doc: SourceDocument,
+        pages_data: List[Dict[str, Any]],
+        extra_text: str = "",
+    ) -> SettlementStageResult:
         t0 = time.time()
         reasons = []
         conflicts_found = []
 
         all_text = " ".join(p.get('text', '').lower() for p in pages_data)
+        if extra_text:
+            all_text = f"{all_text} {extra_text.lower()}".strip()
 
         # Look for other ready documents in the workspace
         workspace_docs = SourceDocument.objects.filter(
@@ -617,7 +832,23 @@ class StagedMergeService:
             # 2. Chunking
             t_chunk_start = time.time()
             doc_code = getattr(doc, 'document_code', '') or ''
-            doc_gov_status = getattr(doc, 'governance_status', '') or doc.status or 'ready'
+            # Incomplete, conflicting, or review-gated docs must NEVER be labeled 'approved'/'ready'
+            doc_gov_status = (
+                'needs_review'
+                if require_approval
+                else (getattr(doc, 'governance_status', '') or doc.status or 'ready')
+            )
+            page_info_by_num = {
+                int(p['page_number']): p
+                for p in pages_data
+                if isinstance(p, dict) and p.get('page_number')
+            }
+            doc_visual_summary = (
+                dict(doc.validation_notes.get('visual_extraction') or {})
+                if isinstance(doc.validation_notes, dict) and isinstance(doc.validation_notes.get('visual_extraction'), dict)
+                else {}
+            )
+
             raw_chunks = StructureAwareChunker.chunk_document_pages(
                 doc_id=str(doc.id),
                 doc_title=doc.canonical_title or doc.title,
@@ -637,6 +868,20 @@ class StagedMergeService:
                     norm_t = " ".join(c['text'].strip().split())
                     norm_h = " ".join((c.get('contextual_header') or '').strip().split())
                     c_hash = hashlib.sha256(f"{norm_h}\n---\n{norm_t}:{embedder_ref.model_name}:{embedder_ref.dimension}".encode('utf-8')).hexdigest()
+                    c_meta = dict(c.get('metadata', {}) or {})
+                    p_info = page_info_by_num.get(c['page_number'])
+                    if p_info and isinstance(p_info.get('visual_provenance'), dict):
+                        vp = p_info['visual_provenance']
+                        c_meta['visual_provenance'] = vp
+                        c_meta['source_file_hash'] = vp.get('source_file_hash') or doc.file_hash
+                        if p_info.get('bounding_boxes'):
+                            c_meta['bounding_boxes'] = p_info['bounding_boxes']
+                    if doc_visual_summary:
+                        c_meta['visual_schema_version'] = doc_visual_summary.get('schema_version')
+                        c_meta['visual_extractor_versions'] = doc_visual_summary.get('extractor_versions', {})
+                        c_meta['visual_uncertainty'] = doc_visual_summary.get('uncertainty', {})
+                        c_meta.setdefault('source_file_hash', doc_visual_summary.get('source_file_hash') or doc.file_hash)
+
                     created_chunks.append(DocumentChunk(
                         organization=doc.organization,
                         workspace=doc.workspace,
@@ -652,7 +897,7 @@ class StagedMergeService:
                         char_offset_end=c['char_offset_end'],
                         token_count=c['token_count'],
                         content_hash=c_hash,
-                        metadata=c.get('metadata', {}),
+                        metadata=c_meta,
                     ))
                 DocumentChunk.objects.bulk_create(created_chunks)
             chunking_ms = max(1, int((time.time() - t_chunk_start) * 1000))
@@ -688,6 +933,8 @@ class StagedMergeService:
                     'document_status': doc_gov_status,
                     'effective_from': doc.effective_from.isoformat() if doc.effective_from else "",
                     'effective_to': doc.effective_to.isoformat() if doc.effective_to else "",
+                    'visual_schema_version': (c.metadata or {}).get('visual_schema_version', ''),
+                    'source_file_hash': (c.metadata or {}).get('source_file_hash', '') or doc.file_hash,
                     'text': c.text[:300]
                 }
                 for c in saved_chunks
@@ -747,7 +994,7 @@ class StagedMergeService:
 
         # 6. Publication Policy Gate Check
         # If approval is required by workspace/caller, set status to needs_review
-        details = {
+        details: Dict[str, Any] = {
             "chunks_indexed": len(saved_chunks),
             "chunking_ms": chunking_ms,
             "embedding_ms": embedding_ms,
@@ -816,12 +1063,46 @@ class SettlementGateCoordinator:
     Coordinates execution of all 6 settlement stages in strict order:
     S1 (Structure) -> S2 (Security) -> S3 (Extraction) -> S4 (Dedup) -> S5 (Conflict) -> S6 (Merge)
     """
+    @staticmethod
+    def _collect_visual_and_page_screen_text(
+        pages_data: List[Dict[str, Any]],
+        visual_document: Optional[Any] = None,
+    ) -> str:
+        parts: List[str] = [p.get('text', '') for p in pages_data if isinstance(p, dict) and p.get('text')]
+        if visual_document is not None:
+            try:
+                vdoc = (
+                    visual_document
+                    if isinstance(visual_document, VisualDocument)
+                    else validate_visual_document_payload(visual_document)
+                )
+                extra = extract_visual_document_screenable_text(vdoc)
+                if extra:
+                    parts.append(extra)
+            except Exception:
+                pass
+        for p in pages_data:
+            if not isinstance(p, dict):
+                continue
+            for region in (p.get('visual_regions') or []):
+                if isinstance(region, dict):
+                    for key in ('content', 'markdown', 'title', 'label', 'value'):
+                        val = region.get(key)
+                        if isinstance(val, str) and val.strip():
+                            parts.append(val.strip())
+                    for w in (region.get('warnings') or []):
+                        if isinstance(w, dict) and isinstance(w.get('message'), str):
+                            parts.append(w['message'])
+        return " ".join(parts)
+
     @classmethod
     def execute_settlement(
         cls,
         doc: SourceDocument,
         doc_version: DocumentVersion,
-        require_approval: bool = False
+        require_approval: bool = False,
+        visual_document: Optional[Any] = None,
+        extractor: Optional[UnifiedDocumentExtractor] = None,
     ) -> Dict[str, Any]:
         stages_output = {}
         all_reasons = []
@@ -860,7 +1141,12 @@ class SettlementGateCoordinator:
             return {"status": "quarantined", "quarantine_stage": 2, "stages": stages_output, "reason_codes": all_reasons}
 
         # ---------------- Stage 3: Extraction & Quality Validation ----------------
-        s3, pages_data = ExtractionValidationService.extract_and_validate(doc, doc_version)
+        s3, pages_data = ExtractionValidationService.extract_and_validate(
+            doc,
+            doc_version,
+            visual_document=visual_document,
+            extractor=extractor,
+        )
         stages_output["stage_3_extraction"] = s3.__dict__
         all_reasons.extend(s3.reason_codes)
 
@@ -869,8 +1155,11 @@ class SettlementGateCoordinator:
             doc.save(update_fields=['status'])
             return {"status": "failed", "failed_stage": 3, "stages": stages_output, "reason_codes": all_reasons}
 
-        # Re-screen extracted text with Stage 2 security logic for any deep embedded injection
-        full_extracted_text = " ".join(p.get('text', '') for p in pages_data)
+        # Re-screen extracted text + visual elements with Stage 2 security logic
+        full_extracted_text = cls._collect_visual_and_page_screen_text(
+            pages_data,
+            visual_document=visual_document,
+        )
         s2_deep = SecurityScreeningService.screen_content(full_extracted_text, filename=doc.original_filename)
         if s2_deep.status == "quarantined":
             stages_output["stage_2_deep_security"] = s2_deep.__dict__
@@ -898,7 +1187,7 @@ class SettlementGateCoordinator:
             return {"status": "failed", "failed_stage": 4, "stages": stages_output, "reason_codes": all_reasons}
 
         # ---------------- Stage 5: Conflict Pre-Scan ----------------
-        s5 = ConflictPreScanService.pre_scan(doc, pages_data)
+        s5 = ConflictPreScanService.pre_scan(doc, pages_data, extra_text=full_extracted_text)
         stages_output["stage_5_conflict"] = s5.__dict__
         all_reasons.extend(s5.reason_codes)
 
@@ -930,6 +1219,11 @@ class SettlementGateCoordinator:
         except Exception:
             pass
 
+        visual_summary = (
+            doc.validation_notes.get('visual_extraction')
+            if isinstance(doc.validation_notes, dict)
+            else None
+        )
         AuditEvent.objects.create(
             organization=doc.organization,
             workspace=doc.workspace,
@@ -940,12 +1234,18 @@ class SettlementGateCoordinator:
                 'final_status': final_status,
                 'pages_count': len(pages_data),
                 'ocr_confidence': doc.ocr_confidence,
-                'reason_codes': all_reasons
+                'reason_codes': all_reasons,
+                'source_file_hash': doc_version.file_hash or doc.file_hash,
+                'computed_sha256': s1.details.get('file_hash', ''),
+                'has_visual_extraction': bool(visual_summary),
             }
         )
 
-        return {
+        result: Dict[str, Any] = {
             "status": final_status,
             "stages": stages_output,
             "reason_codes": all_reasons
         }
+        if visual_summary:
+            result["visual_extraction"] = visual_summary
+        return result

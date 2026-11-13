@@ -2,8 +2,10 @@ from typing import Any
 from django.db.models import Q
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from apps.workspaces.models import Workspace
 from apps.audit.models import AuditEvent
@@ -38,6 +40,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
     and supports multi-turn governed inquiry.
     """
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -152,9 +155,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         # POST: Submit Turn
-        query = request.data.get('query') or request.data.get('content')
-        if not query or not query.strip():
-            return Response({'error': 'query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        query = request.data.get('query') or request.data.get('content') or ''
+        uploaded_file = request.FILES.get('file') or request.FILES.get('attachment')
+        if not query.strip() and not uploaded_file:
+            return Response({'error': 'query or file attachment is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         client_message_id = request.data.get('client_message_id')
         document_id = request.data.get('document_id') or request.data.get('document')
@@ -184,7 +188,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 llm_model=llm_model,
                 execution_mode=execution_mode,
                 synthesis_mode=synthesis_mode,
-                as_of=as_of
+                as_of=as_of,
+                uploaded_file=uploaded_file
             )
 
             return Response({
@@ -197,7 +202,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         except PermissionDenied as pe:
             return Response({'error': str(pe)}, status=status.HTTP_403_FORBIDDEN)
-        except ValidationError as ve:
+        except (ValidationError, DjangoValidationError) as ve:
             return Response({'error': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as ex:
             return Response({'error': f"Internal turn error: {ex}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

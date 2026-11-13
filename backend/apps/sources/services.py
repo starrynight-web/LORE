@@ -70,15 +70,16 @@ class StorageSecurityService:
         if ext == '.pdf':
             if not header.startswith(b'%PDF'):
                 raise ValidationError("Invalid PDF file: Missing %PDF magic bytes.")
+            StorageSecurityService._inspect_pdf_active_content(file_obj)
             mime_type = 'application/pdf'
 
         elif ext == '.png':
-            if not header.startswith(b'\x89PNG\r\n\x1a\n'[:4]):
+            if not header.startswith(b'\x89PNG\r\n\x1a\n'):
                 raise ValidationError("Invalid PNG file: Corrupted or missing PNG header.")
             mime_type = 'image/png'
 
         elif ext in ('.jpg', '.jpeg'):
-            if not header.startswith(b'\xFF\xD8\xFF'[:2]):
+            if not header.startswith(b'\xFF\xD8\xFF'):
                 raise ValidationError("Invalid JPEG file: Corrupted or missing JPEG header.")
             mime_type = 'image/jpeg'
 
@@ -96,6 +97,7 @@ class StorageSecurityService:
             # Modern Office files are PK zip archives
             if not header.startswith(b'PK\x03\x04'):
                 raise ValidationError(f"Invalid Microsoft Office file '{ext}': Missing PK zip signature.")
+            StorageSecurityService._inspect_ooxml_zip(file_obj, ext)
             if ext == '.docx':
                 mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             elif ext == '.xlsx':
@@ -141,3 +143,92 @@ class StorageSecurityService:
             'file_size': size,
             'file_hash': sha256_hash,
         }
+
+    @staticmethod
+    def _inspect_pdf_active_content(file_obj) -> None:
+        """Rejects PDFs containing active /JavaScript, /JS actions, or /Launch actions without executing them."""
+        import re
+        pattern = re.compile(rb'/(?:JavaScript|Launch)\b|/JS\s*(?:\(|<<|[0-9]+\s+[0-9]+\s+R)')
+        try:
+            file_obj.seek(0)
+            overlap = b''
+            while True:
+                chunk = file_obj.read(1024 * 1024)
+                if not chunk:
+                    break
+                buf = overlap + chunk
+                if pattern.search(buf):
+                    raise ValidationError(
+                        "Blocked PDF upload containing embedded active JavaScript or Launch actions."
+                    )
+                overlap = buf[-64:]
+        finally:
+            try:
+                file_obj.seek(0)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _inspect_ooxml_zip(file_obj, ext: str) -> None:
+        """Inspects OOXML ZIP entries for path traversal, compression bombs, macros, and XML DTDs."""
+        import zipfile
+        import zlib
+        max_entries = 5000
+        max_single_bytes = 100 * 1024 * 1024
+        max_total_bytes = 200 * 1024 * 1024
+        bomb_ratio_threshold_bytes = 10 * 1024 * 1024
+        max_ratio = 100.0
+        try:
+            file_obj.seek(0)
+            with zipfile.ZipFile(file_obj, 'r') as zf:
+                infos = zf.infolist()
+                if len(infos) > max_entries:
+                    raise ValidationError(
+                        f"OOXML archive '{ext}' exceeds maximum entry count ({max_entries})."
+                    )
+                total_uncompressed = 0
+                for info in infos:
+                    normalized = info.filename.replace('\\', '/').lower()
+                    if '..' in normalized.split('/') or normalized.startswith('/') or ':' in info.filename:
+                        raise ValidationError(
+                            f"Blocked OOXML archive '{ext}' with unsafe path entry: {info.filename}"
+                        )
+                    if (
+                        normalized.endswith(('vbaproject.bin', 'vbadata.xml'))
+                        or '/vbaproject' in normalized
+                        or 'activex/' in normalized
+                        or normalized.endswith(('.exe', '.dll', '.ps1', '.vbs', '.vbe', '.js', '.bat', '.cmd', '.scr'))
+                    ):
+                        raise ValidationError(
+                            f"Blocked OOXML archive '{ext}' containing embedded macros or executable payload: {info.filename}"
+                        )
+                    if info.file_size > max_single_bytes:
+                        raise ValidationError(
+                            f"Blocked OOXML archive '{ext}': entry exceeds maximum uncompressed size limit."
+                        )
+                    total_uncompressed += max(0, info.file_size)
+                    if total_uncompressed > max_total_bytes:
+                        raise ValidationError(
+                            f"Blocked OOXML archive '{ext}': total uncompressed size exceeds safe limit."
+                        )
+                    if info.file_size > bomb_ratio_threshold_bytes:
+                        if info.compress_size <= 0 or (info.file_size / info.compress_size) > max_ratio:
+                            raise ValidationError(
+                                f"Blocked OOXML archive '{ext}': suspicious decompression ratio detected."
+                            )
+                    if normalized.endswith(('.xml', '.rels')) and info.file_size <= 5 * 1024 * 1024:
+                        with zf.open(info, 'r') as entry_f:
+                            head = entry_f.read(65536).lower()
+                        if b'<!doctype' in head or b'<!entity' in head:
+                            raise ValidationError(
+                                f"Blocked OOXML archive '{ext}' containing unsafe XML DOCTYPE/ENTITY declaration."
+                            )
+        except ValidationError:
+            raise
+        except (zipfile.BadZipFile, NotImplementedError, zlib.error, ValueError):
+            raise ValidationError(f"Invalid or corrupted Microsoft Office archive '{ext}'.")
+        finally:
+            try:
+                file_obj.seek(0)
+            except Exception:
+                pass

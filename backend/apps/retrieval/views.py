@@ -4,7 +4,8 @@ import urllib.request
 import urllib.error
 from django.conf import settings
 from rest_framework import permissions, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -65,20 +66,33 @@ def search_view(request):
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 def governed_query_view(request):
     """
     Governed RAG Query Endpoint:
     Executes hybrid retrieval, evaluates through 9-state governance machine,
     resolves authority, checks sufficiency, and returns lore.result/1 envelope.
+    Supports ephemeral document attachments (PDF, DOCX, XLSX, images) for policy review.
     """
     workspace_id = request.data.get('workspace')
     query = request.data.get('query', '')
     collection_id = request.data.get('collection')
 
+    uploaded_file = request.FILES.get('file') or request.FILES.get('attachment')
+    ephemeral_doc = None
+    if uploaded_file:
+        from apps.ingestion.pipeline.ephemeral import extract_ephemeral_document
+        try:
+            ephemeral_doc = extract_ephemeral_document(uploaded_file)
+        except Exception as e:
+            return Response({'error': f"Invalid attachment: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+        if not query.strip():
+            query = f"Review uploaded proposal '{ephemeral_doc['filename']}' against company policy."
+
     if not workspace_id:
         return Response({'error': 'workspace ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
-    if not query.strip():
-        return Response({'error': 'Query text is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not query.strip() and not uploaded_file:
+        return Response({'error': 'Query text or file attachment is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if request.user.is_authenticated:
         from django.db.models import Q
@@ -117,6 +131,8 @@ def governed_query_view(request):
 
     user_role = 'workspace_admin' if getattr(effective_user, 'is_staff', False) else 'member'
     bypass_cache = request.data.get('bypass_cache', False) or request.headers.get('Cache-Control') == 'no-cache'
+    if ephemeral_doc:
+        bypass_cache = True
 
     from apps.retrieval.cache import TenantSafeCacheService
     if not bypass_cache and not document_id:
@@ -133,8 +149,13 @@ def governed_query_view(request):
 
     # 1. Retrieve Candidate Chunks (Scoped to Tenant, Collection, or specific PDF Document)
     retrieval_service = HybridRetrievalService()
+    search_query = query
+    if ephemeral_doc:
+        summary_hint = (ephemeral_doc.get('summary') or '')[:300]
+        search_query = f"{query} {summary_hint}".strip()
+
     candidate_chunks = retrieval_service.multi_hop_search(
-        query=query,
+        query=search_query,
         workspace_id=str(workspace.id),
         organization_id=str(workspace.organization.id),
         collection_id=collection_id,
@@ -163,6 +184,7 @@ def governed_query_view(request):
         request.headers.get('X-Schema-Version') or 
         'lore.result/1'
     )
+    policy_context = {'ephemeral_document': ephemeral_doc} if ephemeral_doc else None
     envelope = EnterpriseGovernanceEngine.evaluate(
         query=query,
         retrieved_chunks=candidate_chunks,
@@ -174,8 +196,19 @@ def governed_query_view(request):
         groq_api_key=groq_api_key,
         llm_model=llm_model,
         execution_mode=execution_mode,
-        synthesis_mode=synthesis_mode
+        synthesis_mode=synthesis_mode,
+        policy_context=policy_context
     )
+
+    if ephemeral_doc:
+        envelope['attached_document'] = {
+            'filename': ephemeral_doc['filename'],
+            'file_size': ephemeral_doc['file_size'],
+            'doc_type': ephemeral_doc['doc_type'],
+            'pages_count': ephemeral_doc['pages_count'],
+            'word_count': ephemeral_doc['word_count'],
+            'summary': ephemeral_doc['summary'],
+        }
 
     if not bypass_cache and not document_id:
         TenantSafeCacheService.set(
@@ -226,13 +259,25 @@ def governed_query_view(request):
             seq = (last_msg.sequence_number + 1) if last_msg else 1
 
             client_msg_id = request.data.get('client_message_id', '')
+            user_retrieval_config = {}
+            if ephemeral_doc:
+                user_retrieval_config['attached_document'] = {
+                    'filename': ephemeral_doc['filename'],
+                    'file_size': ephemeral_doc['file_size'],
+                    'doc_type': ephemeral_doc['doc_type'],
+                    'pages_count': ephemeral_doc['pages_count'],
+                    'word_count': ephemeral_doc['word_count'],
+                    'summary': ephemeral_doc['summary'],
+                }
+
             user_msg = ChatMessage.objects.create(
                 conversation=conv,
                 role='user',
                 content=query,
                 sequence_number=seq,
                 client_message_id=client_msg_id or '',
-                status='completed'
+                status='completed',
+                retrieval_config=user_retrieval_config
             )
 
             assistant_msg = ChatMessage.objects.create(

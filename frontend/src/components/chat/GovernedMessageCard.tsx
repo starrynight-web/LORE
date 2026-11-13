@@ -21,7 +21,8 @@ import {
   AlertCircle,
   FileCheck,
   Activity,
-  Key
+  Key,
+  Paperclip
 } from 'lucide-react';
 import { ChatMessage, Citation } from '@/lib/api';
 
@@ -260,10 +261,12 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
 
   // Render User Message
   if (message.role === 'user') {
+    const attachedDoc = message.retrieval_config?.attached_document;
+
     return (
       <div className="flex justify-end my-3">
         <div 
-          className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-tr-sm p-4 border shadow-xs space-y-1.5 transition-all"
+          className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-tr-sm p-4 border shadow-xs space-y-2 transition-all"
           style={{
             backgroundColor: 'var(--accent-light)',
             borderColor: 'var(--brand-accent)',
@@ -278,6 +281,37 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
               {formatTime(message.created_at)}
             </span>
           </div>
+
+          {attachedDoc && (
+            <div 
+              className="flex items-center gap-2.5 p-2 rounded-xl border text-xs font-mono shadow-2xs"
+              style={{
+                backgroundColor: 'var(--bg-surface, #ffffff)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <div className="p-1.5 rounded-lg bg-[var(--brand-accent)]/10 text-[var(--brand-accent)] shrink-0">
+                <Paperclip className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-[var(--text-primary)] truncate">
+                  {attachedDoc.filename}
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)] flex items-center gap-1.5 mt-0.5">
+                  <span className="uppercase px-1 py-0.2 rounded bg-[var(--border-color)]/30 font-bold">
+                    {attachedDoc.doc_type || 'DOC'}
+                  </span>
+                  {attachedDoc.pages_count > 0 && (
+                    <span>• {attachedDoc.pages_count} {attachedDoc.pages_count === 1 ? 'page' : 'pages'}</span>
+                  )}
+                  {attachedDoc.file_size > 0 && (
+                    <span>• {(attachedDoc.file_size / 1024).toFixed(1)} KB</span>
+                  )}
+                  <span>• Ephemeral Audit Target</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <p className="text-xs sm:text-sm font-medium text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
             {message.content}

@@ -215,6 +215,17 @@ class GroundedGenerationService:
         evidence_package: Optional[Any] = None
     ) -> Union[str, Tuple[str, Dict[str, Any]]]:
         # ----------------------------------------------------------------------
+        # Ephemeral Document Compliance Review: Produce structured verdict report
+        # ----------------------------------------------------------------------
+        if policy_context and policy_context.get('ephemeral_document'):
+            ans, cls.last_metrics = cls._run_deterministic_synthesis(
+                query, retrieved_chunks, conflicts, state,
+                policy_context=policy_context,
+                reason="ephemeral_compliance_synthesis"
+            )
+            return (ans, cls.last_metrics) if return_metrics else ans
+
+        # ----------------------------------------------------------------------
         # Strict Invariant 1: Non-supported outcomes must NEVER invoke an LLM
         # ----------------------------------------------------------------------
         if state in ('denied', 'violation', 'conflicting', 'insufficient', 'abstain', 'human_review', 'no_knowledge'):
@@ -337,7 +348,8 @@ class GroundedGenerationService:
             try:
                 ans, call_meta = cls._generate_with_groq_llm(
                     query, retrieved_chunks, conflicts, active_groq_key, active_model,
-                    evidence_package=active_evidence_pkg
+                    evidence_package=active_evidence_pkg,
+                    ephemeral_document=(policy_context.get('ephemeral_document') if policy_context else None)
                 )
                 elapsed_ms = (time.time() - t_call) * 1000
                 if ans and len(ans.strip()) > 10:
@@ -445,7 +457,8 @@ class GroundedGenerationService:
         conflicts: List[Dict[str, Any]],
         api_key: str,
         model_name: str = 'gpt-oss-120B',
-        evidence_package: Optional[Any] = None
+        evidence_package: Optional[Any] = None,
+        ephemeral_document: Optional[Dict[str, Any]] = None
     ) -> Tuple[str, Dict[str, Any]]:
         r"""
         Invokes Groq API Cloud with gpt-oss-120B or specified model.
@@ -468,6 +481,19 @@ class GroundedGenerationService:
             f"USER QUERY: {query}\n\n"
             "Return a direct human-readable answer supported by the evidence, with concise citations and necessary caveats."
         )
+
+        if ephemeral_document and isinstance(ephemeral_document, dict):
+            fn = ephemeral_document.get('filename', 'uploaded_document')
+            dt = ephemeral_document.get('doc_type', 'document')
+            e_txt = ephemeral_document.get('text', '')[:6000]
+            user_content += (
+                f"\n\n--- EPHEMERAL PROPOSAL UNDER COMPLIANCE AUDIT ({fn}, {dt.upper()}) ---\n"
+                f"{e_txt}\n"
+                f"--- END OF PROPOSAL ---\n\n"
+                "INSTRUCTION: Evaluate whether this uploaded proposal complies with the company policies in the structured evidence package above. "
+                "Explicitly provide the compliance verdict (COMPLIANT, POLICY VIOLATION, CONDITIONAL COMPLIANCE, or INSUFFICIENT EVIDENCE), "
+                "break down the policy check, and cite the authoritative policy documents."
+            )
 
         # Candidate models to try in order of preference
         models_to_try = [model_name]

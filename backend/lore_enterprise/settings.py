@@ -190,6 +190,34 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 # If Celery worker is not running, run tasks synchronously in eager mode for development/tests
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_ALWAYS_EAGER', 'True').lower() in ('true', '1', 'yes')
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.environ.get('CELERY_WORKER_PREFETCH_MULTIPLIER', '1'))
+
+# Ingestion Batch & Workload Queue Separation
+INGESTION_MAX_BATCH_FILES = int(os.environ.get('INGESTION_MAX_BATCH_FILES', '100'))
+DATA_UPLOAD_MAX_NUMBER_FILES = max(INGESTION_MAX_BATCH_FILES + 25, int(os.environ.get('DATA_UPLOAD_MAX_NUMBER_FILES', '128')))
+INGESTION_VISUAL_QUEUE = os.environ.get('INGESTION_VISUAL_QUEUE', 'ingestion_visual')
+INGESTION_LIGHTWEIGHT_QUEUE = os.environ.get('INGESTION_LIGHTWEIGHT_QUEUE', 'ingestion_light')
+# Conservative visual worker concurrency default (1) for 16 GB RAM CPU-only deployment;
+# benchmark workloads before raising INGESTION_VISUAL_MAX_CONCURRENCY.
+INGESTION_VISUAL_MAX_CONCURRENCY = max(1, int(os.environ.get('INGESTION_VISUAL_MAX_CONCURRENCY', '1')))
+INGESTION_LIGHTWEIGHT_MAX_CONCURRENCY = max(1, int(os.environ.get('INGESTION_LIGHTWEIGHT_MAX_CONCURRENCY', '8')))
+INGESTION_STALE_JOB_TIMEOUT_SECONDS = max(30, int(os.environ.get('INGESTION_STALE_JOB_TIMEOUT_SECONDS', '300')))
+
+# Visual Extraction CPU-Only / 16 GB RAM Resource Bounds
+VISUAL_PDF_DPI = max(72, min(600, int(os.environ.get('VISUAL_PDF_DPI', '300'))))
+VISUAL_MAX_RENDER_PIXELS = max(250_000, int(os.environ.get('VISUAL_MAX_RENDER_PIXELS', '12000000')))
+VISUAL_CPU_THREADS = max(1, int(os.environ.get('VISUAL_CPU_THREADS', '2')))
+OPENCV_CPU_THREADS = max(0, int(os.environ.get('OPENCV_CPU_THREADS', '2')))
+TESSERACT_OMP_THREAD_LIMIT = max(1, int(os.environ.get('TESSERACT_OMP_THREAD_LIMIT', '1')))
+CELERY_TASK_DEFAULT_QUEUE = INGESTION_LIGHTWEIGHT_QUEUE
+CELERY_TASK_ROUTES = {
+    'apps.ingestion.tasks.process_visual_document_job': {'queue': INGESTION_VISUAL_QUEUE},
+    'apps.ingestion.tasks.process_lightweight_document_job': {'queue': INGESTION_LIGHTWEIGHT_QUEUE},
+    'apps.ingestion.tasks.dispatch_ingestion_batch_task': {'queue': INGESTION_LIGHTWEIGHT_QUEUE},
+    'apps.ingestion.tasks.recover_stalled_ingestion_jobs_task': {'queue': INGESTION_LIGHTWEIGHT_QUEUE},
+}
 
 # Qdrant Vector Engine Configuration
 QDRANT_URL = os.environ.get('QDRANT_URL', '')
@@ -247,4 +275,37 @@ RERANKER_MAX_CANDIDATES = int(os.environ.get('RERANKER_MAX_CANDIDATES', '100'))
 
 # Shadow Mode Evaluation (Phase 10)
 RERANKER_SHADOW_MODE = os.environ.get('RERANKER_SHADOW_MODE', 'False').lower() in ('true', '1', 'yes')
+
+# Optional CPU Document Layout Detection (PP-DocLayout-S via PaddleOCR >=3.0.0)
+PP_DOCLAYOUT_MODEL_NAME = os.environ.get('PP_DOCLAYOUT_MODEL_NAME', 'PP-DocLayout-S')
+PP_DOCLAYOUT_MODEL_DIR = os.environ.get('PP_DOCLAYOUT_MODEL_DIR', '')
+PP_DOCLAYOUT_CPU_THREADS = max(1, int(os.environ.get('PP_DOCLAYOUT_CPU_THREADS', '4')))
+PP_DOCLAYOUT_ENABLE_MKLDNN = os.environ.get('PP_DOCLAYOUT_ENABLE_MKLDNN', 'True').lower() in ('true', '1', 'yes')
+PP_DOCLAYOUT_THRESHOLD = float(os.environ.get('PP_DOCLAYOUT_THRESHOLD', '0.5'))
+PP_DOCLAYOUT_NMS = os.environ.get('PP_DOCLAYOUT_NMS', 'True').lower() in ('true', '1', 'yes')
+PP_DOCLAYOUT_LOCAL_FILES_ONLY = os.environ.get('PP_DOCLAYOUT_LOCAL_FILES_ONLY', 'False').lower() in ('true', '1', 'yes')
+
+# Optional CPU Table Structure Recognition (SLANet_plus via PaddleOCR >=3.0.0)
+SLANET_PLUS_MODEL_NAME = os.environ.get('SLANET_PLUS_MODEL_NAME', 'SLANet_plus')
+SLANET_PLUS_MODEL_DIR = os.environ.get('SLANET_PLUS_MODEL_DIR', '')
+SLANET_PLUS_CPU_THREADS = max(1, int(os.environ.get('SLANET_PLUS_CPU_THREADS', '4')))
+SLANET_PLUS_ENABLE_MKLDNN = os.environ.get('SLANET_PLUS_ENABLE_MKLDNN', 'True').lower() in ('true', '1', 'yes')
+SLANET_PLUS_MIN_STRUCTURE_SCORE = float(os.environ.get('SLANET_PLUS_MIN_STRUCTURE_SCORE', '0.60'))
+SLANET_PLUS_MIN_CELL_OCR_CONFIDENCE = float(os.environ.get('SLANET_PLUS_MIN_CELL_OCR_CONFIDENCE', '0.45'))
+SLANET_PLUS_LOCAL_FILES_ONLY = os.environ.get('SLANET_PLUS_LOCAL_FILES_ONLY', 'False').lower() in ('true', '1', 'yes')
+
+# Chart Extraction (PyMuPDF + OpenCV + Tesseract OCR)
+CHART_MIN_RESOLUTION_WIDTH = max(40, int(os.environ.get('CHART_MIN_RESOLUTION_WIDTH', '160')))
+CHART_MIN_RESOLUTION_HEIGHT = max(40, int(os.environ.get('CHART_MIN_RESOLUTION_HEIGHT', '120')))
+CHART_PRESERVE_CROP_IMAGE = os.environ.get('CHART_PRESERVE_CROP_IMAGE', 'True').lower() in ('true', '1', 'yes')
+CHART_CROP_OUTPUT_DIR = os.environ.get('CHART_CROP_OUTPUT_DIR', '')
+CHART_MAX_EMBEDDED_CROP_BYTES = max(16384, int(os.environ.get('CHART_MAX_EMBEDDED_CROP_BYTES', '262144')))
+
+# Form Extraction (PyMuPDF + OpenCV + Tesseract OCR + Spatial KV Mapping)
+FORM_MIN_OCR_CONFIDENCE = float(os.environ.get('FORM_MIN_OCR_CONFIDENCE', '0.62'))
+FORM_MIN_RESOLUTION_WIDTH = max(40, int(os.environ.get('FORM_MIN_RESOLUTION_WIDTH', '160')))
+FORM_MIN_RESOLUTION_HEIGHT = max(40, int(os.environ.get('FORM_MIN_RESOLUTION_HEIGHT', '120')))
+FORM_PRESERVE_CROP_IMAGE = os.environ.get('FORM_PRESERVE_CROP_IMAGE', 'True').lower() in ('true', '1', 'yes')
+FORM_CROP_OUTPUT_DIR = os.environ.get('FORM_CROP_OUTPUT_DIR', '')
+FORM_MAX_EMBEDDED_CROP_BYTES = max(16384, int(os.environ.get('FORM_MAX_EMBEDDED_CROP_BYTES', '262144')))
 

@@ -23,6 +23,9 @@ except ImportError:
 try:
     import pdfplumber
     HAS_PDFPLUMBER = True
+    # Prevent pdfminer token-level DEBUG logging from emitting raw PDF text/secrets
+    for _pm_logger in ("pdfminer", "pdfminer.psparser", "pdfminer.pdfinterp", "pdfminer.pdfdocument"):
+        logging.getLogger(_pm_logger).setLevel(logging.WARNING)
 except ImportError:
     HAS_PDFPLUMBER = False
 
@@ -43,6 +46,56 @@ def bangla_to_arabic_digits(text: str) -> str:
     if not text:
         return text
     return "".join(BANGLA_DIGIT_MAP.get(ch, ch) for ch in text)
+
+
+def reconstruct_text_from_tesseract_data(data: Any) -> str:
+    """
+    Reconstruct line-ordered text from a single ``pytesseract.image_to_data``
+    dictionary so callers do not execute a second ``image_to_string`` process.
+    """
+    if not isinstance(data, dict):
+        return ""
+    texts = data.get("text")
+    if not isinstance(texts, list) or not texts:
+        return ""
+
+    blocks = data.get("block_num") or []
+    pars = data.get("par_num") or []
+    line_nums = data.get("line_num") or []
+    use_grouping = (
+        isinstance(blocks, list)
+        and isinstance(pars, list)
+        and isinstance(line_nums, list)
+        and len(blocks) == len(texts)
+        and len(pars) == len(texts)
+        and len(line_nums) == len(texts)
+    )
+
+    if not use_grouping:
+        words = [str(w).strip() for w in texts if w is not None and str(w).strip()]
+        return " ".join(words)
+
+    lines_out: List[str] = []
+    cur_key: Optional[Tuple[int, int, int]] = None
+    cur_words: List[str] = []
+    for idx, raw_w in enumerate(texts):
+        word = str(raw_w).strip() if raw_w is not None else ""
+        if not word:
+            continue
+        try:
+            key = (int(blocks[idx]), int(pars[idx]), int(line_nums[idx]))
+        except (TypeError, ValueError):
+            key = (0, 0, 0)
+        if cur_key is None or key != cur_key:
+            if cur_words:
+                lines_out.append(" ".join(cur_words))
+            cur_key = key
+            cur_words = [word]
+        else:
+            cur_words.append(word)
+    if cur_words:
+        lines_out.append(" ".join(cur_words))
+    return "\n".join(lines_out)
 
 def is_visual_encoded_document(text: str) -> bool:
     """Detects whether text has visual-order font corruption (Bijoy/SutonnyMJ)."""
@@ -217,7 +270,10 @@ class ImagePreprocessor:
             try:
                 pytesseract.pytesseract.tesseract_cmd = cmd
                 # Run OSD with 300 DPI configuration
-                osd_data = pytesseract.image_to_osd(image, config='--dpi 300')
+                osd_raw = pytesseract.image_to_osd(image, config='--dpi 300')
+                osd_data = osd_raw.decode('utf-8', errors='ignore') if isinstance(osd_raw, bytes) else (
+                    osd_raw if isinstance(osd_raw, str) else str(osd_raw)
+                )
                 rotate_m = re.search(r'Rotate:\s*(\d+)', osd_data)
                 conf_m = re.search(r'Orientation confidence:\s*([\d\.]+)', osd_data)
 
@@ -341,8 +397,15 @@ class TesseractOCRProvider(BaseOCRProvider):
         pw, ph = prep_img.size
 
         try:
-            raw_text = pytesseract.image_to_string(prep_img, lang=self.lang)
+            from .runtime import configure_visual_cpu_runtime, get_configured_tesseract_omp_threads
+
+            configure_visual_cpu_runtime(tesseract_omp_threads=get_configured_tesseract_omp_threads())
+            # Run a single TSV OCR pass (image_to_data) and derive line-grouped text from
+            # word tokens instead of spawning a duplicate image_to_string subprocess.
             data = pytesseract.image_to_data(prep_img, lang=self.lang, output_type=pytesseract.Output.DICT)
+            raw_text = reconstruct_text_from_tesseract_data(data)
+            if not raw_text and not (isinstance(data, dict) and isinstance(data.get("text"), list)):
+                raw_text = str(pytesseract.image_to_string(prep_img, lang=self.lang) or '')
 
             words_count = 0
             valid_confs = []
@@ -651,12 +714,31 @@ class OCRRouter:
 
     def process_image(self, file_path_or_bytes) -> List[Dict[str, Any]]:
         """Processes single image file (PNG / JPEG) via OCR."""
+        max_pixels = 12_000_000
+        try:
+            from django.conf import settings as django_settings
+            max_pixels = int(getattr(django_settings, 'VISUAL_MAX_RENDER_PIXELS', 12_000_000))
+        except Exception:
+            pass
+
         if isinstance(file_path_or_bytes, (bytes, bytearray)):
             img = Image.open(io.BytesIO(file_path_or_bytes))
         else:
             img = Image.open(file_path_or_bytes)
 
-        ocr_res = self.ocr_provider.extract_image(img)
+        try:
+            pixel_count = img.width * img.height
+            if pixel_count > max_pixels:
+                raise ValueError(
+                    f"Image pixel count ({pixel_count}) exceeds maximum allowed limit ({max_pixels})."
+                )
+            ocr_res = self.ocr_provider.extract_image(img)
+        finally:
+            try:
+                img.close()
+            except Exception:
+                pass
+
         return [{
             'page_number': 1,
             'text': ocr_res['text'],

@@ -174,7 +174,7 @@ class PermissionLayer:
                 continue
 
         permissions_map = {
-            str(p.document_id): p 
+            str(getattr(p, 'document_id', None) or getattr(p.document, 'id', '')): p 
             for p in SourcePermission.objects.filter(document_id__in=valid_uuids)
         } if valid_uuids else {}
 
@@ -687,8 +687,10 @@ class AuthorityLayer:
             for cr in db_conflicts:
                 if cr.resolution_status == 'unresolved':
                     # Gating: A candidate document must contain evidence relevant to the claim before it can participate in conflict detection
-                    c_a_chunks = [c for c in chunks if str(c.get('document_id')) == str(cr.source_a_id)]
-                    c_b_chunks = [c for c in chunks if str(c.get('document_id')) == str(cr.source_b_id)]
+                    cr_a_id = str(getattr(cr, 'source_a_id', None) or getattr(cr.source_a, 'id', ''))
+                    cr_b_id = str(getattr(cr, 'source_b_id', None) or getattr(cr.source_b, 'id', ''))
+                    c_a_chunks = [c for c in chunks if str(c.get('document_id')) == cr_a_id]
+                    c_b_chunks = [c for c in chunks if str(c.get('document_id')) == cr_b_id]
 
                     # Check authority levels: if one source has higher authority, authority dominance resolves the conflict
                     auth_a = getattr(cr.source_a, 'authority_level', 3)
@@ -1092,8 +1094,9 @@ class TemporalValidityLayer:
                             # Requirement 5: A superseding amendment cannot supersede prior policy BEFORE its effective date!
                             if s_eff and s_eff > ref_time:
                                 continue
-                            superseded_identifiers.add(str(s_rel.target_document_id))
-                            t_title = s_rel.target_document.title if s_rel.target_document else str(s_rel.target_document_id)
+                            tgt_id = str(getattr(s_rel, 'target_document_id', None) or getattr(s_rel.target_document, 'id', ''))
+                            superseded_identifiers.add(tgt_id)
+                            t_title = s_rel.target_document.title if s_rel.target_document else tgt_id
                             temporal_notes.append(
                                 f"Supersession Exclusion: Document '{t_title}' is superseded by '{s_doc.title}' "
                                 f"(effective as of {ref_time.strftime('%Y-%m-%d')})."
@@ -1784,8 +1787,8 @@ class EnterpriseGovernanceEngine:
             retrieval_service = HybridRetrievalService()
             candidate_chunks = retrieval_service.multi_hop_search(
                 query=req.query,
-                workspace_id=str(workspace.id) if workspace else None,
-                organization_id=str(workspace.organization.id) if workspace and getattr(workspace, 'organization', None) else None,
+                workspace_id=str(workspace.id),
+                organization_id=str(workspace.organization.id) if getattr(workspace, 'organization', None) else "",
                 limit=12,
                 user=req.principal,
                 user_role=req.user_role,
@@ -1919,6 +1922,49 @@ class EnterpriseGovernanceEngine:
                         is_violation = True
                         all_reason_codes.append(GovernanceReasonCode.L2_RULE_VIOLATION_TRIGGERED.value)
                         break
+
+            # Check ephemeral document proposal for explicit policy limit violations
+            if not is_violation and req.policy_context:
+                e_doc = req.policy_context.get('ephemeral_document')
+                if isinstance(e_doc, dict):
+                    e_text = (e_doc.get('text') or '').lower()
+                    topics = [
+                        (r'(?:meal|per diem|food|dining)', r'(?:meal|per diem|food|dining)'),
+                        (r'(?:hotel|lodging|accommodation|room)', r'(?:hotel|lodging|accommodation|room)'),
+                        (r'(?:flight|airfare|travel ticket)', r'(?:flight|airfare|travel ticket)'),
+                        (r'(?:cost|total|amount|fee|price|spend|budget|grant)', r'(?:cost|total|amount|fee|price|spend|budget|grant)'),
+                    ]
+                    for chk in active_chunks:
+                        c_txt = chk.get('text', '').lower()
+                        for c_topic, e_topic in topics:
+                            cap_pat = rf'{c_topic}.*?(?:maximum|max|allowance|limit|not exceed|cap)\s*(?:of|is|to)?\s*\$?(\d+)'
+                            cap_matches = re.findall(cap_pat, c_txt)
+                            if not cap_matches:
+                                cap_pat2 = rf'(?:maximum|max|allowance|limit|not exceed|cap)\s*(?:of|is|to)?\s*{c_topic}.*?\$?(\d+)'
+                                cap_matches = re.findall(cap_pat2, c_txt)
+
+                            for cm in cap_matches:
+                                try:
+                                    cap_val = int(cm)
+                                    prop_pat = rf'{e_topic}.*?\$?(\d+)'
+                                    prop_matches = re.findall(prop_pat, e_text)
+                                    for pv in prop_matches:
+                                        try:
+                                            p_int = int(pv)
+                                            if p_int > cap_val:
+                                                is_violation = True
+                                                all_reason_codes.append(GovernanceReasonCode.L2_RULE_VIOLATION_TRIGGERED.value)
+                                                break
+                                        except ValueError:
+                                            pass
+                                    if is_violation:
+                                        break
+                                except ValueError:
+                                    pass
+                            if is_violation:
+                                break
+                        if is_violation:
+                            break
 
         state_res = AnswerStateLayer.resolve_state(
             is_denied=is_denied,

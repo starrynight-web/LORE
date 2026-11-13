@@ -1,0 +1,6 @@
+search-path = ["./backend"]
+python-interpreter-path = "./backend/.venv/Scripts/python.exe"
+infer-with-first-use = false
+
+[errors]
+untyped-import = false

@@ -1,11 +1,15 @@
 import io
 import csv
+import logging
 import os
 import re
+import threading
 import zipfile
 import xml.etree.ElementTree as ET
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from .ocr import OCRRouter, BaseOCRProvider
+
+logger = logging.getLogger(__name__)
 
 class DocxExtractor:
     """Extracts structured text, headings, and tables from DOCX documents."""
@@ -132,12 +136,20 @@ class PresentationExtractor:
     - Empty and corrupted presentation handling without throwing unhandled crashes.
     """
     @staticmethod
+    def _safe_fromstring(xml_bytes: bytes):
+        """Parses XML bytes safely, rejecting DTD/ENTITY declarations."""
+        head = (xml_bytes or b"")[:65536].lower()
+        if b"<!doctype" in head or b"<!entity" in head:
+            raise ValueError("Unsafe XML DOCTYPE or ENTITY declaration rejected.")
+        return ET.fromstring(xml_bytes)
+
+    @staticmethod
     def _parse_rels(zf: zipfile.ZipFile, rels_path: str) -> Dict[str, Dict[str, str]]:
         rels = {}
         if rels_path not in zf.namelist():
             return rels
         try:
-            tree = ET.fromstring(zf.read(rels_path))
+            tree = PresentationExtractor._safe_fromstring(zf.read(rels_path))
             for node in tree:
                 if node.tag.endswith('}Relationship'):
                     r_id = node.attrib.get('Id')
@@ -154,7 +166,7 @@ class PresentationExtractor:
         meta = {}
         if 'docProps/core.xml' in zf.namelist():
             try:
-                tree = ET.fromstring(zf.read('docProps/core.xml'))
+                tree = PresentationExtractor._safe_fromstring(zf.read('docProps/core.xml'))
                 for node in tree.iter():
                     tag = node.tag.split('}')[-1] if '}' in node.tag else node.tag
                     if tag in ('title', 'creator', 'lastModifiedBy', 'subject', 'description') and node.text:
@@ -168,7 +180,7 @@ class PresentationExtractor:
         ordered = []
         if 'ppt/presentation.xml' in zf.namelist() and 'ppt/_rels/presentation.xml.rels' in zf.namelist():
             try:
-                pres_tree = ET.fromstring(zf.read('ppt/presentation.xml'))
+                pres_tree = cls._safe_fromstring(zf.read('ppt/presentation.xml'))
                 pres_rels = cls._parse_rels(zf, 'ppt/_rels/presentation.xml.rels')
 
                 for node in pres_tree.iter():
@@ -213,7 +225,7 @@ class PresentationExtractor:
             return ''
 
         try:
-            tree = ET.fromstring(zf.read(norm_notes))
+            tree = cls._safe_fromstring(zf.read(norm_notes))
             paragraphs = []
             for sp in tree.iter():
                 if sp.tag.endswith('}sp'):
@@ -278,7 +290,7 @@ class PresentationExtractor:
             for idx, sname in enumerate(ordered_slides, 1):
                 try:
                     xml_data = zf.read(sname)
-                    root = ET.fromstring(xml_data)
+                    root = cls._safe_fromstring(xml_data)
                 except Exception:
                     pages.append({
                         'page_number': idx,
@@ -505,16 +517,65 @@ class TextExtractor:
 
 class UnifiedDocumentExtractor:
     """Dispatches extraction based on document type."""
-    def __init__(self, ocr_provider: Optional[BaseOCRProvider] = None):
+    def __init__(
+        self,
+        ocr_provider: Optional[BaseOCRProvider] = None,
+        pdf_visual_adapter: Optional[Any] = None,
+    ):
+        self.ocr_provider = ocr_provider
         self.router = OCRRouter(ocr_provider=ocr_provider)
+        self.pdf_visual_adapter = pdf_visual_adapter
+
+    @classmethod
+    def with_pymupdf_visual(
+        cls,
+        ocr_provider: Optional[BaseOCRProvider] = None,
+        **adapter_kwargs,
+    ) -> "UnifiedDocumentExtractor":
+        """Constructs a UnifiedDocumentExtractor adopting the PyMuPDF visual PDF adapter."""
+        from .pdf_visual import PyMuPDFVisualPDFAdapter
+
+        eff_ocr = ocr_provider
+        adapter = PyMuPDFVisualPDFAdapter(ocr_provider=eff_ocr, **adapter_kwargs)
+        return cls(ocr_provider=adapter.ocr_provider, pdf_visual_adapter=adapter)
+
+    def _extract_pdf_with_adapter(self, file_path_or_bytes, filename: str = '') -> List[Dict[str, Any]]:
+        if self.pdf_visual_adapter is None:
+            return self.router.process_pdf(file_path_or_bytes)
+
+        try:
+            if hasattr(self.pdf_visual_adapter, 'process_pdf'):
+                return self.pdf_visual_adapter.process_pdf(file_path_or_bytes)
+            if hasattr(self.pdf_visual_adapter, 'enrich_page'):
+                base_pages = self.router.process_pdf(file_path_or_bytes)
+                return [
+                    self.pdf_visual_adapter.enrich_page(
+                        page,
+                        raw_file=file_path_or_bytes,
+                        context={'doc_type': 'pdf', 'filename': filename},
+                    )
+                    for page in base_pages
+                ]
+        except Exception as exc:
+            logger.warning("pdf_visual_adapter failed; falling back cleanly to OCRRouter: %s", exc)
+
+        return self.router.process_pdf(file_path_or_bytes)
+
+    def _extract_image_with_adapter(self, file_path_or_bytes) -> List[Dict[str, Any]]:
+        if self.pdf_visual_adapter is not None and hasattr(self.pdf_visual_adapter, 'process_image'):
+            try:
+                return self.pdf_visual_adapter.process_image(file_path_or_bytes)
+            except Exception as exc:
+                logger.warning("pdf_visual_adapter.process_image failed; falling back to OCRRouter: %s", exc)
+        return self.router.process_image(file_path_or_bytes)
 
     def extract_document(self, file_path_or_bytes, doc_type: str, filename: str = '') -> List[Dict[str, Any]]:
         ext = os.path.splitext(filename.lower())[1] if filename else ''
 
         if doc_type == 'pdf' or ext == '.pdf':
-            return self.router.process_pdf(file_path_or_bytes)
+            return self._extract_pdf_with_adapter(file_path_or_bytes, filename=filename)
         elif doc_type == 'image' or ext in ('.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'):
-            return self.router.process_image(file_path_or_bytes)
+            return self._extract_image_with_adapter(file_path_or_bytes)
         elif doc_type == 'docx' or ext == '.docx':
             return DocxExtractor.extract(file_path_or_bytes)
         elif ext == '.csv':
@@ -527,3 +588,167 @@ class UnifiedDocumentExtractor:
             return HTMLExtractor.extract(file_path_or_bytes)
         else:
             return TextExtractor.extract(file_path_or_bytes)
+
+
+VISUAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'}
+LIGHTWEIGHT_EXTENSIONS = {'.docx', '.xlsx', '.xls', '.csv', '.pptx', '.ppt', '.txt', '.md', '.html', '.htm', '.json'}
+VISUAL_DOC_TYPES = {'pdf', 'image'}
+LIGHTWEIGHT_DOC_TYPES = {'docx', 'spreadsheet', 'presentation', 'txt', 'other'}
+
+
+def classify_ingestion_workload(
+    doc_type: str = '',
+    filename: str = '',
+    mime_type: str = '',
+) -> str:
+    """
+    Deterministically classifies an ingestion document into:
+    - 'visual': PDFs and raster images routed through the heavy visual/OCR subsystem
+    - 'lightweight': DOCX, XLSX, PPTX, CSV, HTML, and plaintext routed to native parsers
+    """
+    ext = os.path.splitext((filename or '').lower())[1]
+    norm_type = (doc_type or '').strip().lower()
+    norm_mime = (mime_type or '').strip().lower()
+
+    if ext in LIGHTWEIGHT_EXTENSIONS or norm_type in ('docx', 'spreadsheet', 'presentation', 'txt'):
+        return 'lightweight'
+    if ext in VISUAL_EXTENSIONS or norm_type in VISUAL_DOC_TYPES:
+        return 'visual'
+    if norm_mime == 'application/pdf' or norm_mime.startswith('image/'):
+        return 'visual'
+    return 'lightweight'
+
+
+def needs_visual_extraction(
+    doc_type: str = '',
+    filename: str = '',
+    mime_type: str = '',
+) -> Tuple[bool, str]:
+    """
+    Returns (requires_visual_subsystem, routing_reason).
+    Ordinary Office documents (DOCX, XLSX, PPTX, CSV) stay strictly on native parsers.
+    """
+    workload = classify_ingestion_workload(doc_type=doc_type, filename=filename, mime_type=mime_type)
+    if workload == 'visual':
+        ext = os.path.splitext((filename or '').lower())[1]
+        if (doc_type or '').lower() == 'image' or ext in {'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'}:
+            return True, 'image_visual_ocr'
+        return True, 'pdf_incremental_visual_pipeline'
+    return False, 'native_office_or_text_parser'
+
+
+class WorkerExtractorRegistry:
+    """
+    Process-scoped, thread-safe extractor cache so heavy visual models
+    (PyMuPDF adapter, Tesseract, PP-DocLayout-S, SLANet_plus) are loaded at most
+    once per Celery worker process and reused across batch tasks.
+    """
+
+    _lock = threading.RLock()
+    _instances: Dict[Tuple[int, str], UnifiedDocumentExtractor] = {}
+    _init_counts: Dict[Tuple[int, str], int] = {}
+
+    @classmethod
+    def get_lightweight_extractor(cls) -> UnifiedDocumentExtractor:
+        pid = os.getpid()
+        key = (pid, 'lightweight')
+        with cls._lock:
+            inst = cls._instances.get(key)
+            if inst is None:
+                inst = UnifiedDocumentExtractor(pdf_visual_adapter=None)
+                cls._instances[key] = inst
+                cls._init_counts[key] = cls._init_counts.get(key, 0) + 1
+            return inst
+
+    @classmethod
+    def get_visual_extractor(cls) -> UnifiedDocumentExtractor:
+        pid = os.getpid()
+        key = (pid, 'visual')
+        with cls._lock:
+            inst = cls._instances.get(key)
+            if inst is None:
+                from .runtime import configure_visual_cpu_runtime
+
+                configure_visual_cpu_runtime()
+                try:
+                    from .ocr import TesseractOCRProvider
+                    from .pdf_visual import PDFSafetyLimits
+
+                    shared_ocr = TesseractOCRProvider()
+                    adapter_kwargs: Dict[str, Any] = {
+                        'ocr_provider': shared_ocr,
+                        'limits': PDFSafetyLimits.from_settings_or_env(),
+                        'analyze_searchable_with_layout': False,
+                    }
+                    try:
+                        from .charts import PyMuPDFOpenCVChartExtractor
+                        adapter_kwargs['chart_extractor'] = PyMuPDFOpenCVChartExtractor(ocr_provider=shared_ocr)
+                    except Exception:
+                        pass
+                    try:
+                        from .forms import FormKVExtractor
+                        adapter_kwargs['form_extractor'] = FormKVExtractor(ocr_provider=shared_ocr)
+                    except Exception:
+                        pass
+                    try:
+                        from .tables import SLANetPlusConfig, SLANetPlusTableExtractor
+                        adapter_kwargs['table_extractor'] = SLANetPlusTableExtractor(
+                            config=SLANetPlusConfig.from_settings_or_env(),
+                            ocr_provider=shared_ocr,
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        from .layout import PPDocLayoutSConfig, PPDocLayoutSProvider
+                        adapter_kwargs['layout_provider'] = PPDocLayoutSProvider(
+                            config=PPDocLayoutSConfig.from_settings_or_env(),
+                            ocr_provider=shared_ocr,
+                            table_extractor=adapter_kwargs.get('table_extractor'),
+                            chart_extractor=adapter_kwargs.get('chart_extractor'),
+                            form_extractor=adapter_kwargs.get('form_extractor'),
+                        )
+                    except Exception:
+                        pass
+                    inst = UnifiedDocumentExtractor.with_pymupdf_visual(**adapter_kwargs)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to initialize worker visual extractor; falling back to OCRRouter extractor: %s",
+                        exc,
+                    )
+                    inst = UnifiedDocumentExtractor(pdf_visual_adapter=None)
+                cls._instances[key] = inst
+                cls._init_counts[key] = cls._init_counts.get(key, 0) + 1
+            return inst
+
+    @classmethod
+    def get_extractor_for_document(
+        cls,
+        doc_type: str = '',
+        filename: str = '',
+        mime_type: str = '',
+        force_visual: Optional[bool] = None,
+    ) -> UnifiedDocumentExtractor:
+        use_visual = (
+            force_visual
+            if force_visual is not None
+            else (classify_ingestion_workload(doc_type=doc_type, filename=filename, mime_type=mime_type) == 'visual')
+        )
+        if use_visual:
+            return cls.get_visual_extractor()
+        return cls.get_lightweight_extractor()
+
+    @classmethod
+    def get_stats(cls) -> Dict[str, Any]:
+        pid = os.getpid()
+        with cls._lock:
+            return {
+                'pid': pid,
+                'cached_profiles': [k[1] for k in cls._instances if k[0] == pid],
+                'init_counts': {k[1]: v for k, v in cls._init_counts.items() if k[0] == pid},
+            }
+
+    @classmethod
+    def clear(cls) -> None:
+        with cls._lock:
+            cls._instances.clear()
+            cls._init_counts.clear()

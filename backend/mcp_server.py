@@ -1455,7 +1455,18 @@ def handle_get_document(args: Dict[str, Any]) -> str:
     if not doc_id:
         return make_error_response("INVALID_ARGUMENT", "The 'document_id' parameter is required.")
 
-    doc = SourceDocument.objects.filter(id=doc_id).select_related('workspace').first()
+    ws_arg = args.get("workspace_id")
+    org_arg = args.get("organization_id")
+    ws = None
+    if ws_arg or org_arg:
+        ws, err = resolve_workspace(ws_arg, org_arg)
+        if err or not ws:
+            return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+
+    qs = SourceDocument.objects.filter(id=doc_id).select_related('workspace')
+    if ws is not None:
+        qs = qs.filter(workspace=ws)
+    doc = qs.first()
     if not doc:
         return make_error_response("RESOURCE_NOT_FOUND", f"Document with ID '{doc_id}' not found.")
 
@@ -1520,8 +1531,9 @@ def handle_ocr_extract(args: Dict[str, Any]) -> str:
         }
         return json.dumps(payload, indent=2, ensure_ascii=False)
     except Exception as ex:
-        logger.exception(f"OCR extraction failed for {file_path}: {ex}")
-        return make_error_response("EXECUTION_FAILURE", f"OCR extraction error: {ex}", reason_code="OCR_EXTRACTION_FAILED")
+        safe_ex = sanitize_sensitive_data(str(ex))
+        logger.error(f"OCR extraction failed for {file_path}: {safe_ex}")
+        return make_error_response("EXECUTION_FAILURE", f"OCR extraction error: {safe_ex}", reason_code="OCR_EXTRACTION_FAILED")
 
 
 # ==============================================================================

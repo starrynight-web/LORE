@@ -57,6 +57,22 @@ class ConciseAnswerSynthesizer:
         exceptions_applied = exceptions_applied or []
 
         # ------------------------------------------------------------------
+        # Special Handler: Ephemeral Document Compliance Review
+        # ------------------------------------------------------------------
+        ephemeral_doc = policy_context.get('ephemeral_document')
+        if ephemeral_doc and isinstance(ephemeral_doc, dict):
+            return cls._synthesize_ephemeral_document_compliance(
+                query=query,
+                ephemeral_doc=ephemeral_doc,
+                retrieved_chunks=retrieved_chunks,
+                state=state,
+                conflicts=conflicts,
+                policy_context=policy_context,
+                temporal_notes=temporal_notes,
+                exceptions_applied=exceptions_applied
+            )
+
+        # ------------------------------------------------------------------
         # ------------------------------------------------------------------
         # 0. Terminal non-supported outcomes
         # ------------------------------------------------------------------
@@ -421,13 +437,13 @@ class ConciseAnswerSynthesizer:
             return None
 
         # Determine amendment status (approved vs draft vs unknown)
-        a_status = (amendment_chunk.get('document_status') or amendment_chunk.get('status') or '').lower()
-        a_text = amendment_chunk.get('text', '')
-        a_title = amendment_chunk.get('document_title', 'Policy Amendment')
+        a_status = str(amendment_chunk.get('document_status') or amendment_chunk.get('status') or '').lower()
+        a_text = str(amendment_chunk.get('text') or '')
+        a_title = str(amendment_chunk.get('document_title') or 'Policy Amendment')
         a_doc_code = "DOC-015" if "doc-015" in a_title.lower() or "doc-015" in a_text.lower() else a_title
 
-        g_title = governing_chunk.get('document_title', 'Governing Policy')
-        g_text = governing_chunk.get('text', '')
+        g_title = str(governing_chunk.get('document_title') or 'Governing Policy')
+        g_text = str(governing_chunk.get('text') or '')
         g_doc_code = "DOC-002" if "doc-002" in g_title.lower() or "doc-002" in g_text.lower() else g_title
 
         # Check explicit indicators for draft vs approved vs unknown
@@ -466,14 +482,14 @@ class ConciseAnswerSynthesizer:
             a_eff = a_eff_m.group(1).strip() if a_eff_m else "January 1, 2027"
 
             # Check target date vs amendment effective date
-            target_dt = None
+            target_dt: Any = None
             if target_date_str:
                 try:
                     from dateutil import parser as dt_parser
                     target_dt = dt_parser.parse(target_date_str, fuzzy=True)
                 except Exception:
                     pass
-            a_eff_dt = None
+            a_eff_dt: Any = None
             if a_eff:
                 try:
                     from dateutil import parser as dt_parser
@@ -483,7 +499,7 @@ class ConciseAnswerSynthesizer:
 
             is_target_before_amendment = True
             if target_dt and a_eff_dt:
-                is_target_before_amendment = (target_dt < a_eff_dt)
+                is_target_before_amendment = bool(target_dt < a_eff_dt)
             elif 'november' in q_lower or '2026' in q_lower:
                 is_target_before_amendment = True
 
@@ -1251,6 +1267,100 @@ class ConciseAnswerSynthesizer:
     def _extract_substantive_claim(cls, text: str) -> str:
         sents = [s.strip().rstrip('.') for s in re.split(r'(?<=[.!?\n])\s+', text) if len(s.strip()) > 15]
         return sents[0] if sents else text[:120].strip()
+
+    @classmethod
+    def _synthesize_ephemeral_document_compliance(
+        cls,
+        query: str,
+        ephemeral_doc: Dict[str, Any],
+        retrieved_chunks: List[Dict[str, Any]],
+        state: str,
+        conflicts: List[Dict[str, Any]],
+        policy_context: Dict[str, Any],
+        temporal_notes: Optional[List[str]] = None,
+        exceptions_applied: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
+        filename = ephemeral_doc.get('filename', 'uploaded_document')
+        doc_type = (ephemeral_doc.get('doc_type') or 'document').upper()
+        pages_count = ephemeral_doc.get('pages_count', 1)
+        doc_text = ephemeral_doc.get('text', '')
+        tables = ephemeral_doc.get('tables', [])
+        forms = ephemeral_doc.get('forms', [])
+        charts = ephemeral_doc.get('charts', [])
+
+        # Determine verdict badge
+        if state == 'violation':
+            verdict_badge = "POLICY VIOLATION (Action Blocked - Remediation Required)"
+        elif state == 'qualified':
+            verdict_badge = "CONDITIONAL COMPLIANCE (Qualified / Exception Required)"
+        elif state == 'insufficient':
+            verdict_badge = "INSUFFICIENT EVIDENCE (Mandatory Criteria Unverified)"
+        elif state == 'no_knowledge' or not retrieved_chunks:
+            verdict_badge = "UNVERIFIED (No Governing Company Policies Found in Workspace)"
+        else:
+            verdict_badge = "COMPLIANT WITH COMPANY POLICY"
+
+        lines = [
+            f"### Policy Compliance Review: {filename}",
+            f"**Verdict**: **{verdict_badge}**\n",
+        ]
+
+        if not retrieved_chunks:
+            lines.append(
+                f"No governing policy documents were found in the active workspace to audit '{filename}' against. "
+                "Please ensure relevant company policies (e.g. procurement, travel, information security) are published in this workspace."
+            )
+            return "\n".join(lines)
+
+        lines.append("#### Proposal Findings & Company Policy Alignment:")
+
+        # Scan for matching policy constraints
+        matching_rules = []
+        for chk in retrieved_chunks:
+            if not isinstance(chk, dict):
+                continue
+            txt = (chk.get('text') or '').strip()
+            doc_title = chk.get('document_title') or 'Company Policy'
+            if txt and txt not in matching_rules:
+                matching_rules.append(f"- **{doc_title}**: {txt}")
+
+        for rule in matching_rules[:3]:
+            lines.append(rule)
+
+        # Include visual extraction details if present
+        visual_provenance = []
+        if tables:
+            visual_provenance.append(f"{len(tables)} table(s) extracted via SLANet_plus")
+        if forms:
+            visual_provenance.append(f"{len(forms)} form section(s) with spatial key-value mapping")
+        if charts:
+            visual_provenance.append(f"{len(charts)} chart(s) with calibrated axes")
+
+        if visual_provenance:
+            lines.append(f"\n*Extraction Highlights*: {', '.join(visual_provenance)} (processed in-memory; not saved to vector DB).")
+
+        # Conclusion summary
+        if state == 'violation':
+            lines.append(
+                f"\n**Conclusion**: The terms or amounts stated in '{filename}' conflict with mandatory company policy rules. "
+                "Approval cannot be granted without formal exception review or revision of terms."
+            )
+        elif state == 'qualified':
+            lines.append(
+                f"\n**Conclusion**: '{filename}' complies conditionally but involves caveats, upcoming amendments, "
+                "or active exceptions requiring management acknowledgement."
+            )
+        elif state == 'insufficient':
+            lines.append(
+                f"\n**Conclusion**: '{filename}' lacks mandatory verification items or documentation required by policy."
+            )
+        else:
+            lines.append(
+                f"\n**Conclusion**: '{filename}' satisfies published company policies based on authoritative evidence."
+            )
+
+        return "\n".join(lines)
+
 
 
 @dataclass(unsafe_hash=True)

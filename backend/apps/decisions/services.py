@@ -123,18 +123,42 @@ class ConversationService:
         llm_model: Optional[str] = None,
         execution_mode: Optional[str] = None,
         synthesis_mode: Optional[str] = None,
-        as_of: Optional[Any] = None
+        as_of: Optional[Any] = None,
+        uploaded_file: Optional[Any] = None
     ) -> Tuple[ChatMessage, ChatMessage, Dict[str, Any]]:
         """
         Executes a complete chat turn in a persistent conversation:
         1. Checks idempotency to prevent duplicate submissions on double-clicks / retries.
-        2. Persists the user question.
-        3. Updates conversation title if first turn.
-        4. Runs governed search & RAG with bounded conversational context.
-        5. Persists the assistant's governed response with structured citations.
-        6. On failure, preserves the user question with a clear failed status.
+        2. Optionally processes an ephemeral attached document (PDF, DOCX, XLSX, image)
+           with full OCR & visual extraction without storing it in the vector database.
+        3. Persists the user question and attached document metadata.
+        4. Updates conversation title if first turn.
+        5. Runs governed search & RAG with bounded conversational context.
+        6. Persists the assistant's governed response with structured citations.
+        7. On failure, preserves the user question with a clear failed status.
         """
-        clean_query = query.strip()
+        clean_query = (query or '').strip()
+
+        # Handle optional ephemeral document upload (never saved to vector DB)
+        ephemeral_doc = None
+        user_retrieval_config: Dict[str, Any] = {}
+        if uploaded_file:
+            from apps.ingestion.pipeline.ephemeral import extract_ephemeral_document
+            try:
+                ephemeral_doc = extract_ephemeral_document(uploaded_file)
+            except Exception as err:
+                raise ValidationError(f"Invalid attachment: {err}")
+            user_retrieval_config['attached_document'] = {
+                'filename': ephemeral_doc['filename'],
+                'file_size': ephemeral_doc['file_size'],
+                'doc_type': ephemeral_doc['doc_type'],
+                'pages_count': ephemeral_doc['pages_count'],
+                'word_count': ephemeral_doc['word_count'],
+                'summary': ephemeral_doc['summary'],
+            }
+            if not clean_query:
+                clean_query = f"Review uploaded proposal '{ephemeral_doc['filename']}' against company policy."
+
         if not clean_query:
             raise ValidationError("Query cannot be empty.")
 
@@ -188,7 +212,8 @@ class ConversationService:
                 content=clean_query,
                 sequence_number=next_seq,
                 status='completed',
-                client_message_id=client_message_id or ''
+                client_message_id=client_message_id or '',
+                retrieval_config=user_retrieval_config
             )
 
             # Auto-title conversation on first turn if untitled or default
@@ -223,8 +248,13 @@ class ConversationService:
         assistant_msg = None
 
         try:
+            search_query = clean_query
+            if ephemeral_doc and ephemeral_doc.get('text'):
+                snippet = " ".join(ephemeral_doc['text'].split()[:30])
+                search_query = f"{clean_query} {snippet}".strip()
+
             candidate_chunks = retrieval_service.multi_hop_search(
-                query=clean_query,
+                query=search_query,
                 workspace_id=str(conversation.workspace_id),
                 organization_id=str(conversation.organization_id),
                 collection_id=effective_col_id,
@@ -240,6 +270,7 @@ class ConversationService:
                 'conversation_id': str(conversation.id),
                 'conversation_history': conversation_history_summary,
                 'is_multi_turn': len(conversation_history_summary) > 0,
+                'ephemeral_document': ephemeral_doc,
             }
 
             envelope = EnterpriseGovernanceEngine.evaluate(
@@ -295,7 +326,8 @@ class ConversationService:
                         'document_id': effective_doc_id,
                         'collection_id': effective_col_id,
                         'llm_model': llm_model or 'gpt-oss-120B',
-                        'execution_mode': execution_mode
+                        'execution_mode': execution_mode,
+                        'attached_document': user_retrieval_config.get('attached_document')
                     }
                 )
 

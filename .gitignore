@@ -39,6 +39,8 @@ backend/media/
 backend/staticfiles/
 backend/qdrant_storage/
 backend/backups/
+backend/.venv/
+.venv/
 .pytest_cache/
 .coverage
 htmlcov/

@@ -30,7 +30,8 @@ import {
   PanelLeftClose,
   Edit3,
   RotateCcw,
-  X
+  X,
+  Paperclip
 } from 'lucide-react';
 import { 
   GovernedResult, 
@@ -76,6 +77,8 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -228,12 +231,16 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
   // Submit Turn to Governed RAG Pipeline
   const handleExecute = async (textToRun?: string) => {
     const q = textToRun || query;
-    if (!q.trim() || isLoading) return;
+    const fileToUpload = attachedFile;
+    if ((!q.trim() && !fileToUpload) || isLoading) return;
 
     setIsLoading(true);
     setError(null);
     setQuery('');
+    setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
+    const effectiveQuery = q.trim() || (fileToUpload ? `Review uploaded proposal '${fileToUpload.name}' against company policy.` : '');
     const clientMsgId = `client_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const docId = selectedDocId === 'all' ? undefined : selectedDocId;
 
@@ -244,10 +251,20 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
           id: clientMsgId,
           conversation: activeConversationId,
           role: 'user',
-          content: q,
+          content: effectiveQuery,
           sequence_number: (activeConversation?.messages.length || 0) + 1,
           status: 'completed',
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          retrieval_config: fileToUpload ? {
+            attached_document: {
+              filename: fileToUpload.name,
+              file_size: fileToUpload.size,
+              doc_type: fileToUpload.name.split('.').pop() || 'document',
+              pages_count: 1,
+              word_count: 0,
+              summary: 'Document attached for ephemeral compliance review'
+            }
+          } : undefined
         };
 
         setActiveConversation(prev => prev ? {
@@ -255,9 +272,10 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
           messages: [...prev.messages, optimisticUserMsg]
         } : null);
 
-        const res = await api.sendConversationMessage(activeConversationId, q, {
+        const res = await api.sendConversationMessage(activeConversationId, effectiveQuery, {
           clientMessageId: clientMsgId,
-          documentId: docId
+          documentId: docId,
+          file: fileToUpload || undefined
         });
 
         setActiveConversation(prev => {
@@ -278,13 +296,14 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
         // Turn 1: Auto-creates a new conversation on backend with deterministic title
         const res = await api.governedQuery(
           workspaceId,
-          q,
+          effectiveQuery,
           undefined,
           docId,
           undefined,
           undefined,
           undefined,
-          clientMsgId
+          clientMsgId,
+          fileToUpload || undefined
         );
 
         if (res.conversation_id) {
@@ -305,7 +324,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
           id: clientMsgId,
           conversation: activeConversationId,
           role: 'user',
-          content: q,
+          content: effectiveQuery,
           sequence_number: (activeConversation?.messages.length || 0) + 1,
           status: 'completed',
           created_at: new Date().toISOString()
@@ -342,8 +361,65 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
         borderColor: 'var(--border-color)',
       }}
     >
-      <div className="flex items-start gap-3">
-        <Search className="w-5 h-5 text-[var(--brand-accent)] flex-shrink-0 mt-2" />
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.docx,.xlsx,.xls,.csv,.pptx,.png,.jpg,.jpeg,.txt,.md"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            setAttachedFile(f);
+          }
+        }}
+      />
+
+      {/* Ephemeral Document Preview Chip */}
+      {attachedFile && (
+        <div 
+          className="flex items-center justify-between gap-2 px-3 py-1.5 mb-2.5 rounded-xl border text-xs font-mono animate-in fade-in shadow-2xs"
+          style={{
+            backgroundColor: 'var(--bg-surface-soft)',
+            borderColor: 'var(--brand-accent)',
+          }}
+        >
+          <div className="flex items-center gap-2 truncate">
+            <Paperclip className="w-3.5 h-3.5 text-[var(--brand-accent)] shrink-0" />
+            <span className="font-semibold text-[var(--text-primary)] truncate">{attachedFile.name}</span>
+            <span className="text-[10px] text-[var(--text-muted)] shrink-0">({(attachedFile.size / 1024).toFixed(1)} KB)</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--brand-accent)]/10 text-[var(--brand-accent)] font-bold uppercase shrink-0">
+              Ephemeral Audit Target
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAttachedFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = '';
+            }}
+            className="p-1 rounded hover:bg-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+            title="Remove attachment"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-start gap-2.5 sm:gap-3">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading}
+          className="p-2 rounded-xl border transition cursor-pointer text-[var(--text-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)] active:scale-95 flex-shrink-0 mt-0.5 self-start"
+          style={{
+            backgroundColor: 'var(--bg-surface-soft)',
+            borderColor: 'var(--border-color)',
+          }}
+          title="Attach document (PDF, Office, Sheet, Image) for policy review"
+        >
+          <Paperclip className="w-4 h-4" />
+        </button>
+
         <textarea
           id="lore-chat-query-input"
           ref={textareaRef}
@@ -353,15 +429,17 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              if (!isLoading && query.trim()) {
+              if (!isLoading && (query.trim() || attachedFile)) {
                 handleExecute();
               }
             }
           }}
           placeholder={
-            activeConversation 
-              ? (language === 'bn' ? 'এই কথোপকথনে সম্পূরক প্রশ্ন করুন...' : 'Ask follow-up question in this conversation (context bounded)...')
-              : (language === 'bn' ? 'নথি বা দলিলের ভিত্তিতে প্রশ্ন জিজ্ঞাসা করুন...' : t('rag.input_placeholder', 'Ask a question across policy documents or scanned deeds...'))
+            attachedFile
+              ? (language === 'bn' ? `সংযুক্ত ফাইলের (${attachedFile.name}) জন্য প্রশ্ন বা পর্যালোচনার নির্দেশ লিখুন...` : `Ask questions or review instructions for '${attachedFile.name}'...`)
+              : activeConversation 
+                ? (language === 'bn' ? 'এই কথোপকথনে সম্পূরক প্রশ্ন করুন...' : 'Ask follow-up question in this conversation (context bounded)...')
+                : (language === 'bn' ? 'নথি বা দলিলের ভিত্তিতে প্রশ্ন জিজ্ঞাসা করুন...' : t('rag.input_placeholder', 'Ask a question across policy documents or scanned deeds...'))
           }
           style={{ outline: 'none', border: 'none', boxShadow: 'none', resize: 'none' }}
           className="w-full bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] py-1.5 leading-relaxed break-words whitespace-pre-wrap overflow-y-auto min-h-[38px] max-h-[240px]"
@@ -369,7 +447,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
         <button
           id="lore-chat-send-btn"
           onClick={() => handleExecute()}
-          disabled={isLoading || !query.trim()}
+          disabled={isLoading || (!query.trim() && !attachedFile)}
           className="p-2.5 rounded-xl font-semibold shadow-sm transition cursor-pointer flex-shrink-0 active:scale-95 disabled:opacity-40 self-end mb-0.5"
           style={{
             backgroundColor: 'var(--brand-accent)',

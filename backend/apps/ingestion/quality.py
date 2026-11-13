@@ -289,12 +289,34 @@ class DocumentQualityService:
             # Re-chunk with enhanced boundary guards using StructureAwareChunker
             raw_rechunked = StructureAwareChunker.chunk_document_pages(
                 doc_id=str(doc.id),
-                doc_title=doc.title,
+                doc_title=doc.canonical_title or doc.title,
                 org_name=doc.organization.name,
                 ws_name=doc.workspace.name,
                 authority_rank=doc.authority_level,
-                pages_data=pages_data
+                pages_data=pages_data,
+                document_code=getattr(doc, 'document_code', '') or '',
+                status=(
+                    'needs_review'
+                    if report.requires_human_review or doc.status == 'needs_review'
+                    else (getattr(doc, 'governance_status', '') or doc.status or 'ready')
+                ),
             )
+            page_bboxes_map = {p.page_number: p.bounding_boxes for p in pages if p.bounding_boxes}
+            doc_visual_meta = (
+                dict(doc.validation_notes.get('visual_extraction') or {})
+                if isinstance(doc.validation_notes, dict) and isinstance(doc.validation_notes.get('visual_extraction'), dict)
+                else {}
+            )
+            for item in raw_rechunked:
+                m = dict(item.get('metadata') or {})
+                if doc_visual_meta:
+                    m['visual_schema_version'] = doc_visual_meta.get('schema_version')
+                    m['visual_extractor_versions'] = doc_visual_meta.get('extractor_versions', {})
+                    m['visual_uncertainty'] = doc_visual_meta.get('uncertainty', {})
+                    m['source_file_hash'] = doc_visual_meta.get('source_file_hash') or doc.file_hash
+                if item.get('page_number') in page_bboxes_map:
+                    m['bounding_boxes'] = page_bboxes_map[item['page_number']]
+                item['metadata'] = m
             candidate_list = raw_rechunked
             report.issues_corrected.append(f"Re-chunked document with {len(raw_rechunked)} structure-aligned chunks.")
         else:
@@ -305,11 +327,13 @@ class DocumentQualityService:
                     'contextual_header': c.contextual_header,
                     'page_number': c.page_number,
                     'heading_path': c.heading_path,
+                    'section_identifier': c.section_identifier,
                     'char_offset_start': c.char_offset_start,
                     'char_offset_end': c.char_offset_end,
                     'token_count': c.token_count,
                     'vector_id': c.vector_id,
                     'content_hash': c.content_hash,
+                    'metadata': dict(c.metadata or {}),
                 }
                 for c in chunks
             ]
@@ -403,11 +427,13 @@ class DocumentQualityService:
                         contextual_header=item['contextual_header'],
                         page_number=item.get('page_number', 1),
                         heading_path=item.get('heading_path', ''),
+                        section_identifier=item.get('section_identifier', ''),
                         char_offset_start=item.get('char_offset_start', 0),
                         char_offset_end=item.get('char_offset_end', len(item['text'])),
                         token_count=item.get('token_count', len(item['text'].split())),
                         content_hash=item['content_hash'],
-                        vector_id=item.get('vector_id', '')
+                        vector_id=item.get('vector_id', ''),
+                        metadata=dict(item.get('metadata') or {}),
                     ))
                 saved_chunks = DocumentChunk.objects.bulk_create(created_chunks)
 

@@ -23,8 +23,19 @@ from .zip_security import ZipSecurityError
 from .zip_engine import ZipImportEngine
 from apps.workspaces.models import Workspace, WorkspaceMembership, Collection
 from apps.ingestion.models import IngestionJob
+from apps.ingestion.batch import (
+    IngestionBatchService,
+    WorkloadConcurrencyGate,
+    compute_idempotency_key,
+    dispatch_job_to_celery,
+    get_workload_queue_name,
+)
 from apps.ingestion.tasks import process_ingestion_pipeline, process_document_job
-from apps.ingestion.pipeline.extractors import UnifiedDocumentExtractor
+from apps.ingestion.pipeline.extractors import (
+    UnifiedDocumentExtractor,
+    classify_ingestion_workload,
+    needs_visual_extraction,
+)
 from apps.ingestion.pipeline.ocr import repair_visual_bengali_document, bangla_to_arabic_digits
 from apps.audit.models import AuditEvent
 
@@ -92,13 +103,42 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             is_current=True
         )
 
-        # 5. Create IngestionJob
+        # 5. Create IngestionJob with deterministic workload routing & idempotency
+        workload_class = classify_ingestion_workload(
+            doc_type=sec_meta['document_type'],
+            filename=file_obj.name,
+            mime_type=sec_meta['mime_type'],
+        )
+        requires_visual, routing_reason = needs_visual_extraction(
+            doc_type=sec_meta['document_type'],
+            filename=file_obj.name,
+            mime_type=sec_meta['mime_type'],
+        )
+        queue_name = get_workload_queue_name(workload_class)
+        idempotency_key = compute_idempotency_key(
+            organization_id=workspace.organization_id,
+            workspace_id=workspace.id,
+            file_hash=sec_meta['file_hash'],
+            version_number=1,
+        )
+
         job = IngestionJob.objects.create(
             document=doc,
             organization=workspace.organization,
             workspace=workspace,
             status='queued',
-            current_stage='inspection'
+            current_stage='inspection',
+            workload_class=workload_class,
+            queue_name=queue_name,
+            idempotency_key=idempotency_key,
+            stage_timings={
+                'routing': {
+                    'workload_class': workload_class,
+                    'queue_name': queue_name,
+                    'requires_visual_extraction': requires_visual,
+                    'routing_reason': routing_reason,
+                }
+            },
         )
 
         # 6. Log Audit Event
@@ -114,12 +154,12 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
 
         # 7. Dispatch background ingestion task
         if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', True):
-            process_ingestion_pipeline(str(job.id))
+            with WorkloadConcurrencyGate.acquire(workload_class):
+                process_ingestion_pipeline(str(job.id))
             doc.refresh_from_db()
             job.refresh_from_db()
         else:
-            task: Any = process_document_job
-            task.delay(str(job.id))
+            dispatch_job_to_celery(job)
 
         return doc, job
 
@@ -164,7 +204,11 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
                         description=description
                     )
                     job = ZipImportEngine.execute_import(job, request.user)
-                    imported_docs = [e.document for e in job.entries.filter(status='imported') if e.document]
+                    imported_docs = [
+                        e.document
+                        for e in ZipImportEntry.objects.filter(import_job=job, status='imported').select_related('document')
+                        if e.document
+                    ]
                     first_doc = imported_docs[0] if imported_docs else None
                     return Response({
                         'zip_job': ZipImportJobSerializer(job).data,
@@ -173,7 +217,10 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
                         'document': SourceDocumentSerializer(first_doc).data if first_doc else None,
                         'job_id': str(job.id),
                         'status': job.status,
-                        'errors': [{'filename': e.entry_path, 'error': e.error_message} for e in job.entries.filter(status='failed')]
+                        'errors': [
+                            {'filename': e.entry_path, 'error': e.error_message}
+                            for e in ZipImportEntry.objects.filter(import_job=job, status='failed')
+                        ]
                     }, status=status.HTTP_201_CREATED if imported_docs or job.total_entries == 0 else status.HTTP_400_BAD_REQUEST)
                 except ZipSecurityError as e:
                     return Response({'error': str(e), 'category': 'security_violation'}, status=status.HTTP_400_BAD_REQUEST)
@@ -305,18 +352,28 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='bulk-upload')
     def bulk_upload(self, request):
         """
-        Batch upload multiple documents of diverse supported formats.
-        Isolates each document's metadata and extraction to prevent cross-document hallucination.
-        Supports partial success: valid files are ingested even if one malformed file fails.
+        Batch upload up to INGESTION_MAX_BATCH_FILES (100) documents of diverse
+        supported formats with visual vs lightweight queue routing, controlled
+        concurrency, idempotent workspace-scoped deduplication, and per-document
+        failure isolation.
         """
-        uploaded_files = []
-        if 'files' in request.FILES:
-            uploaded_files = request.FILES.getlist('files')
-        elif 'file' in request.FILES:
-            uploaded_files = request.FILES.getlist('file')
+        from django.core.exceptions import RequestDataTooBig, TooManyFilesSent, ValidationError as DjangoValidationError
+        try:
+            uploaded_files = []
+            if 'files' in request.FILES:
+                uploaded_files = request.FILES.getlist('files')
+            elif 'file' in request.FILES:
+                uploaded_files = request.FILES.getlist('file')
+        except (TooManyFilesSent, RequestDataTooBig) as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if not uploaded_files:
             return Response({'error': 'No files provided for bulk upload.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            IngestionBatchService.validate_batch_size(len(uploaded_files))
+        except DjangoValidationError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         workspace_id = request.data.get('workspace')
         if not workspace_id:
@@ -331,6 +388,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
 
         authority_level = int(request.data.get('authority_level', 3))
         description = request.data.get('description', '')
+        deduplicate = str(request.data.get('deduplicate', 'true')).lower() in ('true', '1', 'yes')
 
         import json
         titles_map = {}
@@ -343,55 +401,48 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
 
         base_title = request.data.get('title')
 
-        successful_docs = []
-        failed_files = []
-
-        for idx, file_obj in enumerate(uploaded_files):
-            file_title = None
-            if isinstance(titles_map, dict) and file_obj.name in titles_map:
-                file_title = titles_map[file_obj.name]
-            elif isinstance(titles_map, list) and idx < len(titles_map):
-                file_title = titles_map[idx]
-            elif base_title and len(uploaded_files) == 1:
-                file_title = base_title
-            elif base_title:
-                file_title = f"{base_title} - {file_obj.name}"
-            else:
-                file_title = os.path.splitext(file_obj.name)[0]
-
-            try:
-                doc, job = self._ingest_single_file(
-                    file_obj=file_obj,
-                    workspace=workspace,
-                    collection=collection,
-                    user=request.user,
-                    title=file_title,
-                    description=description,
-                    authority_level=authority_level
-                )
-                successful_docs.append({
-                    'document': SourceDocumentSerializer(doc).data,
-                    'job_id': str(job.id),
-                    'status': doc.status
-                })
-            except Exception as e:
-                failed_files.append({
-                    'filename': file_obj.name,
-                    'error': str(e)
-                })
+        batch_res = IngestionBatchService.create_and_dispatch_batch(
+            files=uploaded_files,
+            workspace=workspace,
+            user=request.user,
+            collection=collection,
+            authority_level=authority_level,
+            description=description,
+            titles_map=titles_map,
+            base_title=base_title,
+            deduplicate=deduplicate,
+        )
+        batch = batch_res['batch']
+        successful_docs = [
+            {
+                'document': SourceDocumentSerializer(entry['document_obj']).data,
+                'job_id': str(entry['job_obj'].id) if entry['job_obj'] is not None else None,
+                'status': entry['document_obj'].status,
+                'workload_class': entry['workload_class'],
+                'deduplicated': entry['deduplicated'],
+                'duplicate_of': entry['duplicate_of'],
+            }
+            for entry in batch_res['successful']
+        ]
+        failed_files = batch_res['failed']
 
         overall_status = 'success' if not failed_files else ('partial_success' if successful_docs else 'failed')
         http_status = status.HTTP_201_CREATED if successful_docs else status.HTTP_400_BAD_REQUEST
 
         return Response({
             'status': overall_status,
+            'batch_id': str(batch.id),
+            'batch_status': batch.status,
+            'visual_jobs_count': batch.visual_jobs_count,
+            'lightweight_jobs_count': batch.lightweight_jobs_count,
+            'skipped_duplicate_count': batch.skipped_duplicate_count,
             'total_count': len(uploaded_files),
             'success_count': len(successful_docs),
             'failed_count': len(failed_files),
             'successful': successful_docs,
             'failed': failed_files,
             'documents': [item['document'] for item in successful_docs],
-            'job_ids': [item['job_id'] for item in successful_docs],
+            'job_ids': [item['job_id'] for item in successful_docs if item['job_id']],
             'document': successful_docs[0]['document'] if successful_docs else None,
             'job_id': successful_docs[0]['job_id'] if successful_docs else None,
             'doc_status': successful_docs[0]['status'] if successful_docs else None
@@ -574,7 +625,8 @@ class ZipImportViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        ws_id = self.request.query_params.get('workspace_id')
+        query_params = getattr(self.request, 'query_params', self.request.GET)
+        ws_id = query_params.get('workspace_id')
         qs = ZipImportJob.objects.filter(workspace__memberships__user=user)
         if ws_id:
             qs = qs.filter(workspace_id=ws_id)

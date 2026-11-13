@@ -488,6 +488,15 @@ export interface ChatMessage {
   retrieval_config?: {
     document_id?: string | null;
     collection_id?: string | null;
+    attached_document?: {
+      filename: string;
+      file_size: number;
+      doc_type: string;
+      pages_count: number;
+      word_count: number;
+      summary: string;
+    };
+    [key: string]: any;
   };
   created_at: string;
 }
@@ -739,10 +748,30 @@ class ApiClient {
     groqApiKey?: string,
     llmModel?: string,
     conversationId?: string,
-    clientMessageId?: string
+    clientMessageId?: string,
+    file?: File
   ) {
     const activeGroqKey = groqApiKey || (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
     const activeModel = llmModel || (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
+
+    if (file) {
+      const formData = new FormData();
+      formData.append('workspace', workspaceId);
+      formData.append('query', query);
+      formData.append('file', file);
+      if (collectionId) formData.append('collection', collectionId);
+      if (documentId) formData.append('document_id', documentId);
+      if (activeGroqKey) formData.append('groq_api_key', activeGroqKey);
+      if (activeModel) formData.append('llm_model', activeModel);
+      if (conversationId) formData.append('conversation_id', conversationId);
+      formData.append('save_conversation', 'true');
+      if (clientMessageId) formData.append('client_message_id', clientMessageId);
+
+      return this.request<GovernedResult & { conversation_id?: string; conversation_title?: string; user_message_id?: string; assistant_message_id?: string }>('/retrieval/query/', {
+        method: 'POST',
+        body: formData
+      });
+    }
 
     return this.request<GovernedResult & { conversation_id?: string; conversation_title?: string; user_message_id?: string; assistant_message_id?: string }>('/retrieval/query/', {
       method: 'POST',
@@ -811,6 +840,7 @@ class ApiClient {
       collectionId?: string;
       groqApiKey?: string;
       llmModel?: string;
+      file?: File;
     }
   ): Promise<{
     conversation_id: string;
@@ -821,12 +851,29 @@ class ApiClient {
   }> {
     const activeGroqKey = options?.groqApiKey || (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
     const activeModel = options?.llmModel || (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
+    const clientMessageId = options?.clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+    if (options?.file) {
+      const formData = new FormData();
+      formData.append('query', query);
+      formData.append('client_message_id', clientMessageId);
+      formData.append('file', options.file);
+      if (options.documentId) formData.append('document_id', options.documentId);
+      if (options.collectionId) formData.append('collection_id', options.collectionId);
+      if (activeGroqKey) formData.append('groq_api_key', activeGroqKey);
+      if (activeModel) formData.append('llm_model', activeModel);
+
+      return this.request(`/decisions/conversations/${conversationId}/messages/`, {
+        method: 'POST',
+        body: formData
+      });
+    }
 
     return this.request(`/decisions/conversations/${conversationId}/messages/`, {
       method: 'POST',
       body: JSON.stringify({
         query,
-        client_message_id: options?.clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        client_message_id: clientMessageId,
         document_id: options?.documentId,
         collection_id: options?.collectionId,
         groq_api_key: activeGroqKey,
