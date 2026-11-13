@@ -126,7 +126,9 @@ def _source_files(root: Path) -> list[Path]:
                     raise SystemExit(f"{entry} is a special file")
             except (OSError, RuntimeError) as exc:
                 raise SystemExit(f"Could not read {entry}: {exc}") from exc
-    return sorted(set(files))
+    # Sort by relative POSIX path so Windows Path ordering cannot drift the
+    # build_id away from Linux/macOS (release assemble requires one build_id).
+    return sorted(set(files), key=lambda path: path.relative_to(root).as_posix())
 
 
 def _remove_link(path: Path) -> None:
@@ -224,7 +226,7 @@ def build(
             raise SystemExit("the frontend source changed during the build")
         if not server.is_file():
             raise SystemExit("next build did not produce .next/standalone/server.js")
-        stamp.write_text(build_id, encoding="utf-8")
+        stamp.write_text(build_id, encoding="utf-8", newline="\n")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     staging_root = Path(tempfile.mkdtemp(prefix=".bundle-", dir=out_dir))
@@ -253,7 +255,9 @@ def build(
             "node_major": NODE_MAJOR,
         }
         (staging / "site-manifest.json").write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
         expanded = _expanded_size(staging)
         archive = out_dir / f"lore-site-{version}-{platform_key}.zip"
@@ -274,7 +278,11 @@ def build(
             "expanded_size": expanded,
         }
         meta_path = out_dir / f"lore-site-{version}-{platform_key}.json"
-        meta_path.write_text(json.dumps(entry, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        meta_path.write_text(
+            json.dumps(entry, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
         return {"archive": archive, "meta": meta_path, "entry": entry}
     finally:
         shutil.rmtree(staging_root, ignore_errors=True)
