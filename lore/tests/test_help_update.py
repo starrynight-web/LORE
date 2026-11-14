@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from lore.help_cmd import print_catalog
 from lore.help_cmd import run as run_help
 from lore.update_cmd import invalidate_site_cache, latest_spec
 
 
-def test_help_catalog(capsys) -> None:
+def test_help_catalog(capsys: pytest.CaptureFixture[str]) -> None:
     assert run_help([]) == 0
     err = capsys.readouterr().err
     assert "lore-solo <command>" in err
@@ -17,7 +18,7 @@ def test_help_catalog(capsys) -> None:
     assert "setup" in err
 
 
-def test_help_unknown_command(capsys) -> None:
+def test_help_unknown_command(capsys: pytest.CaptureFixture[str]) -> None:
     assert run_help(["nope"]) == 2
     err = capsys.readouterr().err
     assert "unknown command" in err

@@ -7,9 +7,9 @@ from collections.abc import Callable
 from typing import TextIO
 
 
-def status(message: str, *, stream: TextIO[str] | None = None, force: bool = False) -> None:
+def status(message: str, *, stream: TextIO | None = None, force: bool = False) -> None:
     """Print a status line to stderr when attached to a TTY (or when forced)."""
-    out = stream if stream is not None else sys.stderr
+    out: TextIO = stream if stream is not None else sys.stderr
     if not force and not out.isatty():
         return
     print(message, file=out, flush=True)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from typing import TextIO
 
 COMMANDS: list[tuple[str, str]] = [
     ("install", "Install the lore-solo command on this computer"),
@@ -20,8 +21,8 @@ COMMANDS: list[tuple[str, str]] = [
 ]
 
 
-def print_catalog(*, stream: object | None = None) -> None:
-    out = stream if stream is not None else sys.stderr
+def print_catalog(*, stream: TextIO | None = None) -> None:
+    out: TextIO = stream if stream is not None else sys.stderr
     print("usage: lore-solo <command> [options]", file=out)
     print(file=out)
     print("Commands:", file=out)

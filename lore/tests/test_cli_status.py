@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from lore.cli_status import make_reporter, status
 from lore.setup_cmd import format_banner, print_ready_banner
 
@@ -20,7 +21,7 @@ def test_status_force() -> None:
     assert buf.getvalue() == "hello\n"
 
 
-def test_reporter_and_banner(capsys) -> None:
+def test_reporter_and_banner(capsys: pytest.CaptureFixture[str]) -> None:
     report = make_reporter(force=True)
     report("Downloading setup site…")
     print_ready_banner("test-key", 3000)
