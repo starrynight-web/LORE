@@ -38,6 +38,12 @@ export default function SettingsPage() {
   const [keyBusy, setKeyBusy] = useState(false)
   const [keySaved, setKeySaved] = useState(false)
   const [error, setError] = useState("")
+  const [skillspector, setSkillspector] = useState<{
+    available: boolean
+    path: string
+    install: string
+  } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     api<{ token_budget: number; max_items: number }>("/api/settings")
@@ -45,6 +51,9 @@ export default function SettingsPage() {
         setBudget(String(row.token_budget))
         setItems(String(row.max_items))
       })
+      .catch((exc: Error) => setError(exc.message))
+    api<{ available: boolean; path: string; install: string }>("/api/skillspector")
+      .then((row) => setSkillspector(row))
       .catch((exc: Error) => setError(exc.message))
     api<Provider>("/api/provider")
       .then((row) => {
@@ -270,6 +279,60 @@ export default function SettingsPage() {
                 </div>
               </FieldGroup>
             </form>
+          </CardContent>
+        </Card>
+        <Card className="@3xl/main:col-span-2">
+          <CardHeader>
+            <CardTitle><h2>SkillSpector</h2></CardTitle>
+            <CardDescription>
+              Optional NVIDIA scanner that enriches governance when you approve a skill or role.
+              Lore always runs its built-in ATR rules; SkillSpector adds more findings when it is on PATH.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {skillspector ? (
+              <>
+                <p className="text-sm">
+                  {skillspector.available
+                    ? `Installed${skillspector.path ? ` at ${skillspector.path}` : ""}. Approvals will use it automatically.`
+                    : "Not installed yet. Approvals still work with Lore’s built-in scan."}
+                </p>
+                {!skillspector.available ? (
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="skillspector-install">Install with uv</FieldLabel>
+                      <div className="flex flex-wrap gap-2">
+                        <Input
+                          id="skillspector-install"
+                          readOnly
+                          value={skillspector.install}
+                          className="font-mono text-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(skillspector.install).then(() => {
+                              setCopied(true)
+                              toast.success("Install command copied.")
+                              window.setTimeout(() => setCopied(false), 2000)
+                            })
+                          }}
+                        >
+                          {copied ? "Copied" : "Copy"}
+                        </Button>
+                      </div>
+                      <FieldDescription>
+                        Run that in a terminal, then refresh this page. Or check with{" "}
+                        <span className="font-mono text-xs">lore-solo doctor</span>.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Checking SkillSpector…</p>
+            )}
           </CardContent>
         </Card>
       </div>

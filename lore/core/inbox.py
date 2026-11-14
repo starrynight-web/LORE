@@ -22,6 +22,8 @@ from lore.core.okf import Doc, read_doc, write_doc
 from lore.core.personas import file_slug, write_skill
 
 _MAX_BYTES = 200_000
+_MAX_FOLDER_SKILLS = 50
+_FOLDER_DEPTH = 2
 Opener = Callable[..., Any]
 
 
@@ -78,6 +80,80 @@ def remove_inbox(project: Path, skill_id: str) -> None:
     if not path.is_file():
         raise FileNotFoundError(skill_id)
     path.unlink()
+
+
+def discover_skill_files(root: Path, *, max_depth: int = _FOLDER_DEPTH) -> list[Path]:
+    """Find SKILL.md files under a skills.sh-style folder tree."""
+    base = root.expanduser().resolve()
+    if not base.is_dir():
+        raise ValueError("That path is not a folder.")
+    found: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen or not resolved.is_file() or resolved.is_symlink():
+            return
+        try:
+            resolved.relative_to(base)
+        except ValueError:
+            return
+        seen.add(resolved)
+        found.append(resolved)
+
+    direct = base / "SKILL.md"
+    if direct.is_file():
+        add(direct)
+        return found
+
+    for depth in range(1, max_depth + 1):
+        pattern = "/".join(["*"] * depth) + "/SKILL.md"
+        for path in sorted(base.glob(pattern)):
+            add(path)
+            if len(found) >= _MAX_FOLDER_SKILLS:
+                return found
+    if not found:
+        for path in sorted(base.glob("*.md")):
+            add(path)
+            if len(found) >= _MAX_FOLDER_SKILLS:
+                break
+    return found
+
+
+def add_from_folder(project: Path, folder: Path) -> list[dict[str, str]]:
+    """Import every discovered skill under `folder` into the inbox."""
+    files = discover_skill_files(Path(folder))
+    if not files:
+        raise ValueError(
+            "No skill files were found. Choose a folder that contains SKILL.md "
+            "(or a parent of several skill folders)."
+        )
+    saved: list[dict[str, str]] = []
+    errors: list[str] = []
+    for path in files:
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            errors.append(path.name)
+            continue
+        label = path.parent.name if path.name.lower() == "skill.md" else path.name
+        try:
+            row = add_text(
+                project,
+                label,
+                content,
+                source=f"local:{path.parent.name}",
+            )
+        except ValueError:
+            errors.append(path.name)
+            continue
+        saved.append(row)
+    if not saved:
+        raise ValueError(
+            "Those folders could not be read as skills"
+            + (f" ({', '.join(errors[:3])})" if errors else ".")
+        )
+    return saved
 
 
 def adopt_inbox(project: Path, persona: str, only: list[str] | None = None) -> list[str]:

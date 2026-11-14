@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.2 — 2026-11-14
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+### Added
+
+- `lore-solo help` and `lore-solo update`: command catalog plus PyPI upgrade
+  that refreshes the cached setup site.
+- Setup status lines while the dashboard downloads and starts, with a labeled
+  banner explaining the local URL (URL still alone on stdout for scripts).
+- Local skill import: multi-file pick, bulk folder import for skills.sh-style
+  `SKILL.md` trees, and “Add selected” when only waiting local skills exist.
+- Search filters for saved and waiting skills; list descriptions clamped to
+  two lines.
+- Settings: SkillSpector status and copyable install command; governance
+  badge when a scan used SkillSpector.
+
 ## 0.2.1 — 2026-11-12
 
 GitHub release artifacts are produced by the tag-triggered release workflow

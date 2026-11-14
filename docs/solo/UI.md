@@ -23,11 +23,11 @@ A new library opens a welcome dialog over the dashboard. Outside clicks and Esca
 | `/` | `web/app/page.tsx` | Call counts, top agents, personas, and skills, plus recent calls |
 | `/personas` | `web/app/personas/page.tsx` | Create, list, and delete personas |
 | `/personas/[id]` | `web/app/personas/[id]/page.tsx` | Edit one persona, open its skills, approve, and add a skill |
-| `/skills` | `web/app/skills/page.tsx` | Search skills.sh, add a file, create, list, and delete skills |
+| `/skills` | `web/app/skills/page.tsx` | Search saved skills, add from skills.sh or local files/folders, list, and delete skills |
 | `/skills/[...id]` | `web/app/skills/[...id]/page.tsx` | Read and edit one skill |
 | `/codebase` | `web/app/codebase/page.tsx` | Add, list, and delete codebases |
 | `/codebase/[id]` | `web/app/codebase/[id]/page.tsx` | Rename a codebase, build its map, and read the links |
-| `/settings` | `web/app/settings/page.tsx` | Token budget, max items, provider key, and draft model |
+| `/settings` | `web/app/settings/page.tsx` | Token budget, max items, provider key, draft model, and SkillSpector status |
 | `/locked` | `web/app/locked/page.tsx` | Shown when the setup key cookie is missing. No sidebar |
 
 The shell is `web/components/Shell.tsx`. The sidebar links are `web/components/app-sidebar.tsx`. The header and breadcrumb are `web/components/site-header.tsx`. `/locked` does not use the shell.

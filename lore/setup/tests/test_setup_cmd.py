@@ -283,13 +283,16 @@ def test_banner_prints_after_readiness(
 
     monkeypatch.setattr(setup_cmd, "start_processes", fake_start)
     monkeypatch.setattr(setup_cmd, "_wait_ready", fake_ready)
-    monkeypatch.setattr(setup_cmd, "_resolve_site", lambda _b, _o: setup_cmd._Site())
+    monkeypatch.setattr(
+        setup_cmd, "_resolve_site", lambda _b, _o, **_kw: setup_cmd._Site()
+    )
     monkeypatch.setenv("LORE_SETUP_KEY", "k3y")
     monkeypatch.delenv("LORE_WEB_PORT", raising=False)
     with pytest.raises(SystemExit):
         setup_cmd.run([])
-    out = capsys.readouterr().out
-    assert "http://127.0.0.1:3000/?key=k3y" in out
+    captured = capsys.readouterr()
+    assert "http://127.0.0.1:3000/?key=k3y" in captured.out
+    assert "Lore setup dashboard" in captured.err
     assert order == ["start", "ready"]
 
 
@@ -301,7 +304,9 @@ def test_child_exit_zero_is_unexpected(
     monkeypatch.setattr(
         setup_cmd, "_wait_ready", lambda *a, **kw: setattr(proc, "code", 0)
     )
-    monkeypatch.setattr(setup_cmd, "_resolve_site", lambda _b, _o: setup_cmd._Site())
+    monkeypatch.setattr(
+        setup_cmd, "_resolve_site", lambda _b, _o, **_kw: setup_cmd._Site()
+    )
     monkeypatch.setenv("LORE_SETUP_KEY", "k")
     with pytest.raises(SystemExit) as exc:
         setup_cmd.run([])
@@ -319,7 +324,9 @@ def test_ctrlc_during_readiness_still_cleans_up(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(setup_cmd, "_wait_ready", interrupt)
-    monkeypatch.setattr(setup_cmd, "_resolve_site", lambda _b, _o: setup_cmd._Site())
+    monkeypatch.setattr(
+        setup_cmd, "_resolve_site", lambda _b, _o, **_kw: setup_cmd._Site()
+    )
     monkeypatch.setenv("LORE_SETUP_KEY", "k")
     setup_cmd.run([])
     assert proc.terminated is True or proc.killed is True
@@ -328,7 +335,7 @@ def test_ctrlc_during_readiness_still_cleans_up(
 def test_site_error_becomes_clean_exit(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def fail(_b: object, _o: object) -> setup_cmd._Site:
+    def fail(_b: object, _o: object, **_kw: object) -> setup_cmd._Site:
         raise SiteError("no published setup site for linux-amd64")
 
     monkeypatch.setattr(setup_cmd, "_resolve_site", fail)
@@ -380,7 +387,8 @@ def test_offline_flag_passes_through(
     monkeypatch.setattr(
         setup_cmd,
         "_resolve_site",
-        lambda bundle, offline: seen.update(bundle=bundle, offline=offline) or setup_cmd._Site(),
+        lambda bundle, offline, **_kw: seen.update(bundle=bundle, offline=offline)
+        or setup_cmd._Site(),
     )
     monkeypatch.setattr(setup_cmd, "start_processes", lambda _k, **_kw: [])
     monkeypatch.setenv("LORE_SETUP_KEY", "k")
@@ -396,7 +404,9 @@ def test_web_port_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
         "start_processes",
         lambda _k, **kw: seen.update(kw) or [],
     )
-    monkeypatch.setattr(setup_cmd, "_resolve_site", lambda _b, _o: setup_cmd._Site())
+    monkeypatch.setattr(
+        setup_cmd, "_resolve_site", lambda _b, _o, **_kw: setup_cmd._Site()
+    )
     monkeypatch.setenv("LORE_SETUP_KEY", "k")
     monkeypatch.setenv("LORE_WEB_PORT", "4100")
     setup_cmd.run([])

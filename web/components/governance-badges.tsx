@@ -17,6 +17,7 @@ export function GovernanceBadges({ governance }: { governance?: GovernanceSummar
   return (
     <span className="inline-flex flex-wrap gap-1">
       <Badge variant={scanVariant}>{scanLabel}</Badge>
+      {governance.skillspector ? <Badge variant="outline">skillspector</Badge> : null}
       {governance.freshness === "aging" ? <Badge variant="outline">fresh:aging</Badge> : null}
       {governance.accepted_risk ? <Badge variant="outline">risk accepted</Badge> : null}
     </span>

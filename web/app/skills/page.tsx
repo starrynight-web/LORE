@@ -24,6 +24,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+function matchesQuery(title: string, summary: string, query: string) {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return title.toLowerCase().includes(needle) || summary.toLowerCase().includes(needle)
+}
+
 export default function SkillsPage() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [waiting, setWaiting] = useState<WaitingSkill[]>([])
@@ -31,6 +37,7 @@ export default function SkillsPage() {
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [accepting, setAccepting] = useState<WaitingSkill | null>(null)
+  const [filter, setFilter] = useState("")
 
   function reload() {
     api<{ skills: Skill[]; waiting: WaitingSkill[] }>("/api/skills")
@@ -61,6 +68,9 @@ export default function SkillsPage() {
     reload()
   }
 
+  const visibleWaiting = waiting.filter((skill) => matchesQuery(skill.title, skill.summary || "", filter))
+  const visibleSkills = skills.filter((skill) => matchesQuery(skill.title, skill.summary || "", filter))
+
   return (
     <Shell>
       <ErrorAlert message={error} />
@@ -73,16 +83,27 @@ export default function SkillsPage() {
           Add skill
         </Button>
       </div>
+      <div className="max-w-md">
+        <Input
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Search saved skills"
+          aria-label="Search saved skills"
+        />
+      </div>
       {waiting.length > 0 ? (
         <section className="flex flex-col gap-3">
           <h2 className="text-base font-medium">Waiting for a role</h2>
+          {visibleWaiting.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No waiting skills match that search.</p>
+          ) : null}
           <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-            {waiting.map((skill) => (
+            {visibleWaiting.map((skill) => (
               <Card key={skill.id}>
                 <CardHeader>
                   <Badge variant="outline">waiting</Badge>
                   <CardTitle>{skill.title}</CardTitle>
-                  <CardDescription>{skill.summary || "No summary yet."}</CardDescription>
+                  <CardDescription className="line-clamp-2">{skill.summary || "No summary yet."}</CardDescription>
                 </CardHeader>
                 <CardFooter className="gap-2">
                   <Button type="button" onClick={() => setAccepting(skill)}>
@@ -100,8 +121,11 @@ export default function SkillsPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium">Saved skills</h2>
         {skills.length === 0 ? <p className="text-sm text-muted-foreground">No skills are filed under a role yet.</p> : null}
+        {skills.length > 0 && visibleSkills.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No saved skills match that search.</p>
+        ) : null}
         <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-          {skills.map((skill) => (
+          {visibleSkills.map((skill) => (
             <Card key={skill.id}>
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
@@ -111,7 +135,7 @@ export default function SkillsPage() {
                 <CardTitle>
                   <Link href={skillHref(skill.id)} className="hover:underline">{skill.title}</Link>
                 </CardTitle>
-                <CardDescription>{skill.summary || "No summary yet."}</CardDescription>
+                <CardDescription className="line-clamp-2">{skill.summary || "No summary yet."}</CardDescription>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
                 {skill.persona ? <Link href={personaHref(skill.persona)} className="hover:underline">{skill.persona.replace(/^persona:/, "")}</Link> : "No role yet"}

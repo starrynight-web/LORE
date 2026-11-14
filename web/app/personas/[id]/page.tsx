@@ -32,6 +32,7 @@ export default function PersonaPage() {
   const [blockFindings, setBlockFindings] = useState<GovernanceFinding[]>([])
   const [blockedItem, setBlockedItem] = useState("")
   const [acceptNote, setAcceptNote] = useState("")
+  const [skillFilter, setSkillFilter] = useState("")
 
   function reload() {
     api<Persona>(`/api/personas/${encodeURIComponent(id)}`)
@@ -170,8 +171,27 @@ export default function PersonaPage() {
           <section className="flex flex-col gap-3">
             <h2 className="text-base font-medium">Skills this persona uses</h2>
             {(persona.skills ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No skills filed under this persona yet.</p> : null}
+            {(persona.skills ?? []).length > 0 ? (
+              <div className="max-w-md">
+                <Input
+                  value={skillFilter}
+                  onChange={(event) => setSkillFilter(event.target.value)}
+                  placeholder="Search skills"
+                  aria-label="Search skills for this persona"
+                />
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-              {(persona.skills ?? []).map((skill: Skill) => (
+              {(persona.skills ?? [])
+                .filter((skill: Skill) => {
+                  const needle = skillFilter.trim().toLowerCase()
+                  if (!needle) return true
+                  return (
+                    skill.title.toLowerCase().includes(needle) ||
+                    (skill.summary || "").toLowerCase().includes(needle)
+                  )
+                })
+                .map((skill: Skill) => (
                 <Card key={skill.id}>
                   <CardHeader>
                     <div className="flex flex-wrap items-center gap-2">
@@ -181,7 +201,7 @@ export default function PersonaPage() {
                     <CardTitle>
                       <Link href={skillHref(skill.id)} className="hover:underline">{skill.title}</Link>
                     </CardTitle>
-                    <CardDescription>{skill.summary || "No summary yet."}</CardDescription>
+                    <CardDescription className="line-clamp-2">{skill.summary || "No summary yet."}</CardDescription>
                   </CardHeader>
                   <CardFooter className="gap-2">
                     <Button variant="outline" nativeButton={false} render={<Link href={skillHref(skill.id)} />}>Open skill</Button>

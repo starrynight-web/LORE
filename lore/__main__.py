@@ -1,4 +1,4 @@
-"""`lore-solo install`, `setup`, `uninstall`, `connect`, `container`, `mcp`, `map`, `doctor`, and `govern`."""
+"""`lore-solo` command router."""
 
 from __future__ import annotations
 
@@ -8,17 +8,20 @@ from pathlib import Path
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if not args or args[0] in {"-h", "--help"}:
-        print(
-            "usage: lore-solo install|setup|uninstall|connect|container|mcp|map|doctor|govern",
-            file=sys.stderr,
-        )
-        return 0
+    if not args or args[0] in {"-h", "--help", "help"}:
+        from lore.help_cmd import run as run_help
+
+        return run_help([] if not args or args[0] in {"-h", "--help"} else args[1:])
     command, rest = args[0], args[1:]
     if command == "install":
         from lore.install_cmd import run as run_install
 
         run_install(rest)
+        return 0
+    if command == "update":
+        from lore.update_cmd import run as run_update
+
+        run_update(rest)
         return 0
     if command == "setup":
         from lore.setup_cmd import run as run_setup
@@ -58,11 +61,10 @@ def main(argv: list[str] | None = None) -> int:
         from lore.govern_cmd import run as run_govern
 
         return run_govern(rest)
-    print(
-        "unknown command "
-        f"{command!r}; use install, setup, uninstall, connect, container, mcp, map, doctor, or govern",
-        file=sys.stderr,
-    )
+    from lore.help_cmd import print_catalog
+
+    print_catalog()
+    print(f"\nunknown command {command!r}", file=sys.stderr)
     return 2
 
 

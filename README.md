@@ -22,7 +22,7 @@ The older architecture documents describe the previous Go design.
 Check the machine first (works before install, via PyPI):
 
 ```bash
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.1 doctor
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.2 doctor
 ```
 
 `--managed-python --python 3.12` selects a managed Python 3.12 interpreter before dependencies are resolved, and `--no-build` accepts prebuilt binary wheels only — nothing compiles on your machine.
@@ -34,14 +34,14 @@ From a clone: `./scripts/lore-solo doctor` or `.\scripts\lore-solo.ps1 doctor`. 
 The setup site needs Node.js 22 (the prebuilt page is produced and verified on the Node 22 line; npm is only needed when building the page from source). The agent needs neither. With [uv](https://docs.astral.sh/uv/) installed, the same commands work on macOS, Linux, and Windows:
 
 ```bash
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.1 doctor
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.1 install
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.2 doctor
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.2 install
 lore-solo setup
 ```
 
 `install` puts the `lore-solo` command on this computer, in `~/.lore/bin` (the install prefix), so after installing you call `lore-solo` directly — via `~/.lore/bin/lore-solo` or wherever your PATH exposes it — instead of going through `uvx` each time. Personas live in the OS library (`~/.local/share/lore`, macOS Application Support, or `%APPDATA%\Lore`), not under that prefix. Install pins every dependency from the packaged constraints and accepts binary wheels only — nothing compiles on your machine. The optional map extra (Graphify and its tree-sitter grammars) is tried first; when its wheels do not cover the platform, core Lore still installs so personas and MCP work, and the output says exactly what was skipped. Use `lore-solo install --no-map` to skip map, or `lore-solo install --map` to require it. Lore never downloads a C toolchain.
 
-`setup` prints an address and keeps running until you press Ctrl+C. Open that link. Run `lore-solo setup` again whenever you want the website back. Save a provider key, add skills, create a persona, then give the connect prompt to your agent. Personas you write stay drafts until you approve them. `lore-solo uninstall` removes that command. Personas, skills, and editor registrations stay.
+`setup` prints status while the dashboard starts, then a labeled local URL, and keeps running until you press Ctrl+C. Open that link. Run `lore-solo setup` again whenever you want the website back. `lore-solo help` lists commands; `lore-solo update` upgrades from PyPI and refreshes the cached setup site. Save a provider key, add skills, create a persona, then give the connect prompt to your agent. Personas you write stay drafts until you approve them. `lore-solo uninstall` removes that command. Personas, skills, and editor registrations stay.
 
 Once installed, the same subcommands run through `lore-solo` (`uvx lore-solo ...` also works for one-shot calls — the examples below show the command shape):
 
@@ -53,15 +53,15 @@ lore-solo map
 lore-solo uninstall
 ```
 
-Native installs are the supported path, with release targets of Windows x86_64, glibc Linux x86_64, and macOS arm64. A source checkout carries an intentionally **empty** `lore/site_bundles.json` — it is a placeholder, not a release manifest. The release workflow builds and smoke-tests the per-platform site archives, then generates the pinned manifest inside the release wheel — only that released package can auto-download the setup site (see [docs/solo/RELEASING.md](docs/solo/RELEASING.md)). Passing `setup --site-bundle <zip>` performs integrity and format validation, but without a pinned manifest entry it is **not** release-verified; combine it with `--offline` to avoid downloads. Checkouts can also run the site from their own `web/` build. The `lore-solo==0.2.1` install examples above work once that version is published to PyPI; the release packages and assets ship only after the native platform matrix and the Docker image gates pass — see the repository's [Actions](https://github.com/starrynight-web/LORE/actions) and [Releases](https://github.com/starrynight-web/LORE/releases) pages for current evidence.
+Native installs are the supported path, with release targets of Windows x86_64, glibc Linux x86_64, and macOS arm64. A source checkout carries an intentionally **empty** `lore/site_bundles.json` — it is a placeholder, not a release manifest. The release workflow builds and smoke-tests the per-platform site archives, then generates the pinned manifest inside the release wheel — only that released package can auto-download the setup site (see [docs/solo/RELEASING.md](docs/solo/RELEASING.md)). Passing `setup --site-bundle <zip>` performs integrity and format validation, but without a pinned manifest entry it is **not** release-verified; combine it with `--offline` to avoid downloads. Checkouts can also run the site from their own `web/` build. The `lore-solo==0.2.2` install examples above work once that version is published to PyPI; the release packages and assets ship only after the native platform matrix and the Docker image gates pass — see the repository's [Actions](https://github.com/starrynight-web/LORE/actions) and [Releases](https://github.com/starrynight-web/LORE/releases) pages for current evidence.
 
 ### Containers (optional)
 
 A container runtime exists for hosts where you would rather keep Lore's toolchain (Node, map dependencies) inside an image. The `lore-solo` Python launcher on the host still drives `container` and `connect` — it is what editors spawn. No official image is published — build the local versioned tags yourself:
 
 ```bash
-docker build --target mcp  -t lore-solo:0.2.1-mcp .
-docker build --target full -t lore-solo:0.2.1-full .
+docker build --target mcp  -t lore-solo:0.2.2-mcp .
+docker build --target full -t lore-solo:0.2.2-full .
 ```
 
 The `mcp` target holds the installed wheel plus map dependencies under the packaged constraints — no Node, npm, or compilers. The `full` target adds Node 22 and the prebuilt setup site. A default build always compiles the wheel and frontend from source and ignores whatever happens to be in `dist/`. Release builds opt in explicitly: place the verified artifacts under `dist/` (`dist/lore_solo-*.whl`, `dist/release_constraints.txt`, `dist/site/lore-site-<version>-linux-amd64.zip`) and pass `--build-arg LORE_RELEASE_ARTIFACTS=1`; the build then fails closed unless the constraints match the wheel and the site archive satisfies the pinned linux-amd64 manifest entry. Verified locally against rootless Podman; Docker Engine and Docker Desktop specifics are covered by argument tests, not local runs.
@@ -69,15 +69,15 @@ The `mcp` target holds the installed wheel plus map dependencies under the packa
 Run Lore inside the image with exactly two writable bind mounts — a workspace and a persona library, both of which must exist:
 
 ```bash
-lore-solo container mcp   --image lore-solo:0.2.1-mcp  --workspace ~/code/app --library ~/.local/share/lore
-lore-solo container setup --image lore-solo:0.2.1-full --workspace ~/code/app --library ~/.local/share/lore --port 3000
-lore-solo container map   --image lore-solo:0.2.1-mcp  --workspace ~/code/app --library ~/.local/share/lore
+lore-solo container mcp   --image lore-solo:0.2.2-mcp  --workspace ~/code/app --library ~/.local/share/lore
+lore-solo container setup --image lore-solo:0.2.2-full --workspace ~/code/app --library ~/.local/share/lore --port 3000
+lore-solo container map   --image lore-solo:0.2.2-mcp  --workspace ~/code/app --library ~/.local/share/lore
 ```
 
 Only those two directories cross the boundary — no home directory, socket, or other host paths — and the setup page is published on `127.0.0.1` only. On Linux the container runs as your UID/GID so files it writes stay owned by you. Under Docker Desktop on Windows/macOS the image's own user is used instead, and workspace/library paths may come from the VM's view of your files. Connect the editors from the host so the configs point back at the container:
 
 ```bash
-lore-solo connect --runtime docker --image lore-solo:0.2.1-mcp \
+lore-solo connect --runtime docker --image lore-solo:0.2.2-mcp \
   --workspace ~/code/app --library ~/.local/share/lore
 ```
 

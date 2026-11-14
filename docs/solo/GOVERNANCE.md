@@ -63,6 +63,8 @@ lore-solo doctor   # includes SkillSpector + knowledge counts
 uv tool install git+https://github.com/NVIDIA/skillspector.git
 ```
 
+The setup site Settings page shows whether SkillSpector is on `PATH` and offers the same install command to copy. Approvals use it automatically when present; Lore’s built-in ATR scan always runs.
+
 ## Standards
 
 - Detection rules: [Agent Threat Rules](https://github.com/Agent-Threat-Rule/agent-threat-rules) (MIT; see `lore/core/governance/rules/NOTICE`)

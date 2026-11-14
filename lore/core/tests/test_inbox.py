@@ -7,7 +7,14 @@ from pathlib import Path
 from typing import Self
 
 import pytest
-from lore.core.inbox import add_from_registry, add_text, adopt_inbox, search_registry
+from lore.core.inbox import (
+    add_from_folder,
+    add_from_registry,
+    add_text,
+    adopt_inbox,
+    discover_skill_files,
+    search_registry,
+)
 from lore.core.personas import find_persona, write_persona
 from lore.core.workspace import init_workspace
 
@@ -116,3 +123,39 @@ def test_registry_uses_the_skills_page_when_the_file_is_not_on_github(tmp_path: 
 def test_registry_refuses_a_source_that_is_not_a_github_repo(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="skills.sh"):
         add_from_registry(tmp_path, "https://evil.example/x", "react", lambda *_args: None)
+
+
+def test_discover_and_import_skill_folders(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    root = tmp_path / "skills"
+    first = root / "round-widgets"
+    second = root / "square-widgets"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    (first / "SKILL.md").write_text(
+        "---\nname: Round widgets\ndescription: Prefer round.\n---\nKeep them round.\n",
+        encoding="utf-8",
+    )
+    (second / "SKILL.md").write_text(
+        "---\nname: Square widgets\ndescription: Prefer square.\n---\nKeep them square.\n",
+        encoding="utf-8",
+    )
+    found = discover_skill_files(root)
+    assert len(found) == 2
+    saved = add_from_folder(tmp_path, root)
+    assert {row["title"] for row in saved} == {"Round widgets", "Square widgets"}
+    assert (tmp_path / ".lore" / "inbox" / "round-widgets.md").is_file()
+    assert (tmp_path / ".lore" / "inbox" / "square-widgets.md").is_file()
+
+
+def test_import_single_skill_folder(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    folder = tmp_path / "ai-video-generation"
+    folder.mkdir()
+    (folder / "SKILL.md").write_text(
+        "---\nname: AI video\ndescription: Make clips.\n---\nUse Veo.\n",
+        encoding="utf-8",
+    )
+    saved = add_from_folder(tmp_path, folder)
+    assert len(saved) == 1
+    assert saved[0]["title"] == "AI video"

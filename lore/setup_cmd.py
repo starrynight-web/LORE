@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from lore import __version__
+from lore.cli_status import make_reporter, status
 from lore.site_bundle import (
     SiteError,
     ensure_site,
@@ -37,7 +38,25 @@ class _Site:
 
 
 def format_banner(key: str, port: int = 3000) -> str:
+    """Machine-friendly setup URL (stdout). Scripts may capture this line alone."""
     return f"http://127.0.0.1:{port}/?key={key}"
+
+
+def print_ready_banner(key: str, port: int = 3000) -> None:
+    """Human-readable setup status on stderr; URL on stdout."""
+    url = format_banner(key, port)
+    log_path = Path.home() / ".lore" / "setup.log"
+    status("Ready.", force=True)
+    status(
+        f"Lore setup dashboard (lore-solo {__version__})",
+        force=True,
+    )
+    status(
+        "Open this link in your browser. Press Ctrl+C to stop.",
+        force=True,
+    )
+    status(f"Logs: {log_path}", force=True)
+    print(url, flush=True)
 
 
 def serve_api() -> None:
@@ -84,7 +103,12 @@ def _standalone_current(web: Path, server: Path) -> bool:
     return stamp.read_text(encoding="utf-8").strip() == current
 
 
-def _resolve_site(site_bundle: Path | None, offline: bool) -> _Site:
+def _resolve_site(
+    site_bundle: Path | None,
+    offline: bool,
+    *,
+    on_status: Any = None,
+) -> _Site:
     """Pick the standalone server or a source-dev directory."""
     env_dir = os.environ.get("LORE_WEB_DIR", "").strip()
     if env_dir:
@@ -101,7 +125,9 @@ def _resolve_site(site_bundle: Path | None, offline: bool) -> _Site:
             f"LORE_WEB_DIR={env_dir} has neither a standalone server.js nor a package.json."
         )
     if site_bundle is not None:
-        resolved = ensure_site(site_bundle=site_bundle, offline=offline)
+        resolved = ensure_site(
+            site_bundle=site_bundle, offline=offline, on_status=on_status
+        )
         return _Site(server=resolved.server, note=resolved.note)
     web = _web_dir()
     standalone = web / ".next" / "standalone" / "server.js"
@@ -109,7 +135,7 @@ def _resolve_site(site_bundle: Path | None, offline: bool) -> _Site:
         return _Site(server=standalone)
     if (web / "package.json").is_file():
         return _Site(dev_dir=web)
-    resolved = ensure_site(offline=offline)
+    resolved = ensure_site(offline=offline, on_status=on_status)
     return _Site(server=resolved.server, note=resolved.note)
 
 
@@ -188,7 +214,11 @@ def _wait_ready(
     key: str,
     procs: list[subprocess.Popen[bytes]],
     timeout: float = STARTUP_TIMEOUT,
+    *,
+    on_status: Any = None,
 ) -> None:
+    if on_status is not None:
+        on_status("Waiting for setup site…")
     browse_root = os.environ.get("LORE_WORKSPACE", "") if _container() else ""
     browse = urllib.parse.quote(browse_root or str(Path.home()))
     api_url = f"http://127.0.0.1:{api_port}/api/browse?path={browse}"
@@ -217,6 +247,7 @@ def start_processes(
     *,
     site: _Site | None = None,
     port: int = 3000,
+    on_status: Any = None,
 ) -> list[subprocess.Popen[bytes]]:
     env = os.environ.copy()
     env["LORE_SETUP_KEY"] = key
@@ -227,8 +258,12 @@ def start_processes(
     node = _require_node()
     log = _setup_log()
     try:
+        if on_status is not None:
+            on_status("Starting API…")
         api = _spawn([sys.executable, "-m", "lore.setup_cmd", "--serve-api"], cwd=None, env=env, log=log)
         try:
+            if on_status is not None:
+                on_status("Starting web…")
             web = _start_web(env, log, site, port, node)
         except BaseException:
             _stop([api])
@@ -302,14 +337,16 @@ def run(argv: list[str] | None = None) -> None:
             raise KeyboardInterrupt
 
         previous_break = signal.signal(break_signal, _break)
+    report = make_reporter()
     try:
-        site = _resolve_site(args.site_bundle, args.offline)
-        children = start_processes(key, site=site, port=port)
+        status(f"Lore setup (lore-solo {__version__})", force=True)
+        site = _resolve_site(args.site_bundle, args.offline, on_status=report)
+        children = start_processes(key, site=site, port=port, on_status=report)
         if children:
-            _wait_ready(port, API_PORT, key, children)
+            _wait_ready(port, API_PORT, key, children, on_status=report)
         if site.note:
             print(site.note, file=sys.stderr)
-        print(format_banner(key, port), flush=True)
+        print_ready_banner(key, port)
         if not children:
             return
         log_path = Path.home() / ".lore" / "setup.log"

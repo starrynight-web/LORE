@@ -31,7 +31,7 @@ class ContainerError(Exception):
 def _validate_image(image: str) -> str:
     name = image.strip()
     if not name or name.startswith("-"):
-        raise ContainerError("an image name is required, for example lore-solo:0.2.1-mcp")
+        raise ContainerError("an image name is required, for example lore-solo:0.2.2-mcp")
     tail = name.rsplit("/", 1)[-1]
     if "@" in tail:
         digest = tail.rsplit("@", 1)[-1]
@@ -41,12 +41,12 @@ def _validate_image(image: str) -> str:
     if ":" not in tail or not tail.rsplit(":", 1)[-1]:
         raise ContainerError(
             f"image {image} has no tag or digest; use a versioned tag like "
-            "lore-solo:0.2.1-mcp"
+            "lore-solo:0.2.2-mcp"
         )
     if tail.rsplit(":", 1)[-1] == "latest":
         raise ContainerError(
             "the :latest tag is not allowed; use a versioned tag like "
-            "lore-solo:0.2.1-mcp"
+            "lore-solo:0.2.2-mcp"
         )
     return name
 

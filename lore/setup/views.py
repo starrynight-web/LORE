@@ -29,6 +29,7 @@ from lore.core.config import load_config, save_config
 from lore.core.decisions import list_decisions
 from lore.core.graph import html_current, summarize
 from lore.core.inbox import (
+    add_from_folder,
     add_from_registry,
     add_text,
     adopt_inbox,
@@ -205,7 +206,12 @@ def health(_request: HttpRequest) -> JsonResponse:
 def pick_folder_view(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         raise ApiError(405, "Use POST to choose a folder.")
-    chosen = pick_folder()
+    payload = _json(request)
+    title = "Choose a project folder"
+    raw_title = str(payload.get("title") or "").strip()
+    if raw_title:
+        title = raw_title[:120]
+    chosen = pick_folder(title=title)
     name = Path(chosen).name if chosen else ""
     return JsonResponse({"path": chosen, "name": name})
 
@@ -471,6 +477,24 @@ def inbox(request: HttpRequest) -> JsonResponse:
 
 
 @_api
+def inbox_from_folder(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        raise ApiError(405, "Use POST to import skills from a folder.")
+    payload = _json(request)
+    raw = str(payload.get("path") or "").strip()
+    if not raw:
+        raise ApiError(400, "Choose a folder that contains skills.")
+    folder = _allowed(raw)
+    if not folder.is_dir():
+        raise ApiError(400, "That path is not a folder.")
+    try:
+        saved = add_from_folder(_project(request), folder)
+    except ValueError as exc:
+        raise ApiError(400, str(exc)) from exc
+    return JsonResponse({"skills": saved, "count": len(saved)}, status=201)
+
+
+@_api
 def inbox_remove(request: HttpRequest, skill_id: str) -> JsonResponse:
     if request.method != "DELETE":
         raise ApiError(405, "Use DELETE to remove a waiting skill.")
@@ -602,6 +626,22 @@ def settings_view(request: HttpRequest) -> JsonResponse:
         raise ApiError(400, "token_budget and max_items must be whole numbers.") from exc
     saved = save_config(lore, budget, items)
     return JsonResponse(saved)
+
+
+@_api
+def skillspector_status(request: HttpRequest) -> JsonResponse:
+    if request.method != "GET":
+        raise ApiError(405, "Use GET to check SkillSpector.")
+    from lore.core.governance import skillspector
+
+    path = skillspector.skillspector_path()
+    return JsonResponse(
+        {
+            "available": path is not None,
+            "path": path or "",
+            "install": "uv tool install git+https://github.com/NVIDIA/skillspector.git",
+        }
+    )
 
 
 @_api

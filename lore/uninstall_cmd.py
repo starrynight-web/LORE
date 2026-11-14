@@ -50,7 +50,17 @@ def _uv_missing(stderr: str, stdout: str) -> bool:
 
 
 def run(argv: list[str] | None = None) -> None:
-    del argv
+    args = list(argv or [])
+    if args and args[0] in {"-h", "--help"}:
+        print(
+            "usage: lore-solo uninstall\n"
+            "  Remove the lore-solo command. Personas, skills, and editor\n"
+            "  registrations stay on this computer.",
+            file=sys.stderr,
+        )
+        return
+    if args:
+        raise SystemExit(f"unknown uninstall option: {args[0]}")
     home = prefix()
     uv = find_uv()
     uv_removed = False

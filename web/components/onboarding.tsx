@@ -57,6 +57,7 @@ export function Onboarding({
 }) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>(startStep(panel, initial.step))
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
@@ -80,10 +81,19 @@ export function Onboarding({
   const [codeName, setCodeName] = useState("")
   const [codePath, setCodePath] = useState("")
   const [savedPersona, setSavedPersona] = useState(false)
+  const [waitingFilter, setWaitingFilter] = useState("")
 
   const index = Math.max(0, ORDER.indexOf(step))
   const shown = results ?? featured
   const dismissible = panel !== "wizard"
+  const filteredWaiting = waiting.filter((skill) => {
+    const needle = waitingFilter.trim().toLowerCase()
+    if (!needle) return true
+    return (
+      skill.title.toLowerCase().includes(needle) ||
+      (skill.summary || "").toLowerCase().includes(needle)
+    )
+  })
 
   useEffect(() => {
     const node = panelRef.current
@@ -196,6 +206,42 @@ export function Onboarding({
     setWaiting((current) => [...current.filter((item) => item.id !== saved.id), saved])
   }
 
+  async function addFiles(files: FileList | File[]) {
+    const list = Array.from(files)
+    for (const file of list) {
+      await addFile(file)
+    }
+  }
+
+  async function addFolderFromDisk() {
+    setError("")
+    setBusy(true)
+    try {
+      const pickedFolder = await api<{ path: string; name: string }>("/api/pick-folder", {
+        method: "POST",
+        body: JSON.stringify({ title: "Choose a skills folder" }),
+      })
+      if (!pickedFolder.path) return
+      const row = await api<{ skills: WaitingSkill[]; count: number }>("/api/inbox/from-folder", {
+        method: "POST",
+        body: JSON.stringify({ path: pickedFolder.path }),
+      })
+      setWaiting((current) => {
+        const next = [...current]
+        for (const saved of row.skills) {
+          const index = next.findIndex((item) => item.id === saved.id)
+          if (index >= 0) next[index] = saved
+          else next.push(saved)
+        }
+        return next
+      })
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "Those skill folders could not be added.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function addPicked() {
     const failed: string[] = []
     for (const skill of picked) {
@@ -217,7 +263,7 @@ export function Onboarding({
     setError("")
     setBusy(true)
     try {
-      await addPicked()
+      if (picked.length > 0) await addPicked()
       if (panel === "wizard") await persist("persona")
       else onDone()
     } catch (exc) {
@@ -379,7 +425,7 @@ export function Onboarding({
               <div>
                 <h2 id={titleId} className="text-xl font-medium">Which skills should Lore keep?</h2>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Search for a topic, or add a markdown file from this computer. Nothing is required yet.
+                  Search skills.sh, or add markdown files and skill folders from this computer. Nothing is required yet.
                 </p>
               </div>
               <form className="flex gap-2" onSubmit={(event) => search(event)}>
@@ -440,20 +486,43 @@ export function Onboarding({
                 ) : null}
               </ul>
               <Field>
-                <FieldLabel htmlFor="skill-file">Add a skill from this computer</FieldLabel>
-                <Input
-                  id="skill-file"
-                  type="file"
-                  accept=".md,text/markdown,text/plain"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (file) addFile(file).catch((exc: Error) => setError(exc.message))
-                    event.target.value = ""
-                  }}
-                />
+                <FieldLabel>Add from this computer</FieldLabel>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={fileInputRef}
+                    id="skill-file"
+                    type="file"
+                    accept=".md,text/markdown,text/plain"
+                    multiple
+                    className="sr-only"
+                    onChange={(event) => {
+                      const files = event.target.files
+                      if (files && files.length > 0) {
+                        addFiles(files).catch((exc: Error) => setError(exc.message))
+                      }
+                      event.target.value = ""
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Choose files
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => addFolderFromDisk()}
+                  >
+                    {busy ? "Adding folders…" : "Choose folders"}
+                  </Button>
+                </div>
                 <FieldDescription>
                   {waiting.length === 0
-                    ? "A file waits here until you choose a role for it."
+                    ? "Pick .md files, or a parent folder of skills.sh installs (each with SKILL.md). They wait here until you choose a role."
                     : `${waiting.length} skill${waiting.length === 1 ? "" : "s"} waiting for a role.`}
                 </FieldDescription>
               </Field>
@@ -467,8 +536,16 @@ export function Onboarding({
                   A role is the job you want the coding agent to do. Write it yourself, or save a key and let a model draft it from the skills you check.
                 </p>
               </div>
+              {waiting.length > 0 ? (
+                <Input
+                  value={waitingFilter}
+                  onChange={(event) => setWaitingFilter(event.target.value)}
+                  placeholder="Search waiting skills"
+                  aria-label="Search waiting skills"
+                />
+              ) : null}
               <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto">
-                {waiting.map((skill) => (
+                {filteredWaiting.map((skill) => (
                   <li key={skill.id}>
                     <label className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2">
                       <input
@@ -481,15 +558,20 @@ export function Onboarding({
                           )
                         }
                       />
-                      <span>
+                      <span className="min-w-0">
                         <span className="block text-sm font-medium">{skill.title}</span>
-                        <span className="block text-xs text-muted-foreground">{skill.summary || "No summary yet."}</span>
+                        <span className="block line-clamp-2 text-xs text-muted-foreground">
+                          {skill.summary || "No summary yet."}
+                        </span>
                       </span>
                     </label>
                   </li>
                 ))}
                 {waiting.length === 0 ? (
                   <li className="text-sm text-muted-foreground">No skills are waiting. You can still write a role, or skip and add skills later.</li>
+                ) : null}
+                {waiting.length > 0 && filteredWaiting.length === 0 ? (
+                  <li className="text-sm text-muted-foreground">No waiting skills match that search.</li>
                 ) : null}
               </ul>
               <div className="flex gap-2">
@@ -630,7 +712,11 @@ export function Onboarding({
                     Skip for now
                   </Button>
                 ) : null}
-                <Button type="button" disabled={busy || (panel !== "wizard" && picked.length === 0)} onClick={() => continueSkills()}>
+                <Button
+                  type="button"
+                  disabled={busy || (panel !== "wizard" && picked.length === 0 && waiting.length === 0)}
+                  onClick={() => continueSkills()}
+                >
                   {busy ? "Adding skills…" : panel === "wizard" ? "Continue" : "Add selected"}
                 </Button>
               </>

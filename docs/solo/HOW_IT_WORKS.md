@@ -10,7 +10,7 @@ Default MCP surface (coding): `get_context`, `get_skill`, `map_codebase`, `check
 
 ## One local program
 
-`uvx --managed-python --python 3.12 --no-build lore-solo==0.2.1 install` puts the `lore-solo` command on this computer (`--managed-python --python 3.12` picks the interpreter before dependencies resolve; `--no-build` accepts binary wheels only). After install, `lore-solo setup` starts the setup site. The same two commands work on macOS, Linux, and Windows. `./scripts/lore-solo install` from a clone of the `solo` branch does the same install into `~/.lore`. The computer does not need a system Python. The editor then starts `lore-solo mcp` itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
+`uvx --managed-python --python 3.12 --no-build lore-solo==0.2.2 install` puts the `lore-solo` command on this computer (`--managed-python --python 3.12` picks the interpreter before dependencies resolve; `--no-build` accepts binary wheels only). After install, `lore-solo setup` starts the setup site. The same two commands work on macOS, Linux, and Windows. `./scripts/lore-solo install` from a clone of the `solo` branch does the same install into `~/.lore`. The computer does not need a system Python. The editor then starts `lore-solo mcp` itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
 
 ```mermaid
 flowchart LR

@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib.resources import files
@@ -39,6 +39,8 @@ from lore.site_bundle_meta import (
     is_hex64,
     valid_entry,
 )
+
+StatusFn = Callable[[str], None]
 
 DOWNLOAD_TIMEOUT = 30.0
 MARKER_NAME = ".lore-site-ok"
@@ -155,11 +157,13 @@ class _HttpsOnlyRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def download(url: str, dest: Path) -> None:
+def download(url: str, dest: Path, *, on_status: StatusFn | None = None) -> None:
     """Fetch an archive over HTTPS only, bounded in size and time."""
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "https":
         raise SiteError(f"The setup site must download over HTTPS, not {parsed.scheme}:")
+    if on_status is not None:
+        on_status("Downloading setup site…")
     request = urllib.request.Request(
         url, headers={"User-Agent": f"lore-solo/{__version__}"}
     )
@@ -511,6 +515,7 @@ def ensure_site(
     cache_root: Path | None = None,
     manifest: dict[str, Any] | None = None,
     downloader: Any = None,
+    on_status: StatusFn | None = None,
 ) -> SiteResolution:
     """Resolve a ready standalone site directory, or raise SiteError."""
     version = version or __version__
@@ -527,10 +532,15 @@ def ensure_site(
     entry = bundle_entry(manifest, version, platform_key)
     root = cache_root or site_cache_root()
 
+    def report(message: str) -> None:
+        if on_status is not None:
+            on_status(message)
+
     if site_bundle is not None:
         archive = Path(site_bundle)
         if not archive.is_file():
             raise SiteError(f"The site bundle does not exist: {archive}")
+        report("Verifying local site bundle…")
         sha = sha256_file(archive)
         if entry is not None:
             if sha != entry["sha256"]:
@@ -544,6 +554,7 @@ def ensure_site(
                 "Using a local site bundle; it was not verified against the "
                 "release registry."
             )
+        report("Extracting setup site…")
         gen = _resolve_archive(
             archive,
             root,
@@ -564,6 +575,7 @@ def ensure_site(
     with _site_lock(platform_dir):
         cached = _cached_generation(platform_dir, entry["sha256"], entry["build_id"])
     if cached is not None:
+        report("Using cached setup site.")
         return SiteResolution(server=cached / "server.js")
     if offline:
         raise SiteError(
@@ -575,12 +587,18 @@ def ensure_site(
     os.close(handle)
     tmp = Path(tmp_name)
     try:
-        fetch(entry["url"], tmp)
+        if fetch is download:
+            fetch(entry["url"], tmp, on_status=on_status)
+        else:
+            report("Downloading setup site…")
+            fetch(entry["url"], tmp)
+        report("Verifying setup site…")
         if tmp.stat().st_size > MAX_ARCHIVE_BYTES:
             raise SiteError("The downloaded bundle exceeds the size limit.")
         sha = sha256_file(tmp)
         if sha != entry["sha256"]:
             raise SiteError("The downloaded site bundle failed its checksum.")
+        report("Extracting setup site…")
         gen = _resolve_archive(
             tmp,
             root,
