@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lore.help_cmd import print_catalog, run as run_help
+from lore.help_cmd import print_catalog
+from lore.help_cmd import run as run_help
 from lore.update_cmd import invalidate_site_cache, latest_spec
 
 
