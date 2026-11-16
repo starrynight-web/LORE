@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.3 — 2026-11-16
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+### Fixed
+
+- Persona draft: longer provider timeout with clearer Gemini/network errors;
+  default Gemini model is `gemini-3.5-flash-lite`; model pickers list only
+  chat models returned by the live API for the saved key.
+- Waiting skill descriptions: YAML frontmatter with unquoted `:` in
+  `description` values no longer drops the summary; empty inbox summaries
+  are repaired on list.
+- Deleting a persona returns its skills to waiting (and recovers skills
+  orphaned by earlier deletes) so they can be attached to a new role.
+
+### Added
+
+- Persona skill bulk approve with selection; skills/persona lists sort by
+  A–Z, Z–A, or drafts first instead of governance pill clusters on cards.
+- Confirm dialog before deleting a persona.
+- Draft-role errors show above the Draft role button in the create modal.
+
 ## 0.2.2 — 2026-11-14
 
 GitHub release artifacts are produced by the tag-triggered release workflow

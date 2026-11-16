@@ -52,7 +52,7 @@ shadcn is the `base-nova` style (`web/components.json`). Components come from Ba
 
 Settings calls `GET /api/provider/models` and `POST /api/provider/models`. The list comes from the provider’s models endpoint with the saved key. The public response is `{provider, configured, last4, model}`. The key stays in the library `.lore/provider.json` and is never returned.
 
-Until a model is saved, drafts use the default for that provider: Groq `llama-3.3-70b-versatile`, OpenRouter `openai/gpt-4o-mini`, Gemini `gemini-2.5-flash`, OpenAI `gpt-4o-mini`, Anthropic `claude-haiku-4-5`. Saving a new key for the same provider keeps the chosen model. Switching providers resets to that provider’s default.
+Until a model is saved, drafts use the default for that provider: Groq `llama-3.3-70b-versatile`, OpenRouter `openai/gpt-4o-mini`, Gemini `gemini-3.5-flash-lite`, OpenAI `gpt-4o-mini`, Anthropic `claude-haiku-4-5`. Saving a new key for the same provider keeps the chosen model. Switching providers resets to that provider’s default.
 
 ## A window later
 

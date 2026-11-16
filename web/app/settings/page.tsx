@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
-import { PROVIDERS, defaultModels } from "@/lib/providers"
+import { PROVIDERS } from "@/lib/providers"
 
 const LABELS: Record<string, string> = Object.fromEntries(PROVIDERS.map((item) => [item.value, item.label]))
 
@@ -31,8 +31,8 @@ export default function SettingsPage() {
   const [provider, setProvider] = useState<Provider | null>(null)
   const [providerName, setProviderName] = useState("groq")
   const [apiKey, setApiKey] = useState("")
-  const [models, setModels] = useState<string[]>(defaultModels("groq"))
-  const [model, setModel] = useState(defaultModels("groq")[0])
+  const [models, setModels] = useState<string[]>([])
+  const [model, setModel] = useState("")
   const [savedCatalog, setSavedCatalog] = useState<string[]>([])
   const [listed, setListed] = useState(false)
   const [keyBusy, setKeyBusy] = useState(false)
@@ -66,11 +66,19 @@ export default function SettingsPage() {
         if (!row.configured) return
         return api<ModelList>("/api/provider/models")
           .then((list) => {
-            const catalog = list.models.length > 0 ? list.models : [list.model]
+            const catalog = list.models.length > 0 ? list.models : list.model ? [list.model] : []
+            const chosen = catalog.includes(list.model) ? list.model : catalog[0] || ""
             setSavedCatalog(catalog)
             setModels(catalog)
-            setModel(list.model)
+            setModel(chosen)
             setListed(true)
+            if (chosen && chosen !== list.model) {
+              return api<Provider>("/api/provider/models", {
+                method: "POST",
+                body: JSON.stringify({ model: chosen }),
+              }).then((updated) => setProvider(updated))
+            }
+            return undefined
           })
           .catch((exc: Error) => setError(exc.message))
       })
@@ -87,10 +95,9 @@ export default function SettingsPage() {
     toast.success("Settings saved.")
   }
 
-  function showDefaults(name: string) {
-    const defaults = defaultModels(name)
-    setModels(defaults)
-    setModel(defaults[0] ?? "")
+  function clearCatalog() {
+    setModels([])
+    setModel("")
     setListed(false)
   }
 
@@ -110,19 +117,24 @@ export default function SettingsPage() {
       stored = true
       setKeySaved(true)
       const list = await api<ModelList>("/api/provider/models")
-      const catalog = list.models.length > 0 ? list.models : [list.model]
-      let chosen = list.model
-      if (picked && picked !== list.model && catalog.includes(picked)) {
+      const catalog = list.models.length > 0 ? list.models : list.model ? [list.model] : []
+      let chosen = catalog.includes(list.model) ? list.model : catalog[0] || ""
+      if (picked && picked !== chosen && catalog.includes(picked)) {
         const updated = await api<Provider>("/api/provider/models", {
           method: "POST",
           body: JSON.stringify({ model: picked }),
         })
         chosen = updated.model
         setProvider(updated)
+      } else if (chosen && chosen !== list.model) {
+        const updated = await api<Provider>("/api/provider/models", {
+          method: "POST",
+          body: JSON.stringify({ model: chosen }),
+        })
+        setProvider(updated)
       }
-      const shown = catalog.includes(chosen) ? catalog : [chosen, ...catalog]
-      setSavedCatalog(shown)
-      setModels(shown)
+      setSavedCatalog(catalog)
+      setModels(catalog)
       setModel(chosen)
       setListed(true)
       toast.success("API key saved.")
@@ -140,7 +152,7 @@ export default function SettingsPage() {
     setProvider(cleared)
     setSavedCatalog([])
     setKeySaved(false)
-    showDefaults(providerName)
+    clearCatalog()
     toast.success("API key removed.")
   }
 
@@ -216,7 +228,7 @@ export default function SettingsPage() {
                           setListed(true)
                           return
                         }
-                        showDefaults(value)
+                        clearCatalog()
                       }}
                     >
                       <SelectTrigger id="provider" className="w-full">
@@ -230,7 +242,7 @@ export default function SettingsPage() {
                         </SelectGroup>
                       </SelectContent>
                     </Select>
-                    <FieldDescription>Changing the provider switches the draft model back to that provider’s usual model.</FieldDescription>
+                    <FieldDescription>Changing the provider clears the model list until you save a key for that provider.</FieldDescription>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="model">Model</FieldLabel>
@@ -241,8 +253,8 @@ export default function SettingsPage() {
                         if (value) setModel(value)
                       }}
                     >
-                      <SelectTrigger id="model" className="w-full">
-                        <SelectValue />
+                      <SelectTrigger id="model" className="w-full" disabled={modelItems.length === 0}>
+                        <SelectValue placeholder={listed ? "Choose a model" : "Save a key to load models"} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
@@ -254,8 +266,8 @@ export default function SettingsPage() {
                     </Select>
                     <FieldDescription>
                       {provider?.configured && listed && providerName === provider.provider
-                        ? `These are the models this ${providerLabel} key can use. Drafts use the one you save.`
-                        : `Shown first is ${providerLabel || "Groq"}’s usual model. Save a key to load the models that key can use.`}
+                        ? `Only chat models returned by ${providerLabel} for this key are listed.`
+                        : `Save a ${providerLabel || "provider"} key to load the models that key can call.`}
                     </FieldDescription>
                   </Field>
                 </div>
@@ -285,8 +297,8 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle><h2>SkillSpector</h2></CardTitle>
             <CardDescription>
-              Optional NVIDIA scanner that enriches governance when you approve a skill or role.
-              Lore always runs its built-in ATR rules; SkillSpector adds more findings when it is on PATH.
+              Optional NVIDIA CLI scanner. On approve, Lore always runs its built-in ATR rules; if
+              `skillspector` is on PATH it also runs `skillspector scan --no-llm` and merges those findings.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">

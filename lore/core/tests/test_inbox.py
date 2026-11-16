@@ -13,9 +13,17 @@ from lore.core.inbox import (
     add_text,
     adopt_inbox,
     discover_skill_files,
+    list_inbox,
+    recover_orphaned_skills,
     search_registry,
 )
-from lore.core.personas import find_persona, write_persona
+from lore.core.personas import (
+    delete_persona,
+    find_persona,
+    locate_skill,
+    write_persona,
+    write_skill,
+)
 from lore.core.workspace import init_workspace
 
 
@@ -42,6 +50,7 @@ def test_a_file_waits_until_a_persona_adopts_it(tmp_path: Path) -> None:
     content = "---\nname: Widget shape\ndescription: Prefer round widgets.\n---\nKeep the widget round.\n"
     added = add_text(tmp_path, "ignored.md", content)
     assert added["title"] == "Widget shape"
+    assert added["summary"] == "Prefer round widgets."
     write_persona(tmp_path, "Widget maker", "Makes widgets.", "You make widgets.\n")
     ids = adopt_inbox(tmp_path, "persona:widget-maker")
     assert ids == ["skill:widget-maker/widget-shape@v1"]
@@ -49,6 +58,102 @@ def test_a_file_waits_until_a_persona_adopts_it(tmp_path: Path) -> None:
     assert persona is not None
     assert persona.header["skill_ids"] == ["skill:widget-maker/widget-shape@v1"]
     assert not (tmp_path / ".lore" / "inbox" / "widget-shape.md").exists()
+
+
+def test_deleting_a_persona_returns_its_skills_to_waiting(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    add_text(
+        tmp_path,
+        "shape.md",
+        "---\nname: Widget shape\ndescription: Prefer round widgets.\n---\nKeep the widget round.\n",
+    )
+    add_text(
+        tmp_path,
+        "color.md",
+        "---\nname: Widget color\ndescription: Prefer blue widgets.\n---\nKeep the widget blue.\n",
+    )
+    write_persona(tmp_path, "Widget maker", "Makes widgets.", "You make widgets.\n")
+    adopt_inbox(tmp_path, "persona:widget-maker")
+    assert list_inbox(tmp_path) == []
+    delete_persona(tmp_path, "widget-maker")
+    assert find_persona(tmp_path, "widget-maker") is None
+    waiting = list_inbox(tmp_path)
+    titles = sorted(row["title"] for row in waiting)
+    assert titles == ["Widget color", "Widget shape"]
+    assert locate_skill(tmp_path, "skill:widget-maker/widget-shape@v1") is None
+    assert not (tmp_path / ".lore" / "skills" / "widget-maker").exists()
+
+
+def test_orphaned_filed_skills_are_recovered_into_waiting(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    write_persona(tmp_path, "Widget maker", "Makes widgets.", "You make widgets.\n")
+    write_skill(
+        tmp_path,
+        "persona:widget-maker",
+        "shape",
+        title="Widget shape",
+        summary="Prefer round widgets.",
+        body="Keep the widget round.\n",
+        status="stable",
+    )
+    persona_path = tmp_path / ".lore" / "personas" / "widget-maker.md"
+    persona_path.unlink()
+    recovered = recover_orphaned_skills(tmp_path)
+    assert [row["title"] for row in recovered] == ["Widget shape"]
+    waiting = list_inbox(tmp_path)
+    assert waiting[0]["title"] == "Widget shape"
+    assert waiting[0]["summary"] == "Prefer round widgets."
+    assert locate_skill(tmp_path, "skill:widget-maker/shape@v1") is None
+
+
+def test_unquoted_colon_in_description_still_keeps_summary(tmp_path: Path) -> None:
+    init_workspace(tmp_path)
+    content = (
+        "---\n"
+        "name: minimalist ui\n"
+        "description: Enforces strict design constraints: no gradients, heavy shadows\n"
+        "---\n"
+        "Keep the page quiet.\n"
+    )
+    added = add_text(tmp_path, "minimalist-ui", content)
+    assert added["title"] == "minimalist ui"
+    assert "constraints" in added["summary"]
+    assert "gradients" in added["summary"]
+
+
+def test_list_inbox_repairs_empty_summary_from_nested_frontmatter(tmp_path: Path) -> None:
+    from lore.core.inbox import list_inbox
+    from lore.core.okf import Doc, write_doc
+
+    init_workspace(tmp_path)
+    path = tmp_path / ".lore" / "inbox" / "broken.md"
+    write_doc(
+        path,
+        Doc(
+            header={
+                "type": "skill",
+                "id": "inbox:broken",
+                "title": "broken",
+                "summary": "",
+                "status": "draft",
+                "source": "skills.sh:x/y",
+            },
+            body=(
+                "---\n"
+                "name: fixed title\n"
+                "description: Enforces strict design constraints: no gradients\n"
+                "---\n"
+                "Body text.\n"
+            ),
+        ),
+    )
+    rows = list_inbox(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["title"] == "fixed title"
+    assert "constraints" in rows[0]["summary"]
+    # Repair is persisted.
+    again = list_inbox(tmp_path)
+    assert again[0]["summary"] == rows[0]["summary"]
 
 
 def test_registry_search_and_add(tmp_path: Path) -> None:

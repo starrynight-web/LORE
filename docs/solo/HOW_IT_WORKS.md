@@ -10,7 +10,7 @@ Default MCP surface (coding): `get_context`, `get_skill`, `map_codebase`, `check
 
 ## One local program
 
-`uvx --managed-python --python 3.12 --no-build lore-solo==0.2.2 install` puts the `lore-solo` command on this computer (`--managed-python --python 3.12` picks the interpreter before dependencies resolve; `--no-build` accepts binary wheels only). After install, `lore-solo setup` starts the setup site. The same two commands work on macOS, Linux, and Windows. `./scripts/lore-solo install` from a clone of the `solo` branch does the same install into `~/.lore`. The computer does not need a system Python. The editor then starts `lore-solo mcp` itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
+`uvx --managed-python --python 3.12 --no-build lore-solo==0.2.3 install` puts the `lore-solo` command on this computer (`--managed-python --python 3.12` picks the interpreter before dependencies resolve; `--no-build` accepts binary wheels only). After install, `lore-solo setup` starts the setup site. The same two commands work on macOS, Linux, and Windows. `./scripts/lore-solo install` from a clone of the `solo` branch does the same install into `~/.lore`. The computer does not need a system Python. The editor then starts `lore-solo mcp` itself. While the editor is open, Lore is one process waiting on stdin. When the editor closes, the process exits.
 
 ```mermaid
 flowchart LR
@@ -159,7 +159,7 @@ The page has four steps.
 
 1. **Provider key.** Choose Groq, OpenRouter, Gemini, OpenAI, or Anthropic, and save a key. The key stays in the persona library. Lore sends it only when you ask for a drafted persona. Each provider starts on one default model. Settings lists the models that key can call, and the one you save there is the model later drafts use.
 2. **Add skills.** Search skills.sh, or choose markdown skill files you already have. Those skills wait until a persona is saved.
-3. **Create a persona.** The persona is a ruleset for the waiting skills. Write it yourself, or draft it with the saved key and edit the result. Saving files the waiting skills under that persona as drafts. Approve them on the Personas page before the agent can use them.
+3. **Create a persona.** The persona is a ruleset for the waiting skills. Write it yourself, or draft it with the saved key and edit the result. Saving files the waiting skills under that persona as drafts. Approve them on the Personas page before the agent can use them. Deleting a persona returns its skills to waiting so you can attach them to a new role; skills whose persona file is already missing are recovered the same way when the inbox is listed.
 4. **Add Lore to an editor.** Copy the prompt and give it to your agent, or run the connect command yourself. A project `.cursor/mcp.json` stays available as a backup.
 
 The backup button writes `.cursor/mcp.json` in the open project. That file’s command is `lore mcp`. Use it when an agent cannot run the connect command. It covers that one project.

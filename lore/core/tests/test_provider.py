@@ -133,20 +133,38 @@ def test_gemini_model_names_drop_the_models_prefix(tmp_path: Path) -> None:
         payload = {
             "models": [
                 {
-                    "name": "models/gemini-2.5-flash",
+                    "name": "models/gemini-3.5-flash-lite",
                     "supportedGenerationMethods": ["generateContent"],
                 },
                 {
                     "name": "models/text-embedding-004",
                     "supportedGenerationMethods": ["embedContent"],
                 },
+                {
+                    "name": "models/imagen-3.0-generate",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
             ]
         }
         return _Body(json.dumps(payload).encode("utf-8"))
 
     listed = list_models(tmp_path, opener=opener)
-    assert listed["model"] == "gemini-2.5-flash"
-    assert listed["models"] == ["gemini-2.5-flash"]
+    assert listed["model"] == "gemini-3.5-flash-lite"
+    assert listed["models"] == ["gemini-3.5-flash-lite"]
+
+
+def test_model_list_does_not_keep_unavailable_saved_choice(tmp_path: Path) -> None:
+    save_provider(tmp_path, "openai", "sk-openai-secret")
+    set_model(tmp_path, "gpt-4o-mini")
+
+    def opener(request: object, timeout: int = 30) -> _Body:
+        del timeout
+        del request
+        return _Body(json.dumps({"data": [{"id": "gpt-4.1-mini"}]}).encode("utf-8"))
+
+    listed = list_models(tmp_path, opener=opener)
+    assert listed["models"] == ["gpt-4.1-mini"]
+    assert "gpt-4o-mini" not in listed["models"]
 
 
 def test_refused_model_list_does_not_include_the_response(tmp_path: Path) -> None:

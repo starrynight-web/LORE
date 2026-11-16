@@ -21,7 +21,7 @@ PROVIDERS = ("groq", "openrouter", "gemini", "openai", "anthropic")
 _MODELS = {
     "groq": "llama-3.3-70b-versatile",
     "openrouter": "openai/gpt-4o-mini",
-    "gemini": "gemini-2.5-flash",
+    "gemini": "gemini-3.5-flash-lite",
     "openai": "gpt-4o-mini",
     "anthropic": "claude-haiku-4-5",
 }
@@ -35,7 +35,25 @@ _LIST_URLS = {
 }
 
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,96}(?:/[A-Za-z0-9][A-Za-z0-9._:-]{0,96})?$")
-_SKIP = ("embed", "whisper", "tts", "dall-e", "moderation", "transcri", "image")
+_SKIP = (
+    "embed",
+    "whisper",
+    "tts",
+    "dall-e",
+    "moderation",
+    "transcri",
+    "image",
+    "imagen",
+    "veo",
+    "lyria",
+    "aqa",
+    "gecko",
+    "robotics",
+    "computer-use",
+    "audio",
+    "realtime",
+    "search-grounding",
+)
 
 _HOSTS = {
     "groq": "api.groq.com",
@@ -112,14 +130,22 @@ def draft_persona(
     if loaded is None:
         raise ValueError("Save a provider key before drafting a persona.")
     provider, key, model = loaded
-    lines = [f"- {row.get('title', '')}: {row.get('summary', '')}".strip() for row in skills]
-    user = "Skills:\n" + ("\n".join(lines) if lines else "(none yet)")
+    lines = []
+    for row in skills:
+        blurb = str(row.get("summary") or "").strip().replace("\n", " ")
+        if len(blurb) > 160:
+            blurb = blurb[:157].rstrip() + "…"
+        label = str(row.get("title") or "").strip()
+        lines.append(f"- {label}: {blurb}".strip() if blurb else f"- {label}".strip())
+    user = "Skills:\n" + ("\n".join(line for line in lines if line != "-") if lines else "(none yet)")
     if note.strip():
         user += "\n\nNote from the person:\n" + note.strip()
     system = (
         "Write a persona for a coding agent. The persona is a ruleset for the skills listed. "
         "Return only a JSON object with keys title, summary, and rules. "
-        "summary is one sentence. rules is the instruction the agent should follow."
+        "summary is one sentence. "
+        "rules must be plain text a person can skim: short paragraphs, blank lines between "
+        "sections, and hyphen bullets for concrete behaviors. Do not return one long line."
     )
     raw = _complete(provider, key, model, system, user, opener or urllib.request.urlopen)
     parsed = _json_object(raw)
@@ -202,13 +228,32 @@ def _complete(provider: str, key: str, model: str, system: str, user: str, opene
         method="POST",
     )
     try:
-        with opener(request, timeout=30) as response:
+        with opener(request, timeout=90) as response:
             body = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise ValueError(_safe(detail or "The provider refused the request.", key)) from exc
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ValueError("The provider could not be reached.") from exc
+    except TimeoutError as exc:
+        raise ValueError(
+            f"The {provider} request timed out after 90 seconds. Try fewer skills, "
+            "or pick a faster model in Settings."
+        ) from exc
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, TimeoutError) or "timed out" in str(exc).lower():
+            raise ValueError(
+                f"The {provider} request timed out after 90 seconds. Try fewer skills, "
+                "or pick a faster model in Settings."
+            ) from exc
+        raise ValueError(
+            f"The {provider} API could not be reached ({exc.reason}). "
+            "Check your network and that the key in Settings matches that provider."
+        ) from exc
+    except OSError as exc:
+        raise ValueError(
+            f"The {provider} API could not be reached ({exc}). "
+            "Check your network and that the key in Settings matches that provider."
+        ) from exc
     text = _message_text(provider, body, key)
     return text
 
@@ -358,13 +403,25 @@ def _next_url(provider: str, url: str, loaded: dict[str, Any]) -> str | None:
 
 
 def _present(current: str, found: list[str]) -> list[str]:
+    """Keep only chat-capable ids the provider listed. Do not invent extras."""
     usable = [item for item in found if _chat_model(item)]
     pool = usable or [item for item in found if _valid_model(item)]
-    ordered = sorted(set(pool), key=str.lower)
+    ordered = sorted(set(pool), key=_draft_rank)
     if current in ordered:
         ordered.remove(current)
-    ordered.insert(0, current)
+        ordered.insert(0, current)
     return ordered[:250]
+
+
+def _draft_rank(model: str) -> tuple[int, str]:
+    lowered = model.lower()
+    if any(token in lowered for token in ("flash-lite", "haiku", "mini", "small")):
+        return (0, lowered)
+    if "flash" in lowered or "instant" in lowered:
+        return (1, lowered)
+    if "pro" in lowered:
+        return (2, lowered)
+    return (3, lowered)
 
 
 def _chat_model(model: str) -> bool:

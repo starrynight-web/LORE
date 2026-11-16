@@ -10,7 +10,7 @@ export const PROVIDERS = [
 export const DEFAULT_MODELS: Record<string, string[]> = {
   groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
   openrouter: ["openai/gpt-4o-mini"],
-  gemini: ["gemini-2.5-flash"],
+  gemini: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
   openai: ["gpt-4o-mini", "gpt-4.1-mini"],
   anthropic: ["claude-haiku-4-5"],
 }

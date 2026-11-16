@@ -19,7 +19,15 @@ from typing import Any
 import yaml
 
 from lore.core.okf import Doc, read_doc, write_doc
-from lore.core.personas import file_slug, write_skill
+from lore.core.personas import (
+    file_slug,
+    find_persona,
+    list_skill_files,
+    lore_dir,
+    persona_slug,
+    skill_belongs,
+    write_skill,
+)
 
 _MAX_BYTES = 200_000
 _MAX_FOLDER_SKILLS = 50
@@ -32,29 +40,103 @@ def inbox_dir(project: Path) -> Path:
 
 
 def list_inbox(project: Path) -> list[dict[str, str]]:
+    recover_orphaned_skills(project)
     folder = inbox_dir(project)
     if not folder.is_dir():
         return []
     rows = []
     for path in sorted(folder.glob("*.md")):
         doc = read_doc(path)
+        title = doc.get("title") or path.stem
+        summary = doc.get("summary")
+        source = doc.get("source")
+        if not summary.strip():
+            repaired = _repair_summary(doc)
+            if repaired is not None:
+                title, summary, doc = repaired
+                write_doc(path, doc)
         rows.append(
             {
                 "id": path.stem,
-                "title": doc.get("title") or path.stem,
-                "summary": doc.get("summary"),
-                "source": doc.get("source"),
+                "title": title,
+                "summary": summary,
+                "source": source,
             }
         )
     return rows
 
 
+def park_skill_in_inbox(project: Path, doc: Doc) -> dict[str, str]:
+    """Put a filed skill back into waiting. Body and summary are kept; approval is cleared."""
+    title = str(doc.get("title") or "").strip() or "skill"
+    summary = str(doc.get("summary") or "").strip()
+    source = str(doc.get("source") or "").strip()
+    body = doc.body if doc.body.endswith("\n") else doc.body + "\n"
+    slug = _unique_inbox_slug(project, title)
+    parked = Doc(
+        header={
+            "type": "skill",
+            "id": f"inbox:{slug}",
+            "title": title,
+            "summary": summary,
+            "status": "draft",
+            "source": source,
+        },
+        body=body if body.strip() else f"{title}\n",
+    )
+    path = inbox_dir(project) / f"{slug}.md"
+    write_doc(path, parked)
+    return {"id": slug, "title": title, "summary": summary, "source": source}
+
+
+def return_persona_skills_to_inbox(project: Path, persona: str) -> list[dict[str, str]]:
+    """Move every skill filed under this persona into waiting, then remove the filed copies."""
+    slug = persona_slug(persona)
+    parked: list[dict[str, str]] = []
+    folder = lore_dir(project) / "skills" / slug
+    for path, doc in list(list_skill_files(project)):
+        if not skill_belongs(path, doc, persona):
+            continue
+        parked.append(park_skill_in_inbox(project, doc))
+        path.unlink(missing_ok=True)
+    if folder.is_dir() and not any(folder.iterdir()):
+        folder.rmdir()
+    return parked
+
+
+def recover_orphaned_skills(project: Path) -> list[dict[str, str]]:
+    """Skills whose persona file is gone go back to waiting so they can be reselected."""
+    parked: list[dict[str, str]] = []
+    for path, doc in list(list_skill_files(project)):
+        owner = path.parent.name
+        if find_persona(project, owner) is not None:
+            continue
+        if not skill_belongs(path, doc, owner):
+            continue
+        parked.append(park_skill_in_inbox(project, doc))
+        path.unlink(missing_ok=True)
+        folder = path.parent
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
+    return parked
+
+
+def _unique_inbox_slug(project: Path, title: str) -> str:
+    base = file_slug(title)
+    slug = base
+    folder = inbox_dir(project)
+    folder.mkdir(parents=True, exist_ok=True)
+    index = 2
+    while (folder / f"{slug}.md").is_file():
+        slug = f"{base}-{index}"
+        index += 1
+    return slug
+
+
 def add_text(project: Path, name: str, content: str, source: str = "") -> dict[str, str]:
     if len(content.encode("utf-8")) > _MAX_BYTES:
         raise ValueError("That skill file is too large.")
-    header, body = _split(content)
-    title = str(header.get("title") or header.get("name") or name).strip()
-    summary = str(header.get("summary") or header.get("description") or "").strip()
+    title, summary, body = _skill_meta(content, name)
     if not title:
         raise ValueError("A skill needs a name.")
     slug = file_slug(title)
@@ -380,6 +462,58 @@ def _get_text(url: str, opener: Opener) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _skill_meta(content: str, fallback_name: str) -> tuple[str, str, str]:
+    """Title, summary, and body for a skill file (handles nested / messy frontmatter)."""
+    header, body = _split(content)
+    title = str(header.get("title") or header.get("name") or fallback_name).strip()
+    summary = str(header.get("summary") or header.get("description") or "").strip()
+    # skills.sh files often leave the original SKILL.md frontmatter in the body
+    # when YAML rejected unquoted colons in description on the first pass.
+    if (not summary or title == fallback_name) and body.lstrip().startswith("---"):
+        nested, nested_body = _split(body.lstrip())
+        if nested:
+            if not summary:
+                summary = str(
+                    nested.get("summary") or nested.get("description") or ""
+                ).strip()
+            nested_title = str(nested.get("title") or nested.get("name") or "").strip()
+            if nested_title and (not title or title == fallback_name):
+                title = nested_title
+            if nested_body.strip():
+                body = nested_body
+    if not summary:
+        summary = _first_sentence(body)
+    return title, summary, body
+
+
+def _repair_summary(doc: Doc) -> tuple[str, str, Doc] | None:
+    """Fill an empty inbox summary from nested frontmatter or the first sentence."""
+    if doc.get("summary").strip():
+        return None
+    fallback = doc.get("title") or "skill"
+    title, summary, body = _skill_meta(doc.body, fallback)
+    if not summary.strip():
+        return None
+    header = dict(doc.header)
+    if title and title != fallback:
+        header["title"] = title
+    header["summary"] = summary.strip()
+    return str(header.get("title") or fallback), summary.strip(), Doc(
+        header=header, body=body if body.strip() else doc.body, path=doc.path
+    )
+
+
+def _first_sentence(text: str) -> str:
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        return ""
+    for sep in (". ", "? ", "! "):
+        index = cleaned.find(sep)
+        if index > 40:
+            return cleaned[: index + 1][:280]
+    return cleaned[:240]
+
+
 def _split(text: str) -> tuple[dict[str, Any], str]:
     if not text.startswith("---"):
         return {}, text
@@ -388,12 +522,31 @@ def _split(text: str) -> tuple[dict[str, Any], str]:
     end = rest.find(marker)
     if end < 0:
         return {}, text
+    raw_header = rest[:end]
+    body = rest[end + len(marker) :].removeprefix("\n")
     try:
-        loaded = yaml.safe_load(rest[:end])
+        loaded = yaml.safe_load(raw_header)
     except yaml.YAMLError:
-        return {}, text
-    header = loaded if isinstance(loaded, dict) else {}
-    return header, rest[end + len(marker) :].removeprefix("\n")
+        return _split_loose(raw_header), body
+    if isinstance(loaded, dict):
+        return dict(loaded), body
+    return _split_loose(raw_header), body
+
+
+def _split_loose(raw: str) -> dict[str, Any]:
+    """Line-based fallback when YAML rejects unquoted colons in description values."""
+    header: dict[str, Any] = {}
+    for line in raw.splitlines():
+        if not line.strip() or line.lstrip().startswith("#") or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip()
+        if not key or any(ch.isspace() for ch in key):
+            continue
+        if key in header:
+            continue
+        header[key] = value.strip().strip("\"'")
+    return header
 
 
 def _safe_source(source: str) -> bool:

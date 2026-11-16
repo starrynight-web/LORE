@@ -267,9 +267,13 @@ def update_persona(
 
 
 def delete_persona(project: Path, name: str) -> None:
+    """Remove the persona and return its skills to the waiting inbox."""
     doc = find_persona(project, name)
     if doc is None or doc.path is None:
         raise FileNotFoundError(name)
+    from lore.core.inbox import return_persona_skills_to_inbox
+
+    return_persona_skills_to_inbox(project, doc.get("id") or name)
     doc.path.unlink()
 
 

@@ -1,16 +1,15 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
-import { GovernanceBadges } from "@/components/governance-badges"
 import { Onboarding } from "@/components/onboarding"
 import { Shell } from "@/components/Shell"
 import { api, type Persona, type Skill, type WaitingSkill } from "@/lib/api"
 import { personaHref, skillHref } from "@/lib/routes"
-import { Badge } from "@/components/ui/badge"
+import { SKILL_SORT_OPTIONS, sortBySkillOption, statusLabel, type SkillSort } from "@/lib/sort"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -38,6 +37,7 @@ export default function SkillsPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [accepting, setAccepting] = useState<WaitingSkill | null>(null)
   const [filter, setFilter] = useState("")
+  const [sort, setSort] = useState<SkillSort>("name-asc")
 
   function reload() {
     api<{ skills: Skill[]; waiting: WaitingSkill[] }>("/api/skills")
@@ -69,7 +69,14 @@ export default function SkillsPage() {
   }
 
   const visibleWaiting = waiting.filter((skill) => matchesQuery(skill.title, skill.summary || "", filter))
-  const visibleSkills = skills.filter((skill) => matchesQuery(skill.title, skill.summary || "", filter))
+  const visibleSkills = useMemo(
+    () =>
+      sortBySkillOption(
+        skills.filter((skill) => matchesQuery(skill.title, skill.summary || "", filter)),
+        sort,
+      ),
+    [skills, filter, sort],
+  )
 
   return (
     <Shell>
@@ -83,13 +90,38 @@ export default function SkillsPage() {
           Add skill
         </Button>
       </div>
-      <div className="max-w-md">
-        <Input
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder="Search saved skills"
-          aria-label="Search saved skills"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="max-w-md flex-1">
+          <Input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Search saved skills"
+            aria-label="Search saved skills"
+          />
+        </div>
+        <Field className="w-full sm:w-48">
+          <FieldLabel htmlFor="skill-sort">Sort</FieldLabel>
+          <Select
+            items={SKILL_SORT_OPTIONS}
+            value={sort}
+            onValueChange={(value) => {
+              if (value === "name-asc" || value === "name-desc" || value === "status") setSort(value)
+            }}
+          >
+            <SelectTrigger id="skill-sort" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {SKILL_SORT_OPTIONS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
       </div>
       {waiting.length > 0 ? (
         <section className="flex flex-col gap-3">
@@ -101,7 +133,7 @@ export default function SkillsPage() {
             {visibleWaiting.map((skill) => (
               <Card key={skill.id}>
                 <CardHeader>
-                  <Badge variant="outline">waiting</Badge>
+                  <p className="text-xs text-muted-foreground">Waiting</p>
                   <CardTitle>{skill.title}</CardTitle>
                   <CardDescription className="line-clamp-2">{skill.summary || "No summary yet."}</CardDescription>
                 </CardHeader>
@@ -128,10 +160,7 @@ export default function SkillsPage() {
           {visibleSkills.map((skill) => (
             <Card key={skill.id}>
               <CardHeader>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={skill.status === "stable" ? "secondary" : "outline"}>{skill.status === "stable" ? "ready" : "draft"}</Badge>
-                  <GovernanceBadges governance={skill.governance} />
-                </div>
+                <p className="text-xs text-muted-foreground">{statusLabel(skill.status)}</p>
                 <CardTitle>
                   <Link href={skillHref(skill.id)} className="hover:underline">{skill.title}</Link>
                 </CardTitle>

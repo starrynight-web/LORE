@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, type Onboarding as OnboardingState, type RegistrySkill, type WaitingSkill } from "@/lib/api"
-import { PROVIDERS, defaultModels } from "@/lib/providers"
+import { PROVIDERS } from "@/lib/providers"
 
 const ORDER = ["welcome", "skills", "persona", "codebase"] as const
 type Step = (typeof ORDER)[number]
@@ -72,8 +72,8 @@ export function Onboarding({
   const [provider, setProvider] = useState("groq")
   const [apiKey, setApiKey] = useState("")
   const [keyStatus, setKeyStatus] = useState<"idle" | "saving" | "saved">("idle")
-  const [models, setModels] = useState<string[]>(defaultModels("groq"))
-  const [model, setModel] = useState(defaultModels("groq")[0])
+  const [models, setModels] = useState<string[]>([])
+  const [model, setModel] = useState("")
   const [name, setName] = useState("")
   const [summary, setSummary] = useState("")
   const [rules, setRules] = useState("")
@@ -82,10 +82,14 @@ export function Onboarding({
   const [codePath, setCodePath] = useState("")
   const [savedPersona, setSavedPersona] = useState(false)
   const [waitingFilter, setWaitingFilter] = useState("")
+  const [addProgress, setAddProgress] = useState<{ current: number; total: number; name: string } | null>(null)
+  const [providerConfigured, setProviderConfigured] = useState(false)
+  const [providerLast4, setProviderLast4] = useState("")
 
   const index = Math.max(0, ORDER.indexOf(step))
   const shown = results ?? featured
   const dismissible = panel !== "wizard"
+  const providerTitle = PROVIDERS.find((item) => item.value === provider)?.label ?? provider
   const filteredWaiting = waiting.filter((skill) => {
     const needle = waitingFilter.trim().toLowerCase()
     if (!needle) return true
@@ -94,6 +98,7 @@ export function Onboarding({
       (skill.summary || "").toLowerCase().includes(needle)
     )
   })
+  const allWaitingSelected = waiting.length > 0 && waiting.every((skill) => chosenSkills.includes(skill.id))
 
   useEffect(() => {
     const node = panelRef.current
@@ -144,6 +149,30 @@ export function Onboarding({
       .then((row) => {
         setWaiting(row.skills)
         setChosenSkills(row.skills.map((skill) => skill.id))
+      })
+      .catch((exc: Error) => setError(exc.message))
+    api<{ provider: string; configured: boolean; last4: string; model: string }>("/api/provider")
+      .then((row) => {
+        if (!row.configured) {
+          setProviderConfigured(false)
+          setProviderLast4("")
+          return
+        }
+        setProviderConfigured(true)
+        setProviderLast4(row.last4)
+        if (row.provider) setProvider(row.provider)
+        if (row.model) {
+          setModel(row.model)
+          setModels([row.model])
+        }
+        setKeyStatus("saved")
+        return api<{ model: string; models: string[] }>("/api/provider/models")
+          .then((list) => {
+            const catalog = list.models.length > 0 ? list.models : list.model ? [list.model] : []
+            setModels(catalog)
+            setModel(list.model || catalog[0] || row.model || "")
+          })
+          .catch(() => undefined)
       })
       .catch((exc: Error) => setError(exc.message))
   }, [step])
@@ -244,16 +273,22 @@ export function Onboarding({
 
   async function addPicked() {
     const failed: string[] = []
-    for (const skill of picked) {
+    const total = picked.length
+    for (let index = 0; index < picked.length; index += 1) {
+      const skill = picked[index]
+      setAddProgress({ current: index + 1, total, name: skill.name })
       try {
-        await api("/api/skills/add", {
+        const saved = await api<WaitingSkill>("/api/skills/add", {
           method: "POST",
           body: JSON.stringify({ source: skill.source, skill_id: skill.skill_id }),
         })
+        setWaiting((current) => [...current.filter((item) => item.id !== saved.id), saved])
       } catch {
         failed.push(skill.name)
       }
     }
+    setAddProgress(null)
+    setPicked([])
     if (failed.length > 0) {
       throw new Error(`Could not add ${failed.join(", ")}. The others were added.`)
     }
@@ -262,6 +297,7 @@ export function Onboarding({
   async function continueSkills() {
     setError("")
     setBusy(true)
+    setAddProgress(null)
     try {
       if (picked.length > 0) await addPicked()
       if (panel === "wizard") await persist("persona")
@@ -270,6 +306,7 @@ export function Onboarding({
       setError(exc instanceof Error ? exc.message : "Those skills could not be added.")
     } finally {
       setBusy(false)
+      setAddProgress(null)
     }
   }
 
@@ -277,12 +314,16 @@ export function Onboarding({
     setError("")
     setKeyStatus("saving")
     try {
-      await api("/api/provider", {
+      const saved = await api<{ provider: string; configured: boolean; last4: string; model: string }>("/api/provider", {
         method: "POST",
         body: JSON.stringify({ provider, key: apiKey }),
       })
       setKeyStatus("saved")
       setApiKey("")
+      setProviderConfigured(true)
+      setProviderLast4(saved.last4)
+      if (saved.provider) setProvider(saved.provider)
+      if (saved.model) setModel(saved.model)
     } catch (exc) {
       setKeyStatus("idle")
       setError(exc instanceof Error ? exc.message : "The key could not be saved.")
@@ -290,9 +331,9 @@ export function Onboarding({
     }
     try {
       const list = await api<{ model: string; models: string[] }>("/api/provider/models")
-      const catalog = list.models.length > 0 ? list.models : list.model ? [list.model] : defaultModels(provider)
+      const catalog = list.models.length > 0 ? list.models : list.model ? [list.model] : []
       const current = model
-      let chosen = list.model || catalog[0] || ""
+      let chosen = (list.model && catalog.includes(list.model) ? list.model : "") || catalog[0] || ""
       if (current && current !== chosen && catalog.includes(current)) {
         await api("/api/provider/models", { method: "POST", body: JSON.stringify({ model: current }) })
         chosen = current
@@ -308,7 +349,9 @@ export function Onboarding({
     setError("")
     setBusy(true)
     try {
-      if (model) {
+      // Only persist a model choice from this modal when the person just configured
+      // a key here. Otherwise a default Groq model would overwrite Settings.
+      if (!providerConfigured && model) {
         await api("/api/provider/models", { method: "POST", body: JSON.stringify({ model }) })
       }
       const drafted = await api<{ title: string; summary: string; rules: string }>("/api/provider/draft", {
@@ -318,6 +361,7 @@ export function Onboarding({
       setName(drafted.title)
       setSummary(drafted.summary)
       setRules(drafted.rules)
+      setMode("write")
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : "The draft could not be written.")
     } finally {
@@ -397,7 +441,7 @@ export function Onboarding({
           ) : null}
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
-          <ErrorAlert message={error} />
+          {step !== "persona" ? <ErrorAlert message={error} /> : null}
           {step === "welcome" ? (
             <div className="flex flex-col gap-6 py-2">
               <div className="flex flex-col gap-3">
@@ -485,6 +529,16 @@ export function Onboarding({
                   <li className="text-sm text-muted-foreground">No skills to show yet.</li>
                 ) : null}
               </ul>
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                {picked.length === 0
+                  ? "No skills.sh skills selected yet."
+                  : `${picked.length} skill${picked.length === 1 ? "" : "s"} selected from skills.sh.`}
+              </p>
+              {addProgress ? (
+                <p className="text-sm text-muted-foreground" aria-live="polite">
+                  Downloading {addProgress.current} of {addProgress.total}: {addProgress.name}…
+                </p>
+              ) : null}
               <Field>
                 <FieldLabel>Add from this computer</FieldLabel>
                 <div className="flex flex-wrap gap-2">
@@ -533,16 +587,42 @@ export function Onboarding({
               <div>
                 <h2 id={titleId} className="text-xl font-medium">Create a role for these skills</h2>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  A role is the job you want the coding agent to do. Write it yourself, or save a key and let a model draft it from the skills you check.
+                  A role is the job you want the coding agent to do. Write it yourself, or let a model draft it from the skills you check. Save role writes the persona file.
                 </p>
               </div>
               {waiting.length > 0 ? (
-                <Input
-                  value={waitingFilter}
-                  onChange={(event) => setWaitingFilter(event.target.value)}
-                  placeholder="Search waiting skills"
-                  aria-label="Search waiting skills"
-                />
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      value={waitingFilter}
+                      onChange={(event) => setWaitingFilter(event.target.value)}
+                      placeholder="Search waiting skills"
+                      aria-label="Search waiting skills"
+                      className="min-w-[12rem] flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setChosenSkills(waiting.map((skill) => skill.id))}
+                      disabled={allWaitingSelected}
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setChosenSkills([])}
+                      disabled={chosenSkills.length === 0}
+                    >
+                      Deselect all
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground" aria-live="polite">
+                    {chosenSkills.length} of {waiting.length} waiting skill{waiting.length === 1 ? "" : "s"} selected.
+                  </p>
+                </div>
               ) : null}
               <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto">
                 {filteredWaiting.map((skill) => (
@@ -584,75 +664,86 @@ export function Onboarding({
               </div>
               {mode === "model" ? (
                 <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="draft-provider">Provider</FieldLabel>
-                    <Select
-                      items={PROVIDERS}
-                      value={provider}
-                      onValueChange={(value) => {
-                        if (!value) return
-                        setProvider(value)
-                        const defaults = defaultModels(value)
-                        setModels(defaults)
-                        setModel(defaults[0] ?? "")
-                        setKeyStatus("idle")
-                      }}
-                    >
-                      <SelectTrigger id="draft-provider" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {PROVIDERS.map((item) => (
-                            <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="draft-key">API key</FieldLabel>
-                    <Input
-                      id="draft-key"
-                      type="password"
-                      autoComplete="off"
-                      value={apiKey}
-                      onChange={(event) => {
-                        setApiKey(event.target.value)
-                        if (keyStatus === "saved") setKeyStatus("idle")
-                      }}
-                    />
-                    <FieldDescription>The key stays on this computer. Lore uses it only when you ask for a draft.</FieldDescription>
-                  </Field>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={keyStatus === "saving" || apiKey.trim().length < 8}
-                    aria-live="polite"
-                    onClick={() => saveKey()}
-                  >
-                    {keyLabel}
-                  </Button>
-                  <Field>
-                    <FieldLabel htmlFor="draft-model">Model</FieldLabel>
-                    <Select items={models.map((item) => ({ label: item, value: item }))} value={model} onValueChange={(value) => value && setModel(value)}>
-                      <SelectTrigger id="draft-model" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {models.map((item) => (
-                            <SelectItem key={item} value={item}>{item}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
+                  {providerConfigured ? (
+                    <FieldDescription>
+                      Using {providerTitle}
+                      {model ? ` · ${model}` : ""}
+                      {providerLast4 ? ` (key …${providerLast4})` : ""} from Settings. Change it there if you need a different provider.
+                    </FieldDescription>
+                  ) : (
+                    <>
+                      <Field>
+                        <FieldLabel htmlFor="draft-provider">Provider</FieldLabel>
+                        <Select
+                          items={PROVIDERS}
+                          value={provider}
+                          onValueChange={(value) => {
+                            if (!value) return
+                            setProvider(value)
+                            setModels([])
+                            setModel("")
+                            setKeyStatus("idle")
+                          }}
+                        >
+                          <SelectTrigger id="draft-provider" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {PROVIDERS.map((item) => (
+                                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="draft-key">API key</FieldLabel>
+                        <Input
+                          id="draft-key"
+                          type="password"
+                          autoComplete="off"
+                          value={apiKey}
+                          onChange={(event) => {
+                            setApiKey(event.target.value)
+                            if (keyStatus === "saved") setKeyStatus("idle")
+                          }}
+                        />
+                        <FieldDescription>The key stays on this computer. Lore uses it only when you ask for a draft.</FieldDescription>
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={keyStatus === "saving" || apiKey.trim().length < 8}
+                        aria-live="polite"
+                        onClick={() => saveKey()}
+                      >
+                        {keyLabel}
+                      </Button>
+                      <Field>
+                        <FieldLabel htmlFor="draft-model">Model</FieldLabel>
+                        <Select items={models.map((item) => ({ label: item, value: item }))} value={model} onValueChange={(value) => value && setModel(value)}>
+                          <SelectTrigger id="draft-model" className="w-full" disabled={models.length === 0}>
+                            <SelectValue placeholder="Save a key to load models" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {models.map((item) => (
+                                <SelectItem key={item} value={item}>{item}</SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FieldDescription>Only chat models returned by that provider for this key are listed.</FieldDescription>
+                      </Field>
+                    </>
+                  )}
                   <Field>
                     <FieldLabel htmlFor="draft-note">Note for the draft</FieldLabel>
                     <Textarea id="draft-note" rows={3} value={note} onChange={(event) => setNote(event.target.value)} />
                   </Field>
-                  <Button type="button" variant="outline" disabled={busy} onClick={() => draft()}>
+                  <ErrorAlert message={error} />
+                  <Button type="button" variant="outline" disabled={busy || (!providerConfigured && keyStatus !== "saved")} onClick={() => draft()}>
                     {busy ? "Drafting…" : "Draft role"}
                   </Button>
                 </FieldGroup>
@@ -668,9 +759,19 @@ export function Onboarding({
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="persona-rules">Rules</FieldLabel>
-                  <Textarea id="persona-rules" rows={5} value={rules} onChange={(event) => setRules(event.target.value)} />
+                  <Textarea
+                    id="persona-rules"
+                    rows={8}
+                    value={rules}
+                    onChange={(event) => setRules(event.target.value)}
+                    className="min-h-40 text-sm leading-7 whitespace-pre-wrap"
+                  />
                 </Field>
-                <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save role"}</Button>
+                {mode === "write" ? <ErrorAlert message={error} /> : null}
+                <Button type="submit" disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save role"}</Button>
+                {name.trim() && rules.trim() ? (
+                  <p className="text-sm text-muted-foreground">Save role writes the persona file and attaches the checked skills.</p>
+                ) : null}
                 {savedPersona ? <p className="text-sm text-muted-foreground">Role saved as a draft. Approve it on the Personas page before an agent can use it.</p> : null}
               </form>
             </div>
@@ -717,7 +818,17 @@ export function Onboarding({
                   disabled={busy || (panel !== "wizard" && picked.length === 0 && waiting.length === 0)}
                   onClick={() => continueSkills()}
                 >
-                  {busy ? "Adding skills…" : panel === "wizard" ? "Continue" : "Add selected"}
+                  {addProgress
+                    ? `Downloading ${addProgress.current}/${addProgress.total}…`
+                    : busy
+                      ? "Adding skills…"
+                      : panel === "wizard"
+                        ? picked.length > 0
+                          ? `Continue with ${picked.length}`
+                          : "Continue"
+                        : picked.length > 0
+                          ? `Add selected (${picked.length})`
+                          : "Add selected"}
                 </Button>
               </>
             ) : null}

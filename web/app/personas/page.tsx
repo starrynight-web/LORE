@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { ErrorAlert } from "@/components/error-alert"
 import { Onboarding } from "@/components/onboarding"
 import { Shell } from "@/components/Shell"
@@ -20,6 +21,8 @@ export default function PersonasPage() {
   const [ready, setReady] = useState<Ready[]>([])
   const [error, setError] = useState("")
   const [open, setOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<Persona | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   function reload() {
     api<{ personas: Persona[] }>("/api/personas")
@@ -41,11 +44,17 @@ export default function PersonasPage() {
     reload()
   }
 
-  async function remove(id: string) {
+  async function remove(persona: Persona) {
     setError("")
-    await api(`/api/personas/${encodeURIComponent(id)}`, { method: "DELETE" })
-    toast.success("Persona removed.")
-    reload()
+    setDeleting(true)
+    try {
+      await api(`/api/personas/${encodeURIComponent(persona.id)}`, { method: "DELETE" })
+      setPendingDelete(null)
+      toast.success("Persona removed. Its skills are waiting for a new role.")
+      reload()
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -77,7 +86,7 @@ export default function PersonasPage() {
               </CardContent>
               <CardFooter className="gap-2">
                 <Button variant="outline" nativeButton={false} render={<Link href={personaHref(persona.id)} />}>Open</Button>
-                <Button variant="destructive" type="button" onClick={() => remove(persona.id).catch((exc: Error) => setError(exc.message))}>
+                <Button variant="destructive" type="button" onClick={() => setPendingDelete(persona)}>
                   Delete
                 </Button>
               </CardFooter>
@@ -114,6 +123,22 @@ export default function PersonasPage() {
             reload()
           }}
           onClose={() => setOpen(false)}
+        />
+      ) : null}
+      {pendingDelete ? (
+        <ConfirmDialog
+          title={`Delete ${pendingDelete.title}?`}
+          description={
+            pendingDelete.skill_ids.length > 0
+              ? `This removes the role. Its ${pendingDelete.skill_ids.length} skill${pendingDelete.skill_ids.length === 1 ? "" : "s"} will go back to waiting so you can attach ${pendingDelete.skill_ids.length === 1 ? "it" : "them"} to another role.`
+              : "This removes the role. You can create a new one later."
+          }
+          confirmLabel="Delete persona"
+          busy={deleting}
+          onCancel={() => {
+            if (!deleting) setPendingDelete(null)
+          }}
+          onConfirm={() => remove(pendingDelete).catch((exc: Error) => setError(exc.message))}
         />
       ) : null}
     </Shell>
