@@ -14,10 +14,14 @@ from lore.install_cmd import (
     _emit,
     _uv_env,
     find_uv,
+    handoff_via_uvx,
     is_map_unavailable,
+    is_windows_file_lock_error,
     map_missing_message,
     prefix,
+    self_replace_recovery_message,
     strict_map_failure,
+    windows_self_replace_blocked,
 )
 from lore.site_bundle import site_cache_root
 
@@ -90,7 +94,8 @@ def run(argv: list[str] | None = None) -> None:
             "  Upgrade lore-solo from PyPI and clear the cached setup site.\n"
             "  (default) try map extra via wheels; fall back to core on compile failure\n"
             "  --map      require map extra (fail if it cannot install)\n"
-            "  --no-map   upgrade core only (personas + MCP, no Graphify)",
+            "  --no-map   upgrade core only (personas + MCP, no Graphify)\n"
+            "  On Windows, update restarts via uvx when run from the installed tool.",
             file=sys.stderr,
         )
         return
@@ -106,6 +111,14 @@ def run(argv: list[str] | None = None) -> None:
             'Windows: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
         )
 
+    if windows_self_replace_blocked():
+        forwarded = []
+        if with_map is True:
+            forwarded.append("--map")
+        elif with_map is False:
+            forwarded.append("--no-map")
+        handoff_via_uvx(uv, "update", forwarded)
+
     bin_dir = prefix() / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,12 +128,20 @@ def run(argv: list[str] | None = None) -> None:
         status(message, force=True)
         status("Run lore-solo setup to open the website.", force=True)
 
+    def fail_upgrade(result: subprocess.CompletedProcess[str], extra: str = "") -> None:
+        _emit(result)
+        combined = f"{result.stderr}\n{result.stdout}"
+        if is_windows_file_lock_error(combined):
+            sys.stderr.write(self_replace_recovery_message() + "\n")
+        if extra:
+            sys.stderr.write(extra + "\n")
+        raise SystemExit(result.returncode)
+
     if with_map is False:
         status("Upgrading lore-solo (core only)…", force=True)
         result = _run_upgrade(uv, with_map=False)
         if result.returncode != 0:
-            _emit(result)
-            raise SystemExit(result.returncode)
+            fail_upgrade(result)
         finish_ok("Updated (without map).")
         return
 
@@ -128,10 +149,8 @@ def run(argv: list[str] | None = None) -> None:
         status("Upgrading lore-solo (with map)…", force=True)
         result = _run_upgrade(uv, with_map=True)
         if result.returncode != 0:
-            _emit(result)
             combined = f"{result.stderr}\n{result.stdout}"
-            sys.stderr.write(strict_map_failure(is_map_unavailable(combined)) + "\n")
-            raise SystemExit(result.returncode)
+            fail_upgrade(result, strict_map_failure(is_map_unavailable(combined)))
         finish_ok("Updated with map support.")
         return
 
@@ -143,15 +162,13 @@ def run(argv: list[str] | None = None) -> None:
 
     combined = f"{result.stderr}\n{result.stdout}"
     if not is_map_unavailable(combined):
-        _emit(result)
-        raise SystemExit(result.returncode)
+        fail_upgrade(result)
 
     status("Map extra unavailable; upgrading core only…", force=True)
     fallback = _run_upgrade(uv, with_map=False)
     if fallback.returncode != 0:
         _emit(result)
-        _emit(fallback)
-        raise SystemExit(fallback.returncode)
+        fail_upgrade(fallback)
     print(map_missing_message(), file=sys.stderr)
     finish_ok("Updated (without map).")
 

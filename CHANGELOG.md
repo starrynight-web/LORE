@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.4 — 2026-11-16
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+### Fixed
+
+- Windows: `lore-solo update` / `install` no longer try to replace the running
+  tool Python in-place (Access is denied / os error 5). When started from
+  `~/.lore\\tools\\lore-solo`, they hand off to a fresh `uv tool run`
+  process after exit. Recovery hint still points at `uvx lore-solo install`.
+
 ## 0.2.3 — 2026-11-16
 
 GitHub release artifacts are produced by the tag-triggered release workflow

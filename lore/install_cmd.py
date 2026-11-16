@@ -18,6 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from lore.cli_status import status
 from lore.release import export_constraints, packaged_constraints, published_spec
 
 PYTHON_PIN = "3.12"
@@ -72,8 +73,16 @@ def sanitize_output(text: str) -> str:
     return _BEARER_RE.sub(r"\1***", text)
 
 
+_REEXEC_ENV = "LORE_UPDATE_VIA_UVX"
+
+
 def prefix() -> Path:
     return Path.home() / ".lore"
+
+
+def tool_install_root() -> Path:
+    """Environment `uv tool install` creates under the Lore prefix."""
+    return prefix() / "tools" / "lore-solo"
 
 
 def installed_binary() -> Path:
@@ -81,6 +90,101 @@ def installed_binary() -> Path:
     if os.name == "nt":
         return base.with_suffix(".exe")
     return base
+
+
+def running_from_tool_env(executable: str | None = None) -> bool:
+    """True when this process is the installed tool Python under ~/.lore/tools."""
+    try:
+        exe = Path(executable or sys.executable).resolve()
+        root = tool_install_root().resolve()
+    except OSError:
+        return False
+    return exe == root or root in exe.parents
+
+
+def windows_self_replace_blocked() -> bool:
+    """Windows locks the running python.exe, so in-place tool replace fails."""
+    return os.name == "nt" and running_from_tool_env() and os.environ.get(_REEXEC_ENV) != "1"
+
+
+def is_windows_file_lock_error(output: str) -> bool:
+    text = output.lower()
+    return os.name == "nt" and (
+        "access is denied" in text
+        or "os error 5" in text
+        or ("cannot remove" in text and "scripts" in text)
+    )
+
+
+def self_replace_recovery_message() -> str:
+    return (
+        "Windows locked the installed lore-solo Python while it was running, so the "
+        "upgrade could not finish.\n"
+        "Repair from a fresh copy (does not lock ~/.lore\\tools):\n"
+        "  uvx lore-solo install\n"
+        "Then confirm with: lore-solo doctor"
+    )
+
+
+def handoff_via_uvx(uv: str, command: str, forwarded: list[str]) -> None:
+    """Exit this process, then run `uvx lore-solo <command>` so Windows unlocks Scripts.
+
+    The child sets LORE_UPDATE_VIA_UVX=1 and waits for this PID to exit before
+    calling uv tool install against ~/.lore.
+    """
+    if command not in {"install", "update"}:
+        raise ValueError(f"unsupported handoff command: {command}")
+    status(
+        "Windows is locking the installed Python while lore-solo runs; "
+        "finishing in a fresh process…",
+        force=True,
+    )
+    bin_dir = prefix() / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    script = bin_dir / f"_lore_solo_{command}_handoff.cmd"
+    pid = os.getpid()
+    home = prefix()
+    child = subprocess.list2cmdline(
+        [uv, "tool", "run", "--from", "lore-solo", "lore-solo", command, *forwarded]
+    )
+    body = "\r\n".join(
+        [
+            "@echo off",
+            f"set {_REEXEC_ENV}=1",
+            f'set "UV_TOOL_DIR={home / "tools"}"',
+            f'set "UV_TOOL_BIN_DIR={home / "bin"}"',
+            ":wait",
+            f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul',
+            "if not errorlevel 1 (",
+            "  timeout /t 1 /nobreak >nul",
+            "  goto wait",
+            ")",
+            child,
+            "set EXITCODE=%ERRORLEVEL%",
+            'del "%~f0" >nul 2>&1',
+            "exit /b %EXITCODE%",
+            "",
+        ]
+    )
+    script.write_text(body, encoding="utf-8")
+    # CREATE_NEW_CONSOLE keeps progress visible after this process exits.
+    creationflags = 0
+    if hasattr(subprocess, "CREATE_NEW_CONSOLE"):
+        creationflags |= subprocess.CREATE_NEW_CONSOLE
+    if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+        creationflags |= subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(
+        ["cmd.exe", "/c", str(script)],
+        cwd=str(bin_dir),
+        close_fds=True,
+        creationflags=creationflags,
+    )
+    status(
+        f"{command.capitalize()} continuing in a new window. "
+        "Run lore-solo doctor when it finishes.",
+        force=True,
+    )
+    raise SystemExit(0)
 
 
 def find_uv() -> str | None:
@@ -264,7 +368,8 @@ def run(argv: list[str] | None = None) -> None:
             "usage: lore-solo install [--map|--no-map]\n"
             "  (default) try map extra via wheels; fall back to core on compile failure\n"
             "  --map      require map extra (fail if it cannot install)\n"
-            "  --no-map   install core only (personas + MCP, no Graphify)",
+            "  --no-map   install core only (personas + MCP, no Graphify)\n"
+            "  On Windows, prefer: uvx lore-solo install",
             file=sys.stderr,
         )
         return
@@ -278,6 +383,13 @@ def run(argv: list[str] | None = None) -> None:
             "macOS and Linux: curl -LsSf https://astral.sh/uv/install.sh | sh\n"
             'Windows: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
         )
+    if windows_self_replace_blocked():
+        forwarded = []
+        if with_map is True:
+            forwarded.append("--map")
+        elif with_map is False:
+            forwarded.append("--no-map")
+        handoff_via_uvx(uv, "install", forwarded)
     checkout = checkout_root()
     temp_export: Path | None = None
     try:
@@ -299,23 +411,27 @@ def run(argv: list[str] | None = None) -> None:
                 "checkout with uv.lock or a published lore-solo wheel."
             )
 
+        def fail_install(result: subprocess.CompletedProcess[str], extra: str = "") -> None:
+            _emit(result)
+            combined = f"{result.stderr}\n{result.stdout}"
+            if is_windows_file_lock_error(combined):
+                sys.stderr.write(self_replace_recovery_message() + "\n")
+            if extra:
+                sys.stderr.write(extra + "\n")
+            raise SystemExit(result.returncode)
+
         if with_map is False:
             result = _run_uv(uv, checkout, with_map=False, constraints=constraints)
             if result.returncode != 0:
-                _emit(result)
-                raise SystemExit(result.returncode)
+                fail_install(result)
             print("Installed (without map). Run lore-solo setup to open the website.")
             return
 
         if with_map is True:
             result = _run_uv(uv, checkout, with_map=True, constraints=constraints)
             if result.returncode != 0:
-                _emit(result)
                 combined = f"{result.stderr}\n{result.stdout}"
-                sys.stderr.write(
-                    strict_map_failure(is_map_unavailable(combined)) + "\n"
-                )
-                raise SystemExit(result.returncode)
+                fail_install(result, strict_map_failure(is_map_unavailable(combined)))
             print("Installed with map support. Run lore-solo setup to open the website.")
             return
 
@@ -326,14 +442,12 @@ def run(argv: list[str] | None = None) -> None:
 
         combined = f"{result.stderr}\n{result.stdout}"
         if not is_map_unavailable(combined):
-            _emit(result)
-            raise SystemExit(result.returncode)
+            fail_install(result)
 
         fallback = _run_uv(uv, checkout, with_map=False, constraints=constraints)
         if fallback.returncode != 0:
             _emit(result)
-            _emit(fallback)
-            raise SystemExit(fallback.returncode)
+            fail_install(fallback)
         print(map_missing_message())
         print("Run lore-solo setup to open the website.")
     finally:
