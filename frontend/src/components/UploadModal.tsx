@@ -22,7 +22,8 @@ import {
   Download,
   AlertTriangle,
   Layers,
-  Ban
+  Ban,
+  Globe
 } from 'lucide-react';
 import { Collection, ZipImportJob, ZipImportEntry, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -70,6 +71,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [isZipPreviewing, setIsZipPreviewing] = useState<boolean>(false);
   const [isZipImporting, setIsZipImporting] = useState<boolean>(false);
   const [zipFilter, setZipFilter] = useState<'all' | 'supported' | 'unsupported'>('all');
+
+  // Web Scraper Intake State
+  const [intakeMode, setIntakeMode] = useState<'files' | 'scraper'>('files');
+  const [scraperUrl, setScraperUrl] = useState('');
+  const [crawlDepth, setCrawlDepth] = useState(1);
+  const [scraperAuthority, setScraperAuthority] = useState(3);
+  const [sovereigntyRegion, setSovereigntyRegion] = useState('eu_central');
+  const [accessLevel, setAccessLevel] = useState('internal');
+  const [isScraping, setIsScraping] = useState(false);
+  const [scraperResult, setScraperResult] = useState<any | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -477,10 +488,223 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           </button>
         </div>
 
-        {/* ========================================================================= */}
-        {/* VIEW 1: ZIP ARCHIVE INSPECTOR & IMPORT WORKBENCH */}
-        {/* ========================================================================= */}
-        {zipJob || isZipPreviewing ? (
+        {/* Intake Mode Switcher */}
+        <div className="flex items-center gap-2 px-5 sm:px-6 pt-3 border-b pb-2 flex-shrink-0" style={{ borderColor: 'var(--border-color)' }}>
+          <button
+            type="button"
+            onClick={() => setIntakeMode('files')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+              intakeMode === 'files'
+                ? 'bg-[var(--brand-accent)] text-[var(--cta-text)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Files & ZIP Archives</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIntakeMode('scraper')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+              intakeMode === 'scraper'
+                ? 'bg-[var(--brand-accent)] text-[var(--cta-text)]'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>Web Scraper & Connectors</span>
+          </button>
+        </div>
+
+        {intakeMode === 'scraper' ? (
+          <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+            <div>
+              <h4 className="text-sm font-bold text-[var(--text-primary)]">Enterprise Web Scraper & Sitemap Intake</h4>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Crawl internal portals, documentation hubs, or regulatory sitemaps into LORE's fail-closed Knowledge Grid.
+              </p>
+            </div>
+
+            {scraperResult && (
+              <div 
+                className="p-3.5 rounded-xl border text-xs flex items-center justify-between"
+                style={{
+                  backgroundColor: 'var(--accent-light)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--brand-accent)',
+                }}
+              >
+                <div>
+                  <b>{scraperResult.message}</b>
+                  <p className="text-[11px] opacity-80 mt-0.5">
+                    Target: {scraperResult.target_url} • Region: {scraperResult.sovereignty_region} • Authority: Rank {scraperResult.authority_level}
+                  </p>
+                </div>
+                <button onClick={() => setScraperResult(null)} className="opacity-70 hover:opacity-100">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-[var(--text-primary)] block mb-1">
+                  Target Portal URL or Sitemap XML
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://docs.enterprise.internal/compliance/sitemap.xml"
+                  value={scraperUrl}
+                  onChange={(e) => setScraperUrl(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:border-[var(--brand-accent)]"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-[var(--text-primary)] block mb-1">
+                    Crawl Depth
+                  </label>
+                  <select
+                    value={crawlDepth}
+                    onChange={(e) => setCrawlDepth(parseInt(e.target.value, 10))}
+                    className="w-full px-3 py-2 rounded-xl border text-xs focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value={1}>1 - Single Page / Root URL only</option>
+                    <option value={2}>2 - Direct Child Links (Depth 2)</option>
+                    <option value={3}>3 - Deep Sectional Crawl (Depth 3)</option>
+                    <option value={5}>5 - Maximum Subtree Crawl (Depth 5)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-[var(--text-primary)] block mb-1">
+                    Authority Level
+                  </label>
+                  <select
+                    value={scraperAuthority}
+                    onChange={(e) => setScraperAuthority(parseInt(e.target.value, 10))}
+                    className="w-full px-3 py-2 rounded-xl border text-xs focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value={7}>Rank 7 - Approved Policy</option>
+                    <option value={6}>Rank 6 - Signed Contract / Terms</option>
+                    <option value={5}>Rank 5 - Team Engineering Convention</option>
+                    <option value={4}>Rank 4 - Maintained Procedure</option>
+                    <option value={3}>Rank 3 - Reviewed Documentation</option>
+                    <option value={2}>Rank 2 - Internal Wiki Entry</option>
+                    <option value={1}>Rank 1 - Informal Scraped Note</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-[var(--text-primary)] block mb-1">
+                    Data Residency & Sovereignty
+                  </label>
+                  <select
+                    value={sovereigntyRegion}
+                    onChange={(e) => setSovereigntyRegion(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border text-xs focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value="eu_central">EU-Central (GDPR Compliant - Frankfurt)</option>
+                    <option value="us_east">US-East (HIPAA / SOC 2 - N. Virginia)</option>
+                    <option value="apac_singapore">APAC (PDPA Compliant - Singapore)</option>
+                    <option value="sovereign_onprem">Sovereign Air-Gapped Enclave (On-Prem)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-[var(--text-primary)] block mb-1">
+                    RBAC Authorization Access Level
+                  </label>
+                  <select
+                    value={accessLevel}
+                    onChange={(e) => setAccessLevel(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border text-xs focus:outline-none"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-soft)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value="public">Public - Accessible across workspace</option>
+                    <option value="internal">Internal - Workspace members only</option>
+                    <option value="restricted">Restricted - Compliance & SecOps roles</option>
+                    <option value="confidential">Confidential - Workspace admin only</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl text-xs font-bold border transition cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-soft)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!scraperUrl || isScraping}
+                  onClick={async () => {
+                    if (!scraperUrl) return;
+                    setIsScraping(true);
+                    try {
+                      const res = await api.submitWebScraper({
+                        url: scraperUrl,
+                        crawl_depth: crawlDepth,
+                        authority_level: scraperAuthority,
+                        sovereignty_region: sovereigntyRegion,
+                        access_level: accessLevel,
+                        workspace_id: workspaceId,
+                      });
+                      setScraperResult(res);
+                      setScraperUrl('');
+                    } catch (err: any) {
+                      setOverallError(err.message || 'Scraper dispatch failed.');
+                    } finally {
+                      setIsScraping(false);
+                    }
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--brand-accent)',
+                    color: 'var(--cta-text)',
+                  }}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>{isScraping ? 'Dispatching Crawler...' : 'Launch Web Scraper Intake'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : zipJob || isZipPreviewing ? (
           <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
             {overallError && (
               <div 

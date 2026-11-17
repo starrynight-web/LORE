@@ -515,6 +515,9 @@ class TextExtractor:
             'bounding_boxes': [],
         }]
 
+MAX_PAGES_PER_CHUNK: int = 15
+
+
 class UnifiedDocumentExtractor:
     """Dispatches extraction based on document type."""
     def __init__(

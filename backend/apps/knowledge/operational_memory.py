@@ -189,3 +189,72 @@ class OperationalMemoryService:
                 })
         return precedents
 
+    @classmethod
+    def record_human_resolution_distillation(
+        cls,
+        workspace=None,
+        organization=None,
+        prompt: str = "",
+        context: str = "",
+        human_verdict: str = "",
+        rationale: str = "",
+        resolution_type: str = "authority_tie_resolution",
+        conflict_record=None,
+        reviewed_by: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+        workspace_id: Optional[str] = None,
+        organization_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Persists human review resolutions into JudgeDistillationPair and tenant-isolated JSONL.
+        Used to fine-tune and distill the local Phi-4 Judge (lore.md §4 & knowledge.md §4).
+        """
+        import os
+        import json
+        from django.conf import settings
+        from apps.governance.models import JudgeDistillationPair
+
+        ws_id = str(workspace_id or getattr(workspace, "id", workspace or ""))
+        org_id = str(organization_id or getattr(organization, "id", organization or getattr(workspace, "organization_id", "")))
+
+        pair = JudgeDistillationPair.objects.create(
+            workspace_id=ws_id,
+            organization_id=org_id,
+            conflict_record=conflict_record,
+            resolution_type=resolution_type,
+            prompt=prompt,
+            context=context,
+            human_verdict=human_verdict,
+            rationale=rationale,
+            reviewed_by=reviewed_by or "human_reviewer",
+            metadata=metadata or {},
+        )
+
+        # Also append to tenant JSONL dataset
+        distill_dir = os.path.join(settings.BASE_DIR, "distillation_data")
+        os.makedirs(distill_dir, exist_ok=True)
+        jsonl_path = os.path.join(distill_dir, f"workspace_{ws_id}_distillation.jsonl")
+        record_line = {
+            "id": str(pair.id),
+            "workspace_id": ws_id,
+            "organization_id": org_id,
+            "resolution_type": resolution_type,
+            "prompt": prompt,
+            "context": context,
+            "human_verdict": human_verdict,
+            "rationale": rationale,
+            "reviewed_by": reviewed_by or "human_reviewer",
+            "alpaca": pair.to_alpaca(),
+            "chatml": pair.to_chatml(),
+            "created_at": pair.created_at.isoformat(),
+        }
+        with open(jsonl_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record_line, ensure_ascii=False) + "\n")
+
+        return {
+            "distillation_id": str(pair.id),
+            "workspace_id": ws_id,
+            "jsonl_path": jsonl_path,
+            "status": "persisted",
+        }
+

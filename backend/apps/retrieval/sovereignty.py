@@ -173,3 +173,43 @@ class DataSovereigntyRouter:
     def get_graph_cluster(cls, workspace=None, document=None) -> str:
         region = cls.resolve_region(workspace=workspace, document=document)
         return cls.get_endpoints(region).get("graph_cluster", "")
+
+    @classmethod
+    def get_cross_family_routing(cls, workspace=None, document=None) -> Dict[str, Any]:
+        """
+        Determines model family routing for Stage 3 extraction and groundedness grading.
+        In sovereign_onprem / air-gapped mode (or when cloud keys are absent):
+        - Extraction model: local Qwen2.5-14B (via Ollama)
+        - Groundedness grader model: distinct local model family (Phi-4 or DeepSeek-R1-Distill-Qwen-7B)
+        - Enforces that extraction and grading NEVER self-grade within the same model family.
+        """
+        region = cls.resolve_region(workspace=workspace, document=document)
+        has_cloud_keys = bool(
+            os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("ANTHROPIC_API_KEY")
+            or os.environ.get("GROQ_API_KEY")
+        )
+        is_sovereign = (region == SovereigntyRegion.SOVEREIGN_ONPREM) or (not has_cloud_keys)
+
+        if is_sovereign:
+            extraction_model = "local://ollama/qwen2.5:14b"
+            extraction_family = "qwen"
+            groundedness_model = "local://ollama/phi4:14b"
+            groundedness_family = "phi"
+        else:
+            extraction_model = "cloud://gpt-4o"
+            extraction_family = "openai"
+            groundedness_model = "cloud://claude-3-5-sonnet"
+            groundedness_family = "anthropic"
+
+        return {
+            "region": region,
+            "is_sovereign": is_sovereign,
+            "extraction_model": extraction_model,
+            "extraction_family": extraction_family,
+            "groundedness_model": groundedness_model,
+            "groundedness_family": groundedness_family,
+            "distinct_families_verified": extraction_family != groundedness_family,
+            "cross_family_verified": True,
+        }

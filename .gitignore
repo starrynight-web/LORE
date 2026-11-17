@@ -39,6 +39,9 @@ backend/media/
 backend/staticfiles/
 backend/qdrant_storage/
 backend/backups/
+backend/distillation_data/
+backend/release_gate_failure_report.md
+backend/release_gating_evaluation_report.json
 backend/.venv/
 .venv/
 .pytest_cache/

@@ -15,6 +15,8 @@ import { RealtimeOCRStudio } from '@/components/RealtimeOCRStudio';
 import { AuthModal } from '@/components/AuthModal';
 import { OrganizationSettingsView } from '@/components/OrganizationSettingsView';
 import { EmailConnectorView } from '@/components/EmailConnectorView';
+import { KnowledgeGridView } from '@/components/KnowledgeGridView';
+import { EnterpriseConnectorsView } from '@/components/EnterpriseConnectorsView';
 import { 
   api, 
   Workspace, 
@@ -230,6 +232,13 @@ export default function Home() {
                 />
               )}
 
+              {activeTab === 'knowledge_grid' && (
+                <KnowledgeGridView
+                  workspaceId={currentWorkspace?.id}
+                  onNavigateToDocs={() => setActiveTab('documents')}
+                />
+              )}
+
               {activeTab === 'ocr' && (
                 <RealtimeOCRStudio
                   workspaceId={currentWorkspace?.id}
@@ -252,6 +261,13 @@ export default function Home() {
                     setRagScopedDocId(docId);
                     setActiveTab('rag');
                   }}
+                />
+              )}
+
+              {activeTab === 'connectors' && (
+                <EnterpriseConnectorsView
+                  workspaceId={currentWorkspace?.id}
+                  onOpenWebScraperModal={() => setIsUploadModalOpen(true)}
                 />
               )}
 

@@ -110,6 +110,108 @@ class ReviewQueueViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return Response({'message': 'Document rejected and quarantined.', 'status': doc.status})
 
+    @action(detail=False, methods=['post'], url_path='batch')
+    def batch(self, request):
+        """
+        POST /api/governance/review-queue/batch/
+        Supports bulk actions:
+        - 'approve': marks documents ready and invalidates cache
+        - 'reject': marks documents quarantined and invalidates cache
+        - 'accept_authority_resolution': resolves conflict records according to Authority Layer dominance,
+           records human resolution into JudgeDistillationPair via OperationalMemoryService.
+        """
+        from apps.knowledge.operational_memory import OperationalMemoryService
+        from apps.governance.models import ConflictRecord
+        from apps.retrieval.cache import TenantSafeCacheService
+
+        action_type = request.data.get('action')
+        document_ids = request.data.get('document_ids', [])
+        conflict_ids = request.data.get('conflict_ids', [])
+        notes = request.data.get('notes', '')
+        user = request.user if request.user and request.user.is_authenticated else None
+        reviewer_name = getattr(user, 'username', 'compliance_officer')
+
+        processed_docs = 0
+        processed_conflicts = 0
+
+        if action_type == 'approve':
+            for doc_id in document_ids:
+                try:
+                    doc = SourceDocument.objects.get(id=doc_id)
+                    doc.status = 'ready'
+                    doc.save(update_fields=['status'])
+                    try:
+                        TenantSafeCacheService.invalidate_document(str(doc.workspace_id), str(doc.id))
+                    except Exception:
+                        pass
+                    AuditEvent.objects.create(
+                        organization=doc.organization,
+                        workspace=doc.workspace,
+                        user=user,
+                        event_type='item_promoted',
+                        target_type='document',
+                        target_id=str(doc.id),
+                        details={'action': 'batch_human_approved', 'reviewer': reviewer_name, 'notes': notes}
+                    )
+                    processed_docs += 1
+                except SourceDocument.DoesNotExist:
+                    continue
+
+        elif action_type == 'reject':
+            for doc_id in document_ids:
+                try:
+                    doc = SourceDocument.objects.get(id=doc_id)
+                    doc.status = 'quarantined'
+                    doc.save(update_fields=['status'])
+                    try:
+                        TenantSafeCacheService.invalidate_document(str(doc.workspace_id), str(doc.id))
+                    except Exception:
+                        pass
+                    AuditEvent.objects.create(
+                        organization=doc.organization,
+                        workspace=doc.workspace,
+                        user=user,
+                        event_type='item_quarantined',
+                        target_type='document',
+                        target_id=str(doc.id),
+                        details={'action': 'batch_human_rejected', 'reviewer': reviewer_name, 'notes': notes}
+                    )
+                    processed_docs += 1
+                except SourceDocument.DoesNotExist:
+                    continue
+
+        elif action_type == 'accept_authority_resolution':
+            for c_id in conflict_ids:
+                try:
+                    conflict = ConflictRecord.objects.get(id=c_id)
+                    conflict.resolution_status = 'resolved_by_authority'
+                    conflict.resolution_notes = notes or "Authority resolution accepted in batch triage."
+                    conflict.save(update_fields=['resolution_status', 'resolution_notes'])
+
+                    # Record lineage and distillation pair for Phi-4 Judge
+                    OperationalMemoryService.record_human_resolution_distillation(
+                        workspace=conflict.workspace,
+                        organization=conflict.workspace.organization,
+                        conflict_record=conflict,
+                        prompt=f"Resolve authority conflict between {conflict.source_a.title} and {conflict.source_b.title}",
+                        context=f"Claim A: {conflict.claim_a}\nClaim B: {conflict.claim_b}",
+                        human_verdict="ACCEPT_AUTHORITY_DOMINANCE",
+                        rationale=notes or "Accepted authority ladder resolution.",
+                        resolution_type="authority_tie_resolution",
+                        reviewed_by=reviewer_name,
+                    )
+                    processed_conflicts += 1
+                except ConflictRecord.DoesNotExist:
+                    continue
+
+        return Response({
+            "status": "SUCCESS",
+            "action": action_type,
+            "processed_documents_count": processed_docs,
+            "processed_conflicts_count": processed_conflicts,
+            "message": f"Batch action '{action_type}' processed successfully."
+        })
+
 
 class ConflictViewSet(viewsets.ModelViewSet):
     serializer_class = ConflictRecordSerializer
@@ -510,6 +612,9 @@ def evaluation_promote_view(request, pk):
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+
+
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def evaluation_rollback_view(request):
@@ -533,4 +638,61 @@ def evaluation_rollback_view(request):
         })
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def compliance_packs_list_view(request):
+    """
+    Returns the catalog of 5 pre-built enterprise compliance packs:
+    SOC 2 Type II, ISO/IEC 27001:2022, HIPAA, GDPR, EU AI Act.
+    """
+    from apps.governance.compliance_packs.pack_loader import CompliancePackLoader, COMPLIANCE_PACKS
+    packs = []
+    for p_id, p in COMPLIANCE_PACKS.items():
+        packs.append({
+            "id": p["id"],
+            "name": p["name"],
+            "regulation": p.get("regulation", ""),
+            "rules_count": len(p.get("rules", [])),
+            "evidence_requirements": p.get("evidence_requirements", []),
+        })
+    return Response({"packs": packs, "count": len(packs)})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def compliance_packs_apply_view(request):
+    """
+    Applies and provisions a compliance pack into the specified workspace.
+    """
+    from apps.governance.compliance_packs.pack_loader import CompliancePackLoader
+    from apps.workspaces.models import Workspace
+
+    pack_id = request.data.get('pack_id')
+    workspace_id = request.data.get('workspace_id')
+    if not pack_id or not workspace_id:
+        return Response({'error': 'pack_id and workspace_id are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    workspace = Workspace.objects.filter(id=workspace_id).first()
+    if not workspace:
+        return Response({'error': 'Workspace not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        result = CompliancePackLoader.apply_pack(pack_id=pack_id, workspace=workspace, organization=workspace.organization)
+        return Response({
+            "status": "SUCCESS",
+            "pack_id": pack_id,
+            "workspace_id": workspace_id,
+            "result": result,
+            "rules_count": result.get("rules_count", 0),
+            "evidence_requirements_count": result.get("evidence_requirements_count", 0),
+            "message": f"Compliance pack '{pack_id}' applied successfully."
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
 

@@ -274,3 +274,53 @@ class EvaluationFailureRecord(models.Model):
     def __str__(self):
         return f"Failure [{self.root_cause_group}] - Case {self.case_id} ({self.evaluation_run.id})"
 
+
+class JudgeDistillationPair(models.Model):
+    """
+    Persisted human review resolutions and overrides for Phi-4 Judge fine-tuning distillation.
+    (docs/enterprise/fix/knowledge.md §4 & prompt §1.3)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='distillation_pairs')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='distillation_pairs')
+    conflict_record = models.ForeignKey(ConflictRecord, on_delete=models.SET_NULL, null=True, blank=True, related_name='distillation_pairs')
+    resolution_type = models.CharField(max_length=50, default='authority_tie_resolution')  # authority_tie_resolution, quarantine_override
+    prompt = models.TextField()
+    context = models.TextField()
+    human_verdict = models.TextField()
+    rationale = models.TextField(blank=True, default='')
+    reviewed_by = models.CharField(max_length=150, blank=True, default='')
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Distillation [{self.resolution_type}] - {self.workspace.name} ({self.created_at.strftime('%Y-%m-%d')})"
+
+    def to_alpaca(self):
+        return {
+            "instruction": self.prompt,
+            "input": self.context,
+            "output": f"VERDICT: {self.human_verdict}\nRATIONALE: {self.rationale}"
+        }
+
+    def to_chatml(self):
+        return {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are the LORE Enterprise Compliance & Authority Judge (Phi-4). Resolve policy ties and review escalations deterministically."
+                },
+                {
+                    "role": "user",
+                    "content": f"Context:\n{self.context}\n\nTask:\n{self.prompt}"
+                },
+                {
+                    "role": "assistant",
+                    "content": f"VERDICT: {self.human_verdict}\nRATIONALE: {self.rationale}"
+                }
+            ]
+        }
+

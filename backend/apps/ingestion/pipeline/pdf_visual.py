@@ -99,6 +99,9 @@ class PDFPageClassification(str, Enum):
     OVERSIZED = "oversized"
 
 
+MAX_PAGES_PER_CHUNK: int = 15
+
+
 @dataclass
 class PDFSafetyLimits:
     """Safety and memory boundaries for single-page PDF processing."""
@@ -2517,41 +2520,45 @@ class PyMuPDFVisualPDFAdapter:
             stage_totals: Dict[str, float] = {}
 
             with plumber_cm as plumber_pdf:
-                for idx in range(total_pages):
-                    try:
-                        page_res = self._process_single_page(
-                            doc, idx, plumber_pdf, policy_context=policy_context
-                        )
-                    except Exception as page_exc:
-                        err = (
-                            f"Page {idx + 1} extraction failed gracefully: "
-                            f"{sanitize_sensitive_data(str(page_exc))}"
-                        )
-                        logger.warning(err)
-                        page_res = self._build_diagnostic_page(
-                            page_number=idx + 1,
-                            extraction_type="pdf_malformed",
-                            status="page_error",
-                            classification=PDFPageClassification.MALFORMED,
-                            warnings=[err],
-                        )
-                        page_failure_count += 1
-                    if run_warnings:
-                        merged_warns = list(dict.fromkeys(list(page_res.get("warnings") or []) + run_warnings))
-                        page_res["warnings"] = merged_warns
-                        page_res["visual_metadata"]["warnings"] = merged_warns
+                for chunk_start in range(0, total_pages, MAX_PAGES_PER_CHUNK):
+                    chunk_end = min(chunk_start + MAX_PAGES_PER_CHUNK, total_pages)
+                    for idx in range(chunk_start, chunk_end):
+                        try:
+                            page_res = self._process_single_page(
+                                doc, idx, plumber_pdf, policy_context=policy_context
+                            )
+                        except Exception as page_exc:
+                            err = (
+                                f"Page {idx + 1} extraction failed gracefully: "
+                                f"{sanitize_sensitive_data(str(page_exc))}"
+                            )
+                            logger.warning(err)
+                            page_res = self._build_diagnostic_page(
+                                page_number=idx + 1,
+                                extraction_type="pdf_malformed",
+                                status="page_error",
+                                classification=PDFPageClassification.MALFORMED,
+                                warnings=[err],
+                            )
+                            page_failure_count += 1
+                        if run_warnings:
+                            merged_warns = list(dict.fromkeys(list(page_res.get("warnings") or []) + run_warnings))
+                            page_res["warnings"] = merged_warns
+                            page_res["visual_metadata"]["warnings"] = merged_warns
 
-                    rt = page_res.get("visual_metadata", {}).get("render_telemetry") or {}
-                    p_full = int(rt.get("full_page_renders", 0) or 0)
-                    p_reg = int(rt.get("region_clip_renders", 0) or 0)
-                    total_full_renders += p_full
-                    total_region_renders += p_reg
-                    total_ocr_calls += int(rt.get("ocr_calls", 0) or 0)
-                    for st_k, st_v in (rt.get("stage_timings_ms") or {}).items():
-                        stage_totals[st_k] = round(stage_totals.get(st_k, 0.0) + float(st_v), 2)
-                    if page_res.get("status") == "page_error":
-                        page_failure_count = max(page_failure_count, 1)
-                    pages_out.append(page_res)
+                        rt = page_res.get("visual_metadata", {}).get("render_telemetry") or {}
+                        p_full = int(rt.get("full_page_renders", 0) or 0)
+                        p_reg = int(rt.get("region_clip_renders", 0) or 0)
+                        total_full_renders += p_full
+                        total_region_renders += p_reg
+                        total_ocr_calls += int(rt.get("ocr_calls", 0) or 0)
+                        for st_k, st_v in (rt.get("stage_timings_ms") or {}).items():
+                            stage_totals[st_k] = round(stage_totals.get(st_k, 0.0) + float(st_v), 2)
+                        if page_res.get("status") == "page_error":
+                            page_failure_count = max(page_failure_count, 1)
+                        pages_out.append(page_res)
+                    # Explicit batch boundary memory cleanup to protect against Celery OOM kills on 200+ page PDFs
+                    gc.collect()
 
             if pages_out and any(
                 r.get("region_type") == VisualRegionType.TABLE.value

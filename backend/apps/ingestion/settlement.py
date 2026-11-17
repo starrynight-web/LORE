@@ -547,6 +547,15 @@ class ExtractionValidationService:
                     existing_notes['notes'] = meta['notes']
                 if visual_provenance is not None:
                     existing_notes[cls._DEFAULT_VISUAL_PROVENANCE_KEY] = visual_provenance
+
+                # Air-gapped cross-family groundedness routing (docs/enterprise/fix/knowledge.md §1 & prompt §1.2)
+                try:
+                    from apps.retrieval.sovereignty import DataSovereigntyRouter
+                    routing = DataSovereigntyRouter.get_cross_family_routing(workspace=doc.workspace, document=doc)
+                    existing_notes['cross_family_validation'] = routing
+                except Exception as cf_ex:
+                    logger.debug(f"Cross-family groundedness routing check: {cf_ex}")
+
                 if existing_notes:
                     doc.validation_notes = existing_notes
                     update_fields.append('validation_notes')

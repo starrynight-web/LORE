@@ -912,6 +912,83 @@ class ApiClient {
     return Array.isArray(res) ? res : res.results || [];
   }
 
+  async batchReviewAction(payload: BatchReviewPayload) {
+    return this.request<{
+      status: string;
+      action: string;
+      processed_documents_count: number;
+      processed_conflicts_count: number;
+      message: string;
+    }>('/governance/review-queue/batch/', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async getConflicts(workspaceId: string): Promise<ConflictRecordItem[]> {
+    const res = await this.request<any>(`/governance/conflicts/?workspace_id=${workspaceId}`);
+    return Array.isArray(res) ? res : res.results || [];
+  }
+
+  async getCompliancePacks(): Promise<CompliancePack[]> {
+    const res = await this.request<{ packs: CompliancePack[] }>('/governance/compliance-packs/');
+    return res.packs || [];
+  }
+
+  async applyCompliancePack(packId: string, workspaceId: string) {
+    return this.request<{
+      status: string;
+      pack_id: string;
+      workspace_id: string;
+      result: any;
+      message: string;
+    }>('/governance/compliance-packs/apply/', {
+      method: 'POST',
+      body: JSON.stringify({ pack_id: packId, workspace_id: workspaceId })
+    });
+  }
+
+  async getConnectorsStatus(workspaceId?: string): Promise<EnterpriseConnectorStatus[]> {
+    const q = workspaceId ? `?workspace_id=${workspaceId}` : '';
+    const res = await this.request<{ connectors: EnterpriseConnectorStatus[] }>(`/sources/connectors/status/${q}`);
+    return res.connectors || [];
+  }
+
+  async triggerConnectorSync(connectorId?: string, workspaceId?: string) {
+    return this.request<{ status: string; message: string; results: any[] }>('/sources/connectors/trigger-sync/', {
+      method: 'POST',
+      body: JSON.stringify({ connector_id: connectorId, workspace_id: workspaceId })
+    });
+  }
+
+  async submitWebScraper(data: {
+    url: string;
+    crawl_depth?: number;
+    authority_level?: number;
+    sovereignty_region?: string;
+    access_level?: string;
+    workspace_id: string;
+  }) {
+    return this.request<{
+      status: string;
+      target_url: string;
+      crawl_depth: number;
+      authority_level: number;
+      sovereignty_region: string;
+      access_level: string;
+      scraped_pages: number;
+      message: string;
+    }>('/sources/scraper/crawl/', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async getGraphOverview(workspaceId?: string): Promise<GraphOverviewData> {
+    const qs = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+    return this.request<GraphOverviewData>(`/knowledge/graph-overview/${qs}`);
+  }
+
   async approveDocument(id: string) {
     return this.request<{ message: string; status: string }>(`/governance/review/${id}/approve/`, {
       method: 'POST'
@@ -1258,6 +1335,121 @@ export interface OrganizationInvitation {
   created_at: string;
 }
 
+export interface BatchReviewPayload {
+  action: 'approve' | 'reject' | 'accept_authority_resolution';
+  document_ids?: string[];
+  conflict_ids?: string[];
+  notes?: string;
+  workspace_id?: string;
+}
+
+export interface CompliancePack {
+  id: string;
+  name: string;
+  regulation?: string;
+  description?: string;
+  authority_level?: number;
+  authority_tier?: string;
+  evidence_types_required?: string[];
+  rules_count?: number;
+  evidence_status?: Record<string, 'SATISFIED' | 'PENDING' | 'MISSING'>;
+  evidence_requirements?: Array<{
+    decision_type: string;
+    evidence_type: string;
+    is_mandatory: boolean;
+    min_authority_level: number;
+    description: string;
+    status?: 'SATISFIED' | 'PENDING' | 'MISSING';
+  }>;
+  rules?: Array<{
+    code: string;
+    statement: string;
+    authority_level: number;
+    component: string;
+  }>;
+}
+
+export interface EnterpriseConnectorStatus {
+  id: string;
+  name: string;
+  category: string;
+  status: 'ONLINE' | 'CONNECTED' | 'OFFLINE';
+  last_sync: string;
+  freshness: 'FRESH' | 'ACTIVE' | 'SYNCED' | 'STALE';
+  items_count: number;
+}
+
+export interface DomainSummaryCommunity {
+  id: string;
+  level: number;
+  domain_name?: string;
+  domain?: string;
+  summary_text: string;
+  token_count: number;
+  within_token_budget?: boolean;
+  verified_token_bound?: boolean;
+  entity_count?: number;
+  rule_count?: number;
+  member_rule_count?: number;
+  authority_tier?: string;
+  created_at?: string;
+}
+
+export interface CanonicalEntitySummary {
+  id?: string;
+  name: string;
+  canonical_name?: string;
+  entity_type: string;
+  aliases: string[];
+  description?: string;
+  mention_count?: number;
+  properties?: Record<string, any>;
+}
+
+export interface GraphOverviewData {
+  status?: string;
+  workspace_id: string;
+  workspace_name?: string;
+  domain_summaries?: DomainSummaryCommunity[];
+  communities?: DomainSummaryCommunity[];
+  domain_summaries_count?: number;
+  canonical_entities: CanonicalEntitySummary[];
+  canonical_entities_count?: number;
+  entities_by_type?: Record<string, number>;
+  edge_metrics?: Record<string, number>;
+  edge_types?: Record<string, number>;
+  total_edges?: number;
+  active_rules_count?: number;
+  relationships_count?: number;
+  recent_edges?: Array<{
+    id: string;
+    relationship_type: string;
+    source_id: string;
+    target_id: string;
+    confidence: number;
+    provenance: string;
+    approval_status: string;
+  }>;
+}
+
+export interface ConflictRecordItem {
+  id: string;
+  workspace: string;
+  source_a: string;
+  source_a_title: string;
+  source_b: string;
+  source_b_title: string;
+  claim_a: string;
+  claim_b: string;
+  resolution_status: string;
+  resolution_notes: string;
+  nli_contradiction_confidence?: number;
+  authority_delta?: number;
+  is_unresolved_tie?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export const api = new ApiClient();
 
 // Explicit bindings to guarantee prototype availability across Turbopack HMR sessions
@@ -1267,4 +1459,12 @@ api.createConversation = api.createConversation.bind(api);
 api.renameConversation = api.renameConversation.bind(api);
 api.deleteConversation = api.deleteConversation.bind(api);
 api.sendConversationMessage = api.sendConversationMessage.bind(api);
+api.batchReviewAction = api.batchReviewAction.bind(api);
+api.getConflicts = api.getConflicts.bind(api);
+api.getCompliancePacks = api.getCompliancePacks.bind(api);
+api.applyCompliancePack = api.applyCompliancePack.bind(api);
+api.getConnectorsStatus = api.getConnectorsStatus.bind(api);
+api.triggerConnectorSync = api.triggerConnectorSync.bind(api);
+api.submitWebScraper = api.submitWebScraper.bind(api);
+api.getGraphOverview = api.getGraphOverview.bind(api);
 

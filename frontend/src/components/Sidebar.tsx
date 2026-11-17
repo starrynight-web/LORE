@@ -15,6 +15,8 @@ import {
   Server,
   Shield,
   Mail,
+  Network,
+  Globe,
   X,
   PanelLeftClose
 } from 'lucide-react';
@@ -41,8 +43,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     { id: 'overview', label: t('nav.workspace_overview'), icon: Layers },
+    { id: 'knowledge_grid', label: 'Knowledge Grid & RAPTOR', icon: Network, badge: 'v2.0', highlight: true },
     { id: 'ocr', label: t('nav.live_ocr'), icon: Scan, badge: 'Live', isLive: true },
     { id: 'documents', label: t('nav.all_documents'), icon: FileText },
+    { id: 'connectors', label: 'Enterprise Connectors', icon: Globe, badge: '5 Sources' },
     { id: 'email_connect', label: 'Email Connectors', icon: Mail, badge: 'Gmail' },
     { id: 'activity', label: t('nav.ingestion_activity'), icon: Cpu, badge: activeJobsCount > 0 ? activeJobsCount : undefined },
     { id: 'rag', label: t('nav.governed_rag'), icon: Search, highlight: true },

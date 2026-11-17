@@ -59,8 +59,13 @@ urlpatterns = [
     path('api/v1/retrieval/', include('apps.retrieval.urls')),
     path('api/v1/governance/', include('apps.governance.urls')),
     path('api/v1/decisions/', include('apps.decisions.urls')),
+    path('api/v1/knowledge/', include('apps.knowledge.urls')),
     path('api/v1/audit/', include('apps.audit.urls')),
     path('api/v1/subscriptions/', include('apps.subscriptions.urls')),
+    # Direct /api/ aliases for enterprise client compatibility
+    path('api/governance/', include('apps.governance.urls')),
+    path('api/knowledge/', include('apps.knowledge.urls')),
+    path('api/sources/', include('apps.sources.urls')),
 ]
 
 if settings.DEBUG:
