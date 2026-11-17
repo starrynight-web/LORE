@@ -433,6 +433,13 @@ class DecisionIntelligenceLayer:
         }
         return DecisionIntelligenceTuple(info, reason_codes)
 
+    @classmethod
+    def fast_classify_enterprise(cls, query: str) -> Dict[str, Any]:
+        """Sub-5ms non-generative local centroid / ModernBERT classification (docs/enterprise/fix/knowledge.md §3)."""
+        from apps.governance.classifiers import EnterpriseDecisionClassifier
+        return EnterpriseDecisionClassifier.classify(query)
+
+
 
 # ==============================================================================
 # L6 — AUTHORITY LAYER
@@ -1567,6 +1574,18 @@ class EvidenceSufficiencyLayer:
                 deduped.append(r)
 
         return SufficiencyEvaluationTuple(evidence_found, evidence_missing, is_sufficient, deduped, requirements_applied=requirements_applied)
+
+    @classmethod
+    def verify_live_evidence_systems(
+        cls,
+        evidence_type: str,
+        target_entity: str = "",
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Queries live enterprise systems of record (Vanta, ServiceNow, Jira) (docs/enterprise/fix/knowledge.md §3)."""
+        from apps.governance.live_evidence import LiveEvidenceRegistry
+        return LiveEvidenceRegistry.verify_evidence(evidence_type, target_entity, context)
+
 
 
 # ==============================================================================

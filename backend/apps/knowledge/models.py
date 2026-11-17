@@ -77,6 +77,55 @@ class KnowledgeItem(models.Model):
         return f"[{self.code or self.item_type}] {self.statement[:60]}... ({self.status})"
 
 
+class CanonicalEntity(models.Model):
+    """
+    Standardized Enterprise Canonical Entity Node (docs/enterprise/fix/knowledge.md §2).
+    Represents Organization, Department, System, Service, Vendor, Regulation, Role, DataAsset,
+    Rule, Skill, Component, Version, Exception, and Decision nodes.
+    """
+    ENTITY_TYPE_CHOICES = [
+        ('organization', 'Organization'),
+        ('department', 'Department'),
+        ('system', 'System'),
+        ('service', 'Service'),
+        ('vendor', 'Vendor'),
+        ('regulation', 'Regulation'),
+        ('role', 'Role'),
+        ('data_asset', 'Data Asset'),
+        ('rule', 'Rule'),
+        ('skill', 'Skill'),
+        ('component', 'Component'),
+        ('version', 'Version'),
+        ('exception', 'Exception'),
+        ('decision', 'Decision'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='canonical_entities')
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='canonical_entities')
+    entity_type = models.CharField(max_length=50, choices=ENTITY_TYPE_CHOICES, db_index=True)
+    name = models.CharField(max_length=255)
+    canonical_name = models.CharField(max_length=255, db_index=True)
+    aliases = models.JSONField(default=list, blank=True)
+    description = models.TextField(blank=True, default='')
+    properties = models.JSONField(default=dict, blank=True)
+    embedding = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['canonical_name']
+        unique_together = ('workspace', 'entity_type', 'canonical_name')
+
+    def save(self, *args, **kwargs):
+        if not self.canonical_name:
+            self.canonical_name = self.name.lower().strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"[{self.entity_type.upper()}] {self.name}"
+
+
 class RelationshipType(models.TextChoices):
     APPLIES_TO = 'APPLIES_TO', 'Applies To'
     DEPENDS_ON = 'DEPENDS_ON', 'Depends On'
@@ -114,6 +163,9 @@ class KnowledgeRelationship(models.Model):
     source_item = models.ForeignKey(
         KnowledgeItem, on_delete=models.CASCADE, null=True, blank=True, related_name='outgoing_relationships'
     )
+    source_canonical_entity = models.ForeignKey(
+        CanonicalEntity, on_delete=models.CASCADE, null=True, blank=True, related_name='outgoing_relationships'
+    )
 
     # Target node identity
     target_document = models.ForeignKey(
@@ -124,6 +176,9 @@ class KnowledgeRelationship(models.Model):
     )
     target_item = models.ForeignKey(
         KnowledgeItem, on_delete=models.CASCADE, null=True, blank=True, related_name='incoming_relationships'
+    )
+    target_canonical_entity = models.ForeignKey(
+        CanonicalEntity, on_delete=models.CASCADE, null=True, blank=True, related_name='incoming_relationships'
     )
 
     relationship_type = models.CharField(max_length=40, choices=RelationshipType.choices, db_index=True)
@@ -183,6 +238,34 @@ class KnowledgeRelationship(models.Model):
         return True
 
     def __str__(self):
-        src = self.source_document or self.source_chunk or self.source_item or "Unknown"
-        tgt = self.target_document or self.target_chunk or self.target_item or "Unknown"
+        src = self.source_document or self.source_chunk or self.source_item or self.source_canonical_entity or "Unknown"
+        tgt = self.target_document or self.target_chunk or self.target_item or self.target_canonical_entity or "Unknown"
         return f"[{self.relationship_type}] {src} -> {tgt} ({self.approval_status})"
+
+
+class DomainSummary(models.Model):
+    """
+    Hierarchical Community Summary Node (RAPTOR / Leiden GraphRAG) (docs/enterprise/fix/knowledge.md §2).
+    Pre-aggregates clusters of related rules, canonical entities, and decisions.
+    Answers global systemic queries strictly within the 800-token budget.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='domain_summaries')
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='domain_summaries')
+    domain_name = models.CharField(max_length=255, db_index=True)
+    summary_text = models.TextField()
+    entity_ids = models.JSONField(default=list, blank=True)
+    rule_ids = models.JSONField(default=list, blank=True)
+    token_count = models.PositiveIntegerField(default=0)
+    community_level = models.PositiveSmallIntegerField(default=0)  # 0 = base community, 1+ = higher hierarchical summary
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['community_level', 'domain_name']
+        unique_together = ('workspace', 'domain_name', 'community_level')
+
+    def __str__(self):
+        return f"DomainSummary [L{self.community_level}] {self.domain_name} ({self.token_count} tokens)"
+

@@ -29,7 +29,7 @@ from apps.sources.models import SourceDocument, DocumentVersion, DocumentPage
 from apps.knowledge.models import DocumentChunk
 from apps.knowledge.chunking import StructureAwareChunker
 from apps.governance.models import ConflictRecord
-from apps.retrieval.vector_store import QdrantVectorStore
+from apps.retrieval.vector_store import QdrantVectorStore, get_vector_store, BaseVectorStore
 from apps.retrieval.embeddings import get_embedding_adapter
 from apps.retrieval.cache import TenantSafeCacheService
 from apps.audit.models import AuditEvent
@@ -224,11 +224,27 @@ class SecurityScreeningService:
         t0 = time.time()
         reasons = []
         threats_found = []
+        secrets_found = []
+        raw_text = raw_content or ""
 
         # 1. Prompt Injection Screen
         for pattern in cls.INJECTION_PATTERNS:
-            if pattern.search(raw_content):
+            if pattern.search(raw_text):
                 threats_found.append(f"Prompt injection pattern detected: {pattern.pattern}")
+
+        # Stage 2 Enterprise Deep Security Scan (Presidio PII + DeBERTa Prompt Injection + SPDX)
+        try:
+            from apps.ingestion.security_funnel import SettlementSecurityFunnel
+            deep_res = SettlementSecurityFunnel.run_deep_scan(raw_text)
+            for threat in deep_res.get("threats_detected", []):
+                if threat not in threats_found:
+                    threats_found.append(threat)
+            for secret in deep_res.get("secrets_detected", []):
+                sec_desc = f"Enterprise secret detected: {secret['type']} ({secret['snippet']})"
+                if sec_desc not in secrets_found:
+                    secrets_found.append(sec_desc)
+        except Exception as deep_err:
+            logger.debug(f"Deep security funnel scan bypass: {deep_err}")
 
         if threats_found:
             reasons.append(SettlementReasonCode.S2_INJECTION_DETECTED.value)
@@ -244,10 +260,11 @@ class SecurityScreeningService:
             )
 
         # 2. Secret & Credential Exposure Screen
-        secrets_found = []
         for pattern in cls.SECRET_PATTERNS:
-            if pattern.search(raw_content):
-                secrets_found.append(f"High-entropy secret/credential pattern detected: {pattern.pattern}")
+            if pattern.search(raw_text):
+                sec_desc = f"High-entropy secret/credential pattern detected: {pattern.pattern}"
+                if sec_desc not in secrets_found:
+                    secrets_found.append(sec_desc)
 
         if secrets_found:
             reasons.append(SettlementReasonCode.S2_SECRETS_EXPOSED.value)
@@ -691,6 +708,14 @@ class DeduplicationService:
             reasons.append(SettlementReasonCode.S4_DEDUP_UNIQUE.value)
             details = {"action": "unique_document_registered"}
 
+        # Stage 4 Canonical Entity Resolution & Linking (docs/enterprise/fix/knowledge.md §2)
+        try:
+            from apps.knowledge.entity_resolution import EntityResolutionService
+            linked_entities = EntityResolutionService.link_document_entities(doc, doc.workspace, doc.organization)
+            details["linked_canonical_entities_count"] = len(linked_entities)
+        except Exception as ent_err:
+            logger.debug(f"Entity resolution linking bypass: {ent_err}")
+
         elapsed = int((time.time() - t0) * 1000)
         return SettlementStageResult(
             stage_number=4,
@@ -737,7 +762,7 @@ class ConflictPreScanService:
         for other_doc in workspace_docs:
             # Query existing chunks for the other doc
             other_chunks = DocumentChunk.objects.filter(document=other_doc)[:5]
-            other_text = " ".join(c.text.lower() for c in other_chunks)
+            other_text = " ".join(c.text.lower() for c in other_chunks) or getattr(other_doc, 'raw_text', '').lower() or other_doc.title.lower()
 
             # Heuristic contradiction pre-scan: approval vs prohibition on same domain
             candidate_permits = any(w in all_text for w in ['approved', 'permitted', 'allowed'])
@@ -823,7 +848,7 @@ class StagedMergeService:
         require_approval: bool = False
     ) -> SettlementStageResult:
         t0 = time.time()
-        vstore = QdrantVectorStore()
+        vstore = get_vector_store()
 
         # 1. Rollback Checkpoint
         prev_chunk_ids = list(DocumentChunk.objects.filter(document=doc).values_list('id', flat=True))
@@ -1030,12 +1055,12 @@ class StagedMergeService:
         )
 
     @classmethod
-    def _execute_rollback(cls, doc: SourceDocument, prev_chunk_ids: List[Any], vstore: QdrantVectorStore):
+    def _execute_rollback(cls, doc: SourceDocument, prev_chunk_ids: List[Any], vstore: BaseVectorStore):
         """Purges any newly created vectors and chunks, restoring clean consistent state."""
         try:
             vstore.delete_document_chunks("lore_chunks", str(doc.id))
         except Exception as ex:
-            logger.warning(f"Rollback: Could not delete Qdrant vectors: {ex}")
+            logger.warning(f"Rollback: Could not delete vectors from store: {ex}")
 
         try:
             DocumentChunk.objects.filter(document=doc).delete()

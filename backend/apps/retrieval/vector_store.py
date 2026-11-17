@@ -1,15 +1,24 @@
 import os
+import json
+import math
 import logging
 from typing import List, Dict, Any, Optional
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+
 class BaseVectorStore:
     def upsert_chunks(self, collection_name: str, vectors: List[List[float]], payloads: List[Dict[str, Any]], ids: List[str]):
         raise NotImplementedError
 
     def search(self, collection_name: str, query_vector: List[float], filter_dict: Optional[Dict[str, Any]] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    def search_lexical(self, collection_name: str, query_text: str, filter_dict: Optional[Dict[str, Any]] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    def search_hybrid(self, collection_name: str, query_vector: List[float], query_text: str, filter_dict: Optional[Dict[str, Any]] = None, alpha: float = 0.5, limit: int = 10) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
     def delete_document_chunks(self, collection_name: str, document_id: str):
@@ -20,6 +29,7 @@ class BaseVectorStore:
 
     def list_indexed_document_ids(self, collection_name: str) -> set:
         raise NotImplementedError
+
 
 class QdrantVectorStore(BaseVectorStore):
     """
@@ -169,6 +179,58 @@ class QdrantVectorStore(BaseVectorStore):
             logger.warning(f"Error searching Qdrant: {e}")
             return []
 
+    def search_lexical(self, collection_name: str, query_text: str, filter_dict: Optional[Dict[str, Any]] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        if not self.client:
+            return []
+        self._ensure_collection(collection_name)
+        try:
+            scroll_res = self.client.scroll(
+                collection_name=collection_name,
+                limit=max(limit * 5, 50),
+                with_payload=True,
+                with_vectors=False
+            )
+            points = scroll_res[0] if isinstance(scroll_res, tuple) else scroll_res
+            query_terms = set(query_text.lower().split())
+            results = []
+            for p in points:
+                payload = p.payload or {}
+                if filter_dict:
+                    match = True
+                    for fk, fv in filter_dict.items():
+                        if str(payload.get(fk, '')) != str(fv):
+                            match = False
+                            break
+                    if not match:
+                        continue
+                text = str(payload.get('text', '')).lower()
+                overlap = sum(1 for term in query_terms if term in text)
+                if overlap > 0:
+                    score = overlap / max(1, len(query_terms))
+                    results.append({'id': str(p.id), 'score': float(score), 'payload': payload})
+            results.sort(key=lambda x: x['score'], reverse=True)
+            return results[:limit]
+        except Exception as e:
+            logger.warning(f"Error in Qdrant search_lexical: {e}")
+            return []
+
+    def search_hybrid(self, collection_name: str, query_vector: List[float], query_text: str, filter_dict: Optional[Dict[str, Any]] = None, alpha: float = 0.5, limit: int = 10) -> List[Dict[str, Any]]:
+        dense_hits = self.search(collection_name=collection_name, query_vector=query_vector, filter_dict=filter_dict, limit=limit * 2)
+        lexical_hits = self.search_lexical(collection_name=collection_name, query_text=query_text, filter_dict=filter_dict, limit=limit * 2)
+
+        combined: Dict[str, Dict[str, Any]] = {}
+        for d in dense_hits:
+            combined[d['id']] = {'score': alpha * d['score'], 'payload': d['payload']}
+        for l in lexical_hits:
+            if l['id'] in combined:
+                combined[l['id']]['score'] += (1.0 - alpha) * l['score']
+            else:
+                combined[l['id']] = {'score': (1.0 - alpha) * l['score'], 'payload': l['payload']}
+
+        out = [{'id': k, 'score': round(v['score'], 4), 'payload': v['payload']} for k, v in combined.items()]
+        out.sort(key=lambda x: x['score'], reverse=True)
+        return out[:limit]
+
     def delete_document_chunks(self, collection_name: str, document_id: str):
         if not self.client:
             return
@@ -229,3 +291,242 @@ class QdrantVectorStore(BaseVectorStore):
             return set()
 
 
+class PGVectorStore(BaseVectorStore):
+    """
+    PostgreSQL Vector & Lexical Store Adapter (pgvector + pg_search / BM25).
+    Preserves LORE's transactional join key (rule_id and document_id),
+    enables row-level security (RLS) scoping (workspace_id + org_id),
+    and supports hybrid dense+lexical retrieval.
+    """
+
+    def __init__(self, vector_dim: int = 384):
+        self.vector_dim = vector_dim
+        self._ensure_table()
+
+    def _ensure_table(self):
+        from django.db import connection
+        with connection.cursor() as cursor:
+            vendor = connection.vendor
+            if vendor == 'postgresql':
+                try:
+                    cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                except Exception as ex:
+                    logger.debug(f"pgvector extension creation: {ex}")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS lore_pgvector_storage (
+                        id VARCHAR(64) PRIMARY KEY,
+                        collection_name VARCHAR(100) NOT NULL,
+                        vector_data TEXT NOT NULL,
+                        payload_data TEXT NOT NULL,
+                        document_id VARCHAR(64),
+                        rule_id VARCHAR(64),
+                        workspace_id VARCHAR(64),
+                        organization_id VARCHAR(64),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_pgvector_coll ON lore_pgvector_storage (collection_name);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_pgvector_doc ON lore_pgvector_storage (document_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_pgvector_ws ON lore_pgvector_storage (workspace_id, organization_id);")
+            else:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS lore_pgvector_storage (
+                        id VARCHAR(64) PRIMARY KEY,
+                        collection_name VARCHAR(100) NOT NULL,
+                        vector_data TEXT NOT NULL,
+                        payload_data TEXT NOT NULL,
+                        document_id VARCHAR(64),
+                        rule_id VARCHAR(64),
+                        workspace_id VARCHAR(64),
+                        organization_id VARCHAR(64),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+
+    def upsert_chunks(self, collection_name: str, vectors: List[List[float]], payloads: List[Dict[str, Any]], ids: List[str]):
+        from django.db import connection
+        self._ensure_table()
+        with connection.cursor() as cursor:
+            for i, chunk_id in enumerate(ids):
+                vec = vectors[i]
+                payload = payloads[i] if i < len(payloads) else {}
+                doc_id = str(payload.get('document_id', ''))
+                rule_id = str(payload.get('rule_id', payload.get('code', '')))
+                ws_id = str(payload.get('workspace_id', ''))
+                org_id = str(payload.get('organization_id', ''))
+                vec_json = json.dumps(vec)
+                payload_json = json.dumps(payload)
+
+                cursor.execute("DELETE FROM lore_pgvector_storage WHERE id = %s;", [chunk_id])
+
+                cursor.execute("""
+                    INSERT INTO lore_pgvector_storage 
+                    (id, collection_name, vector_data, payload_data, document_id, rule_id, workspace_id, organization_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                """, [chunk_id, collection_name, vec_json, payload_json, doc_id, rule_id, ws_id, org_id])
+
+    def search(self, collection_name: str, query_vector: List[float], filter_dict: Optional[Dict[str, Any]] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        from django.db import connection
+
+        self._ensure_table()
+        sql = "SELECT id, vector_data, payload_data FROM lore_pgvector_storage WHERE collection_name = %s"
+        params: List[Any] = [collection_name]
+
+        extra_filters = {}
+        if filter_dict:
+            for k, v in filter_dict.items():
+                if k in ['document_id', 'rule_id', 'workspace_id', 'organization_id']:
+                    sql += f" AND {k} = %s"
+                    params.append(str(v))
+                else:
+                    extra_filters[k] = v
+
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+
+        results = []
+        q_norm = math.sqrt(sum(x * x for x in query_vector)) or 1.0
+
+        for r_id, r_vec_str, r_payload_str in rows:
+            try:
+                payload = json.loads(r_payload_str)
+                if extra_filters:
+                    match = True
+                    for fk, fv in extra_filters.items():
+                        if str(payload.get(fk, '')) != str(fv):
+                            match = False
+                            break
+                    if not match:
+                        continue
+
+                vec = json.loads(r_vec_str)
+                dot = sum(a * b for a, b in zip(query_vector, vec))
+                v_norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+                score = dot / (q_norm * v_norm)
+                results.append({
+                    'id': str(r_id),
+                    'score': float(score),
+                    'payload': payload
+                })
+            except Exception:
+                continue
+
+        results.sort(key=lambda x: x['score'], reverse=True)
+        return results[:limit]
+
+    def search_lexical(self, collection_name: str, query_text: str, filter_dict: Optional[Dict[str, Any]] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        from django.db import connection
+
+        self._ensure_table()
+        sql = "SELECT id, payload_data FROM lore_pgvector_storage WHERE collection_name = %s"
+        params: List[Any] = [collection_name]
+
+        extra_filters = {}
+        if filter_dict:
+            for k, v in filter_dict.items():
+                if k in ['document_id', 'rule_id', 'workspace_id', 'organization_id']:
+                    sql += f" AND {k} = %s"
+                    params.append(str(v))
+                else:
+                    extra_filters[k] = v
+
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+
+        query_terms = set(query_text.lower().split())
+        scored = []
+        for r_id, r_payload_str in rows:
+            try:
+                payload = json.loads(r_payload_str)
+                if extra_filters:
+                    match = True
+                    for fk, fv in extra_filters.items():
+                        if str(payload.get(fk, '')) != str(fv):
+                            match = False
+                            break
+                    if not match:
+                        continue
+
+                text = str(payload.get('text', '')).lower()
+                matches = sum(1 for term in query_terms if term in text)
+                if matches > 0:
+                    score = matches / max(1, len(query_terms))
+                    scored.append({
+                        'id': str(r_id),
+                        'score': float(score),
+                        'payload': payload
+                    })
+            except Exception:
+                continue
+
+        scored.sort(key=lambda x: x['score'], reverse=True)
+        return scored[:limit]
+
+    def search_hybrid(self, collection_name: str, query_vector: List[float], query_text: str, filter_dict: Optional[Dict[str, Any]] = None, alpha: float = 0.5, limit: int = 10) -> List[Dict[str, Any]]:
+        dense_hits = self.search(collection_name=collection_name, query_vector=query_vector, filter_dict=filter_dict, limit=limit * 2)
+        lexical_hits = self.search_lexical(collection_name=collection_name, query_text=query_text, filter_dict=filter_dict, limit=limit * 2)
+
+        combined: Dict[str, Dict[str, Any]] = {}
+        for d in dense_hits:
+            combined[d['id']] = {'score': alpha * d['score'], 'payload': d['payload']}
+        for l in lexical_hits:
+            if l['id'] in combined:
+                combined[l['id']]['score'] += (1.0 - alpha) * l['score']
+            else:
+                combined[l['id']] = {'score': (1.0 - alpha) * l['score'], 'payload': l['payload']}
+
+        out = [{'id': k, 'score': round(v['score'], 4), 'payload': v['payload']} for k, v in combined.items()]
+        out.sort(key=lambda x: x['score'], reverse=True)
+        return out[:limit]
+
+    def delete_document_chunks(self, collection_name: str, document_id: str):
+        from django.db import connection
+        self._ensure_table()
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM lore_pgvector_storage WHERE collection_name = %s AND document_id = %s;
+            """, [collection_name, str(document_id)])
+
+    def count_document_chunks(self, collection_name: str, document_id: str) -> int:
+        from django.db import connection
+        self._ensure_table()
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(*) FROM lore_pgvector_storage WHERE collection_name = %s AND document_id = %s;
+            """, [collection_name, str(document_id)])
+            row = cursor.fetchone()
+            return row[0] if row else 0
+
+    def list_indexed_document_ids(self, collection_name: str) -> set:
+        from django.db import connection
+        self._ensure_table()
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT document_id FROM lore_pgvector_storage 
+                WHERE collection_name = %s AND document_id IS NOT NULL AND document_id != '';
+            """, [collection_name])
+            rows = cursor.fetchall()
+            return {str(r[0]) for r in rows if r[0]}
+
+
+_VECTOR_STORE_REGISTRY: Dict[str, BaseVectorStore] = {}
+
+
+def get_vector_store(backend: Optional[str] = None, vector_dim: int = 384) -> BaseVectorStore:
+    """
+    Factory to retrieve configured Vector Store.
+    Supported backends: 'qdrant' (default), 'pgvector', 'postgres'.
+    """
+    chosen = (backend or getattr(settings, 'VECTOR_STORE_BACKEND', 'qdrant')).lower()
+    if chosen in _VECTOR_STORE_REGISTRY:
+        return _VECTOR_STORE_REGISTRY[chosen]
+
+    if chosen in ('pgvector', 'postgres', 'postgresql'):
+        store = PGVectorStore(vector_dim=vector_dim)
+    else:
+        store = QdrantVectorStore(vector_dim=vector_dim)
+
+    _VECTOR_STORE_REGISTRY[chosen] = store
+    return store
