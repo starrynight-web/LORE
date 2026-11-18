@@ -208,6 +208,24 @@ def _probe(url: str, key: str) -> bool:
         return False
 
 
+def _exit_reason(web_port: int, api_port: int) -> str:
+    log_path = Path.home() / ".lore" / "setup.log"
+    if not log_path.is_file():
+        return ""
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    lower = text.lower()
+    if "port is already in use" in lower or "address already in use" in lower:
+        return (
+            f"Port {web_port} or {api_port} is already in use. "
+            "Stop the existing `lore-solo setup` process or pass `--port <port>`."
+        )
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
 def _wait_ready(
     web_port: int,
     api_port: int,
@@ -229,8 +247,10 @@ def _wait_ready(
         for proc in procs:
             code = proc.poll()
             if code is not None:
+                reason = _exit_reason(web_port, api_port)
+                detail = f" {reason}" if reason else ""
                 raise SiteError(
-                    f"A setup process exited ({code}) before the site was ready."
+                    f"A setup process exited ({code}) before the site was ready.{detail}"
                 )
         if (
             _probe(web_url, "")
@@ -330,13 +350,16 @@ def run(argv: list[str] | None = None) -> None:
     key = os.environ.get("LORE_SETUP_KEY") or secrets.token_urlsafe(24)
     os.environ["LORE_SETUP_KEY"] = key
     children: list[subprocess.Popen[bytes]] = []
-    previous_break: Any = None
-    break_signal = getattr(signal, "SIGBREAK", None)
-    if os.name == "nt" and break_signal is not None:
-        def _break(_signum: int, _frame: object) -> None:
-            raise KeyboardInterrupt
+    previous_handlers: list[tuple[int, Any]] = []
 
-        previous_break = signal.signal(break_signal, _break)
+    def _shutdown(_signum: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    signal_names = ["SIGBREAK"] if os.name == "nt" else ["SIGHUP", "SIGTERM"]
+    for sig_name in signal_names:
+        sig = getattr(signal, sig_name, None)
+        if sig is not None:
+            previous_handlers.append((sig, signal.signal(sig, _shutdown)))
     report = make_reporter()
     try:
         status(f"Lore setup (lore-solo {__version__})", force=True)
@@ -364,8 +387,8 @@ def run(argv: list[str] | None = None) -> None:
         raise SystemExit(str(exc)) from exc
     finally:
         _stop(children)
-        if previous_break is not None and break_signal is not None:
-            signal.signal(break_signal, previous_break)
+        for sig, prev in previous_handlers:
+            signal.signal(sig, prev)
 
 
 if __name__ == "__main__":

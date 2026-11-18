@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { PageHero } from "@/components/page-hero"
 import { Shell } from "@/components/Shell"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -175,6 +176,10 @@ export default function SettingsPage() {
   return (
     <Shell>
       <ErrorAlert message={error} />
+      <PageHero
+        title="Settings"
+        subtitle="Configure token budget, draft provider, and governance scanners."
+      />
       <div className="grid grid-cols-1 gap-4 @3xl/main:grid-cols-2">
         <Card>
           <CardHeader>

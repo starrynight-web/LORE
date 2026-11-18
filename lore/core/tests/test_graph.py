@@ -88,7 +88,7 @@ def test_server_instructions_tell_the_agent_to_call_lore(tmp_path: Path) -> None
     assert isinstance(text, str)
     assert "get_context once" in text
     assert "map_codebase" in text
-    assert "check_applied" in text
+    assert "rule_ids" in text
     assert "log_decision" in text
     assert "get_skill" in text
     assert "advisory" in text
@@ -392,3 +392,28 @@ def test_canonical_status_wins_over_a_conflicting_legacy_mirror(
     assert map_status(project, legacy=legacy)["state"] == "ready"
     status_file(project).unlink()
     assert summarize(project, legacy=legacy)["state"] == "failed"
+
+
+def test_locate_does_not_let_config_json_crowd_out_source_files(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    (project / "src" / "App.tsx").write_text("export default function App() {}\n", encoding="utf-8")
+    (project / "package.json").write_text("{}\n", encoding="utf-8")
+    (project / "components.json").write_text("{}\n", encoding="utf-8")
+    graph_path = project / "graphify-out" / "graph.json"
+    data = json.loads(graph_path.read_text(encoding="utf-8"))
+    data["nodes"].extend(
+        [
+            {"id": "pkg_1", "label": "scripts", "source_file": "package.json"},
+            {"id": "pkg_2", "label": "dependencies", "source_file": "package.json"},
+            {"id": "pkg_3", "label": "version", "source_file": "package.json"},
+            {"id": "cmp_1", "label": "aliases", "source_file": "components.json"},
+            {"id": "app_1", "label": "App", "source_file": "src/App.tsx"},
+        ]
+    )
+    graph_path.write_text(json.dumps(data), encoding="utf-8")
+
+    found = locate(project, "Upgrade the in-document Find bar in the app on desktop")
+    paths = [item["path"] for item in found["files"]]
+    assert "src/App.tsx" in paths
+    assert "package.json" not in paths
+    assert "components.json" not in paths

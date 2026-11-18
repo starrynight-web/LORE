@@ -6,6 +6,16 @@ from pathlib import Path
 from typing import Any
 
 from lore.core.decisions import append_outcome, read_decision
+from lore.core.okf import Doc
+
+_RECEIPT_LINES = frozenset(
+    {"check_applied: pass", "check_applied: fail", "check_applied: skip"}
+)
+
+
+def has_receipt(doc: Doc) -> bool:
+    """Return True when a decision file already has a check_applied receipt line."""
+    return any(line.strip() in _RECEIPT_LINES for line in (doc.body or "").splitlines())
 
 
 def check_applied(

@@ -578,27 +578,43 @@ def connect(request: HttpRequest) -> JsonResponse:
     if active():
         raise ApiError(400, container_refusal())
     project = _project(request)
-    cursor = project / ".cursor"
-    cursor.mkdir(parents=True, exist_ok=True)
-    path = cursor / "mcp.json"
-    data: dict[str, Any] = {}
-    if path.is_file():
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            loaded = {}
-        if isinstance(loaded, dict):
-            data = loaded
-    servers = data.get("mcpServers")
-    if not isinstance(servers, dict):
-        servers = {}
+    payload = _json(request) if request.body else {}
+    target = str(payload.get("target") or "all").strip().lower()
     from lore.connect import MCP_SERVER_NAME
 
-    servers.pop("lore", None)
-    servers[MCP_SERVER_NAME] = mcp_entry("cursor")
-    data["mcpServers"] = servers
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    return JsonResponse(data)
+    targets: list[tuple[Path, str, str]] = []
+    if target in {"all", "mcp"}:
+        targets.append((project / ".mcp.json", "mcpServers", "claude-code"))
+    if target in {"all", "cursor"}:
+        targets.append((project / ".cursor" / "mcp.json", "mcpServers", "cursor"))
+    if target in {"all", "vscode"}:
+        targets.append((project / ".vscode" / "mcp.json", "servers", "vscode"))
+    if not targets:
+        raise ApiError(400, f"Unknown target {target!r}.")
+
+    written: list[str] = []
+    combined: dict[str, Any] = {}
+    for path, key, client in targets:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data: dict[str, Any] = {}
+        if path.is_file():
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                loaded = {}
+            if isinstance(loaded, dict):
+                data = loaded
+        servers = data.get(key)
+        if not isinstance(servers, dict):
+            servers = {}
+        servers.pop("lore", None)
+        servers[MCP_SERVER_NAME] = mcp_entry(client)
+        data[key] = servers
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        written.append(str(path.relative_to(project)))
+        if key not in combined:
+            combined[key] = servers
+    return JsonResponse({**combined, "written": written})
 
 
 @_api

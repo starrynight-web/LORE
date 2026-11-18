@@ -2,17 +2,19 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
+import { ArrowUpRightIcon, CheckIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { ErrorAlert } from "@/components/error-alert"
 import { Onboarding } from "@/components/onboarding"
+import { PageHero } from "@/components/page-hero"
 import { Shell } from "@/components/Shell"
 import { api, type Persona } from "@/lib/api"
 import { personaHref } from "@/lib/routes"
-import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 
 type Ready = { id: string; title: string; summary: string }
 
@@ -60,59 +62,110 @@ export default function PersonasPage() {
   return (
     <Shell>
       <ErrorAlert message={error} />
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-medium">Your personas</h2>
-          <p className="text-sm text-muted-foreground">A persona is a role. It can only use the skills you attach to it.</p>
-        </div>
-        <Button type="button" size="sm" onClick={() => setOpen(true)}>
-          New persona
-        </Button>
-      </div>
-      <section className="flex flex-col gap-4">
-        {personas.length === 0 ? <p className="text-sm text-muted-foreground">No personas yet. Create one, or add a starter.</p> : null}
-        <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-          {personas.map((persona) => (
-            <Card key={persona.id}>
-              <CardHeader>
-                <Badge variant={persona.status === "stable" ? "secondary" : "outline"}>{persona.status === "stable" ? "ready" : "draft"}</Badge>
-                <CardTitle>
-                  <Link href={personaHref(persona.id)} className="hover:underline">{persona.title}</Link>
-                </CardTitle>
-                <CardDescription>{persona.summary || "No summary yet."}</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {persona.skill_ids.length} linked skill{persona.skill_ids.length === 1 ? "" : "s"}
-              </CardContent>
-              <CardFooter className="gap-2">
-                <Button variant="outline" nativeButton={false} render={<Link href={personaHref(persona.id)} />}>Open</Button>
-                <Button variant="destructive" type="button" onClick={() => setPendingDelete(persona)}>
-                  Delete
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
+      <PageHero
+        title="Personas"
+        subtitle="A persona is a role. It can only use the skills you attach to it."
+        action={
+          <Button type="button" onClick={() => setOpen(true)}>
+            + New persona
+          </Button>
+        }
+      />
+      <section className="flex flex-col gap-3">
+        {personas.length === 0 ? (
+          <Card className="p-6 text-sm text-muted-foreground">
+            No personas yet. Create one, or add a starter below.
+          </Card>
+        ) : null}
+        <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 lg:grid-cols-3">
+          {personas.map((persona) => {
+            const isStable = persona.status === "stable"
+            return (
+              <Card key={persona.id} className="flex flex-col justify-between gap-4 px-[22px] py-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                          isStable
+                            ? "bg-[#c8eb5e] text-[#141517]"
+                            : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                        )}
+                      >
+                        {isStable ? <CheckIcon className="size-3" /> : null}
+                        {isStable ? "ready" : "draft"}
+                      </span>
+                      <span className="text-[11.5px] text-muted-foreground">
+                        {persona.skill_ids.length} skill{persona.skill_ids.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <h2 className="mt-2.5 truncate text-[16px] font-semibold tracking-[-0.01em]">
+                      <Link href={personaHref(persona.id)} className="hover:underline">
+                        {persona.title}
+                      </Link>
+                    </h2>
+                    <p className="mt-1 line-clamp-2 text-[12.5px] text-muted-foreground">
+                      {persona.summary || "No summary yet."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(persona)}
+                    aria-label={`Delete ${persona.title}`}
+                    className="grid size-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2Icon className="size-4" />
+                  </button>
+                  <Link
+                    href={personaHref(persona.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                  >
+                    Open
+                    <ArrowUpRightIcon className="size-3.5" />
+                  </Link>
+                </div>
+              </Card>
+            )
+          })}
         </div>
       </section>
-      <section className="flex flex-col gap-4">
-        <h2 className="text-base font-medium">Starters</h2>
-        <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-          {ready.map((persona) => (
-            <Card key={persona.id}>
-              <CardHeader>
-                <Badge variant="secondary">starter</Badge>
-                <CardTitle>{persona.title}</CardTitle>
-                <CardDescription>{persona.summary}</CardDescription>
-              </CardHeader>
-              <CardFooter>
-                <Button type="button" onClick={() => addReady(persona.id).catch((exc: Error) => setError(exc.message))}>
-                  Add {persona.title}
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      </section>
+
+      {ready.length > 0 ? (
+        <section className="flex flex-col gap-3 pt-2">
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Starter personas</h2>
+            <p className="text-[12.5px] text-muted-foreground">One-click templates you can customize and approve.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2">
+            {ready.map((persona) => (
+              <Card key={persona.id} className="px-[22px] py-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <span className="inline-flex rounded-full bg-[#a59bf3]/25 px-2.5 py-0.5 text-[11px] font-semibold text-foreground">
+                      starter
+                    </span>
+                    <h3 className="mt-2 text-[15px] font-semibold">{persona.title}</h3>
+                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">{persona.summary}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => addReady(persona.id).catch((exc: Error) => setError(exc.message))}
+                  >
+                    <PlusIcon className="size-3.5" />
+                    Add
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {open ? (
         <Onboarding
           panel="persona"

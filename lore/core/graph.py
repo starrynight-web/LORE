@@ -22,6 +22,22 @@ LOCATE_TOKENS = 400
 _HUBS = 3
 STARTUP_GRACE_SECONDS = 15.0
 
+_LOCATE_STOP = frozenset(
+    {
+        "in", "on", "to", "or", "of", "at", "by", "is", "it", "as", "be", "an",
+        "no", "so", "if", "up", "do", "we", "he", "my", "the", "and", "for",
+        "are", "was", "were", "this", "that", "with", "from", "into", "when",
+        "will", "your", "have", "has", "had", "not", "but", "can", "all", "any",
+        "each", "use", "used", "using", "make", "made", "add", "keep", "only",
+        "also", "more", "must", "should", "would", "could", "file", "files",
+        "change", "update", "upgrade", "work", "does", "done", "then", "than",
+    }
+)
+_CONFIG_SUFFIXES = frozenset({".json", ".toml", ".lock", ".yaml", ".yml"})
+_CONFIG_TERMS = frozenset(
+    {"package", "config", "tsconfig", "json", "toml", "yaml", "dependency", "dependencies", "lock", "manifest"}
+)
+
 
 def status_file(project: Path) -> Path:
     return project / ".lore" / "graph-status.json"
@@ -459,9 +475,12 @@ def locate(project: Path, intent: str, file_path: str = "") -> dict[str, Any]:
     links = data.get("links", data.get("edges", []))
     if not isinstance(links, list):
         links = []
-    tokens = [token for token in re.findall(r"[a-z0-9]+", intent.lower()) if len(token) >= 2]
+    raw_tokens = re.findall(r"[a-z0-9]+", intent.lower())
+    tokens = [t for t in raw_tokens if len(t) >= 2 and t not in _LOCATE_STOP]
+    wants_config = bool(set(tokens) & _CONFIG_TERMS)
     by_id = {str(node["id"]): node for node in nodes}
-    scores: dict[str, int] = {}
+    file_hits: dict[str, set[str]] = {}
+    explicit_match: set[str] = set()
     labels: dict[str, str] = {}
     matched: set[str] = set()
     for node in nodes:
@@ -469,20 +488,32 @@ def locate(project: Path, intent: str, file_path: str = "") -> dict[str, Any]:
         if not source or not _contained(project, source):
             continue
         hay = f"{source} {node.get('label') or ''}".lower()
-        score = sum(1 for token in tokens if token in hay)
-        if file_path and _same_file(project, node, file_path):
-            score += 5
-        if score <= 0:
+        hay_words = set(re.findall(r"[a-z0-9]+", hay))
+        hits = {
+            token
+            for token in tokens
+            if (token in hay if len(token) >= 4 else token in hay_words)
+        }
+        is_explicit = bool(file_path and _same_file(project, node, file_path))
+        if not hits and not is_explicit:
             continue
         matched.add(str(node["id"]))
-        scores[source] = scores.get(source, 0) + score
+        file_hits.setdefault(source, set()).update(hits)
+        if is_explicit:
+            explicit_match.add(source)
         label = str(node.get("label") or Path(source).name)
         filename = Path(source).name
         if source not in labels or label == filename:
             labels[source] = label
+
+    def _rank_key(path: str) -> tuple[int, int, str]:
+        score = len(file_hits.get(path, set())) + (5 if path in explicit_match else 0)
+        is_config = 1 if (not wants_config and Path(path).suffix.lower() in _CONFIG_SUFFIXES) else 0
+        return (-score, is_config, path)
+
     chosen: list[dict[str, str]] = [
         {"path": path, "relation": "match", "label": labels.get(path, Path(path).name)}
-        for path in sorted(scores, key=lambda item: (-scores[item], item))
+        for path in sorted(file_hits, key=_rank_key)
     ]
     seen = {item["path"] for item in chosen}
     for link in links:

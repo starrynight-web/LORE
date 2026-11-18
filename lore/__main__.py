@@ -61,6 +61,18 @@ def main(argv: list[str] | None = None) -> int:
         from lore.govern_cmd import run as run_govern
 
         return run_govern(rest)
+    if command == "skill":
+        from lore.skill_cmd import run as run_skill
+
+        return run_skill(rest)
+    if command == "persona":
+        from lore.persona_cmd import run as run_persona
+
+        return run_persona(rest)
+    if command == "stats":
+        from lore.stats_cmd import run as run_stats
+
+        return run_stats(rest)
     from lore.help_cmd import print_catalog
 
     print_catalog()

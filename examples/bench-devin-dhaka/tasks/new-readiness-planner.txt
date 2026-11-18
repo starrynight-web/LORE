@@ -1,0 +1,7 @@
+Build the attendee preparation and agent-delegation planner in src/readiness.ts.
+
+Requirements:
+- Export `evaluateReadiness(input: ReadinessInput)` returning a `ServiceResult<{ ready: boolean; score: number; missing: string[] }>` evaluating the 5 preparation checklist items.
+- Export `validateDelegationCard(card: DelegationCard)` returning a `ServiceResult<DelegationCard>` that validates and sanitizes the delegation target path.
+- Follow the project's backend, security, and frontend standards skills for scoring rules, envelope format, and path-safety error codes.
+- Do not modify package.json or tsconfig.json.

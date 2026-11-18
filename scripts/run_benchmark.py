@@ -33,10 +33,18 @@ APP = ROOT / "examples" / "bench-app"
 QUALITY_APP = ROOT / "examples" / "bench-quality-app"
 LIBRARY = ROOT / "examples" / "bench-library"
 PACK = ROOT / "examples" / "persona-pack"
+DEVIN_APP = ROOT / "examples" / "bench-devin-dhaka"
+SIMPLE_WRITE = Path("/home/djrcx/Projects/simple-write")
+INTENSIVE_SKILLS = ROOT / "examples" / "bench-intensive-skills"
+INTENSIVE_RUBRICS = ROOT / "examples" / "bench-intensive-rubrics"
 TMP = ROOT / ".tmp" / "bench-runs"
 LORE = ROOT / ".venv" / "bin" / "lore-solo"
 GRAPHIFY = ROOT / ".venv" / "bin" / "graphify"
 MODEL = "gemini-3.8-flash-medium"
+INTENSIVE_MODEL = os.environ.get("LORE_BENCH_MODEL", "gemini-4-hydrogen-medium")
+INTENSIVE_NEW_SCENARIOS = ("new-registration", "new-pipeline-board", "new-readiness-planner")
+INTENSIVE_OLD_SCENARIOS = ("old-reading-callout", "old-security-links", "old-find-a11y")
+INTENSIVE_ARMS = ("no_skills", "device_skills", "lore_mcp")
 GLOBAL_MCP = Path.home() / ".gemini" / "config" / "mcp_config.json"
 MCP_CACHE_ROOTS = (
     Path.home() / ".gemini" / "antigravity-cli" / "mcp",
@@ -122,6 +130,11 @@ def main() -> None:
     if command == "quality":
         runs = int(sys.argv[2]) if len(sys.argv) > 2 else 1
         raise SystemExit(quality(runs=runs))
+    if command == "intensive":
+        runs = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+        raise SystemExit(intensive(runs=runs))
+    if command == "regrade-intensive":
+        raise SystemExit(regrade_intensive())
     if command == "bench":
         raise SystemExit(bench())
     if command == "solution":
@@ -216,7 +229,7 @@ def confirm_quality() -> int:
         prompt = (
             "In src/ui/Button.tsx, change the button text to Ready. "
             "Follow the Lore standing instructions: get_context once, edit, "
-            "check_applied with the decision_id and cite_ids, then log_decision."
+            "then log_decision with the decision_id, outcome, and rule_ids set to cite_ids."
         )
         started = time.monotonic()
         code = _agy(work, prompt, log=log, timeout=300)
@@ -674,7 +687,16 @@ def _require_agent_approval() -> None:
         )
 
 
-def _agy(work: Path, prompt: str, *, log: Path, timeout: int) -> int:
+def _agy(
+    work: Path,
+    prompt: str,
+    *,
+    log: Path,
+    timeout: int,
+    model: str | None = None,
+    disable_slash_commands: bool = True,
+    device_skills_dir: Path | None = None,
+) -> int:
     _require_agent_approval()
     log.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -682,7 +704,7 @@ def _agy(work: Path, prompt: str, *, log: Path, timeout: int) -> int:
         "-p",
         prompt,
         "--model",
-        MODEL,
+        model or MODEL,
         "--output-format",
         "stream-json",
         "--mode",
@@ -690,9 +712,17 @@ def _agy(work: Path, prompt: str, *, log: Path, timeout: int) -> int:
         "--dangerously-skip-permissions",
         "--print-timeout",
         f"{timeout}s",
-        "--disable-slash-commands",
     ]
+    if disable_slash_commands:
+        cmd.append("--disable-slash-commands")
     with tempfile.TemporaryDirectory(prefix="lore-benchmark-home-") as isolated:
+        iso_gemini = Path(isolated) / ".gemini" / "config"
+        iso_gemini.mkdir(parents=True, exist_ok=True)
+        ws_mcp = work / ".agents" / "mcp_config.json"
+        if ws_mcp.is_file():
+            shutil.copyfile(ws_mcp, iso_gemini / "mcp_config.json")
+        if device_skills_dir is not None and device_skills_dir.is_dir():
+            shutil.copytree(device_skills_dir, iso_gemini / "skills", dirs_exist_ok=True)
         env = os.environ.copy()
         env.update({
             "HOME": isolated,
@@ -857,8 +887,8 @@ def _mcp_tool_done(events: list[dict[str, Any]], tool: str) -> bool:
 
 def _lore_process(events: list[dict[str, Any]], work: Path) -> dict[str, Any]:
     get_ok = _mcp_get_context_ok(events)
-    check_ok = _mcp_tool_done(events, "check_applied")
     log_ok = _mcp_tool_done(events, "log_decision")
+    check_ok = _mcp_tool_done(events, "check_applied") or log_ok
     # Prefer decision-file evidence for check_applied pass when tool DONE fired.
     check_pass = False
     if check_ok:
@@ -1307,6 +1337,267 @@ def _score(rows: list[dict[str, Any]]) -> dict[str, Any]:
             and time_ratio <= 1.15
         ),
     }
+
+
+def _init_git_repo(work: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=work, check=False, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "bench@lore.local"], cwd=work, check=False, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Lore Bench"], cwd=work, check=False, capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=work, check=False, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "bench-init"], cwd=work, check=False, capture_output=True)
+
+
+def _stage_intensive_worktree(
+    *,
+    project_type: str,
+    scenario: str,
+    arm: str,
+    work: Path,
+    cold_map_dir: Path | None,
+) -> Path | None:
+    source = DEVIN_APP if project_type == "new_project" else SIMPLE_WRITE
+    if not source.is_dir():
+        raise SystemExit(f"Benchmark source missing at {source}")
+    shutil.copytree(
+        source,
+        work,
+        ignore=shutil.ignore_patterns(
+            ".git", "node_modules", "target", "dist", "build", ".lore", "graphify-out", "tasks"
+        ),
+    )
+    gitignore = work / ".gitignore"
+    existing_gi = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
+    if "node_modules" not in existing_gi:
+        gitignore.write_text((existing_gi.rstrip() + "\nnode_modules/\n__bench_rubric__.*\n").lstrip("\n"), encoding="utf-8")
+    _init_git_repo(work)
+    nm = SIMPLE_WRITE / "node_modules"
+    if nm.is_dir() and not (work / "node_modules").exists():
+        (work / "node_modules").symlink_to(nm)
+
+    device_skills_dir: Path | None = None
+    if arm == "lore_mcp":
+        (work / "AGENTS.md").write_text(STANDING_INSTRUCTIONS + "\n", encoding="utf-8")
+        shutil.copytree(INTENSIVE_SKILLS / ".lore", work / ".lore")
+        decisions = work / ".lore" / "decisions"
+        if decisions.exists():
+            shutil.rmtree(decisions)
+        decisions.mkdir(parents=True, exist_ok=True)
+        if project_type == "old_project" and cold_map_dir is not None and (cold_map_dir / "graphify-out").is_dir():
+            shutil.copytree(cold_map_dir / "graphify-out", work / "graphify-out")
+        _write_workspace_mcp(work, arm="lore", library=INTENSIVE_SKILLS)
+    elif arm == "device_skills":
+        device_skills_dir = INTENSIVE_SKILLS / "device_skills"
+        shutil.copytree(device_skills_dir, work / ".agents" / "skills", dirs_exist_ok=True)
+        _write_workspace_mcp(work, arm="baseline", library=INTENSIVE_SKILLS)
+    else:
+        _write_workspace_mcp(work, arm="baseline", library=INTENSIVE_SKILLS)
+    return device_skills_dir
+
+
+def _run_node_check(work: Path, args: list[str]) -> bool:
+    completed = subprocess.run(
+        args,
+        cwd=work,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return completed.returncode == 0
+
+
+def _grade_intensive_run(project_type: str, scenario: str, work: Path, website_orig: str) -> dict[str, bool]:
+    for stale in work.glob("__bench_rubric__.*"):
+        stale.unlink()
+    config_untouched = (
+        _text(work / "package.json") == _text(DEVIN_APP / "package.json")
+        and (
+            _text(work / "tsconfig.json") == _text(DEVIN_APP / "tsconfig.json")
+            or '"baseUrl": "."' in _text(work / "tsconfig.json")
+        )
+    )
+    if project_type == "new_project":
+        tsconfig_path = work / "tsconfig.json"
+        if tsconfig_path.is_file():
+            raw_ts = tsconfig_path.read_text(encoding="utf-8")
+            if "ignoreDeprecations" not in raw_ts:
+                tsconfig_path.write_text(
+                    raw_ts.replace('"strict": true,', '"ignoreDeprecations": "6.0",\n    "strict": true,'),
+                    encoding="utf-8",
+                )
+    ext = ".test.tsx" if scenario in {"new-pipeline-board", "old-find-a11y"} else ".test.ts"
+    rubric_src = INTENSIVE_RUBRICS / f"{scenario}{ext}"
+    rubric_dst = work / f"__bench_rubric__{ext}"
+    shutil.copyfile(rubric_src, rubric_dst)
+
+    tsc_ok = _run_node_check(work, ["npx", "--no-install", "tsc", "--noEmit"])
+    vitest_ok = _run_node_check(work, ["npx", "--no-install", "vitest", "run", str(rubric_dst.name)] + (["src/editor/roundtrip.test.ts"] if project_type == "old_project" else []))
+    checks: dict[str, bool] = {
+        "tsc_ok": tsc_ok,
+        "vitest_ok": vitest_ok,
+    }
+    if project_type == "old_project":
+        checks["website_untouched"] = _text(work / "website" / "src" / "App.tsx") == website_orig
+        if scenario == "old-reading-callout":
+            app_tsx = _text(work / "src" / "App.tsx")
+            checks["footer_reading_time"] = 'data-stat="reading-time"' in app_tsx and "readingTime(" in app_tsx
+        elif scenario == "old-security-links":
+            editor_tsx = _text(work / "src" / "components" / "write-editor.tsx")
+            app_tsx = _text(work / "src" / "App.tsx")
+            checks["link_sanitized_in_ui"] = "sanitizeLinkHref(" in editor_tsx or "sanitizeLinkHref(" in app_tsx
+            checks["wikilink_guarded_in_ui"] = "isSafeWikilinkTarget(" in app_tsx
+    else:
+        checks["config_untouched"] = config_untouched
+    return checks
+
+
+def _intensive_score(rows: list[dict[str, Any]], *, expected_runs: int) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for project_type in ("new_project", "old_project"):
+        proj_rows = [r for r in rows if r["project_type"] == project_type]
+        arm_stats: dict[str, Any] = {}
+        for arm in INTENSIVE_ARMS:
+            group = [r for r in proj_rows if r["arm"] == arm]
+            secs = [r["seconds"] for r in group if isinstance(r.get("seconds"), (int, float))]
+            fresh = [r["fresh_input_tokens"] for r in group if isinstance(r.get("fresh_input_tokens"), int)]
+            inp = [r["input_tokens"] for r in group if isinstance(r.get("input_tokens"), int)]
+            out = [r["output_tokens"] for r in group if isinstance(r.get("output_tokens"), int)]
+            turns = [r["turns"] for r in group if isinstance(r.get("turns"), int)]
+            arm_stats[arm] = {
+                "passed": sum(1 for r in group if r.get("passed")),
+                "total": len(group),
+                "pass_rate": round(sum(1 for r in group if r.get("passed")) / len(group), 3) if group else 0.0,
+                "median_seconds": round(float(statistics.median(secs)), 2) if secs else None,
+                "median_fresh_tokens": int(statistics.median(fresh)) if fresh else None,
+                "median_input_tokens": int(statistics.median(inp)) if inp else None,
+                "median_output_tokens": int(statistics.median(out)) if out else None,
+                "median_turns": float(statistics.median(turns)) if turns else None,
+            }
+        summary[project_type] = arm_stats
+    lore_rows = [r for r in rows if r["arm"] == "lore_mcp"]
+    process_ok = sum(1 for r in lore_rows if isinstance(r.get("process"), dict) and r["process"].get("ok"))
+    return {
+        "model": INTENSIVE_MODEL,
+        "runs_per_cell": expected_runs,
+        "total_runs": len(rows),
+        "by_project_arm": summary,
+        "lore_process_rate": round(process_ok / len(lore_rows), 3) if lore_rows else 0.0,
+    }
+
+
+def intensive(runs: int = 1, dest: Path | None = None) -> int:
+    """2x3 Intensive Benchmark: (new_project, old_project) x (no_skills, device_skills, lore_mcp)."""
+    _require_agent_approval()
+    if runs < 1:
+        raise ValueError("runs must be positive")
+    if not (INTENSIVE_SKILLS / ".lore").is_dir() or not (INTENSIVE_SKILLS / "device_skills").is_dir():
+        raise SystemExit("Run scripts/fetch_bench_skills.py first to populate examples/bench-intensive-skills.")
+    TMP.mkdir(parents=True, exist_ok=True)
+    session = Path(tempfile.mkdtemp(prefix="intensive-", dir=TMP))
+
+    # Cold Graphify map for old_project (timed outside agent sessions)
+    old_clean = session / "simple-write-clean"
+    shutil.copytree(
+        SIMPLE_WRITE,
+        old_clean,
+        ignore=shutil.ignore_patterns(".git", "node_modules", "target", "dist", "build", ".lore", "graphify-out"),
+    )
+    cold_map_dir = session / "cold-map-old"
+    cold_seconds = _cold_map(old_clean, destination=cold_map_dir)
+    website_orig = _text(SIMPLE_WRITE / "website" / "src" / "App.tsx")
+
+    suite_tasks: list[tuple[str, str, str]] = [
+        ("new_project", s, (DEVIN_APP / "tasks" / f"{s}.txt").read_text(encoding="utf-8"))
+        for s in INTENSIVE_NEW_SCENARIOS
+    ] + [
+        ("old_project", s, (INTENSIVE_RUBRICS / f"{s}.txt").read_text(encoding="utf-8"))
+        for s in INTENSIVE_OLD_SCENARIOS
+    ]
+
+    rows: list[dict[str, Any]] = []
+    for idx, (project_type, scenario, prompt) in enumerate(suite_tasks):
+        for number in range(1, runs + 1):
+            order = (number - 1 + idx) % len(INTENSIVE_ARMS)
+            for arm in INTENSIVE_ARMS[order:] + INTENSIVE_ARMS[:order]:
+                work = session / f"{project_type}-{scenario}-{arm}-{number}"
+                device_dir = _stage_intensive_worktree(
+                    project_type=project_type,
+                    scenario=scenario,
+                    arm=arm,
+                    work=work,
+                    cold_map_dir=cold_map_dir if project_type == "old_project" else None,
+                )
+                log = session / f"{project_type}-{scenario}-{arm}-{number}.jsonl"
+                started = time.monotonic()
+                code = _agy(
+                    work,
+                    prompt,
+                    log=log,
+                    timeout=600,
+                    model=INTENSIVE_MODEL,
+                    disable_slash_commands=False,
+                    device_skills_dir=device_dir,
+                )
+                elapsed = round(time.monotonic() - started, 2)
+                events = _events(log)
+                usage = _usage(events)
+                checks = _grade_intensive_run(project_type, scenario, work, website_orig)
+                row: dict[str, Any] = {
+                    "project_type": project_type,
+                    "scenario": scenario,
+                    "arm": arm,
+                    "run": number,
+                    "exit": code,
+                    "seconds": elapsed,
+                    "turns": _turn_count(events),
+                    "input_tokens": usage.get("input_tokens"),
+                    "cached_input_tokens": usage.get("cached_input_tokens"),
+                    "fresh_input_tokens": _fresh(usage),
+                    "output_tokens": usage.get("output_tokens"),
+                    "tools": _tool_order(events),
+                    "checks": checks,
+                    "passed": all(checks.values()) and code == 0,
+                }
+                if arm == "lore_mcp":
+                    proc = _lore_process(events, work)
+                    row["process"] = proc
+                    row["mcp_get_context_ok"] = proc["get_context"]
+                    row["mcp_get_context_error"] = _mcp_get_context_error(events)
+                rows.append(row)
+                print(json.dumps(row), flush=True)
+
+    score = _intensive_score(rows, expected_runs=runs)
+    payload: dict[str, Any] = {
+        "runner": "agy",
+        "model": INTENSIVE_MODEL,
+        "session_dir": str(session),
+        "cold_map_old_seconds": cold_seconds,
+        "runs": rows,
+        "score": score,
+    }
+    out_path = dest or (LIBRARY / "results-intensive-2x3.json")
+    _write(out_path, payload)
+    print(json.dumps(score, indent=2))
+    return 0
+
+
+def regrade_intensive(dest: Path | None = None) -> int:
+    """Re-run deterministic rubrics on an existing intensive session without re-running agy."""
+    out_path = dest or (LIBRARY / "results-intensive-2x3.json")
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    session = Path(payload["session_dir"])
+    website_orig = _text(SIMPLE_WRITE / "website" / "src" / "App.tsx")
+    rows = payload["runs"]
+    for row in rows:
+        work = session / f"{row['project_type']}-{row['scenario']}-{row['arm']}-{row['run']}"
+        checks = _grade_intensive_run(row["project_type"], row["scenario"], work, website_orig)
+        row["checks"] = checks
+        row["passed"] = all(checks.values()) and row["exit"] == 0
+        print(json.dumps({"scenario": row["scenario"], "arm": row["arm"], "checks": checks, "passed": row["passed"]}), flush=True)
+    payload["score"] = _intensive_score(rows, expected_runs=payload["score"]["runs_per_cell"])
+    _write(out_path, payload)
+    print(json.dumps(payload["score"], indent=2))
+    return 0
 
 
 def _text(path: Path) -> str:

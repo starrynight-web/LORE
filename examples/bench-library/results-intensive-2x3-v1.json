@@ -1,0 +1,527 @@
+{
+  "runner": "agy",
+  "model": "gemini-4-hydrogen-medium",
+  "session_dir": "/home/djrcx/Work/Lore/.tmp/bench-runs/intensive-z_zrqblx",
+  "cold_map_old_seconds": 4.2,
+  "runs": [
+    {
+      "project_type": "new_project",
+      "scenario": "new-registration",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 124.23,
+      "turns": 1,
+      "input_tokens": 140749,
+      "cached_input_tokens": 106870,
+      "fresh_input_tokens": 33879,
+      "output_tokens": 9323,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": false,
+        "config_untouched": true
+      },
+      "passed": false
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-registration",
+      "arm": "device_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 136.07,
+      "turns": 1,
+      "input_tokens": 162663,
+      "cached_input_tokens": 131903,
+      "fresh_input_tokens": 30760,
+      "output_tokens": 15287,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "config_untouched": true
+      },
+      "passed": true
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-registration",
+      "arm": "lore_mcp",
+      "run": 1,
+      "exit": 0,
+      "seconds": 106.94,
+      "turns": 1,
+      "input_tokens": 150497,
+      "cached_input_tokens": 117560,
+      "fresh_input_tokens": 32937,
+      "output_tokens": 11278,
+      "tools": [
+        "get_context",
+        "get_skill",
+        "log_decision"
+      ],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "config_untouched": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "get_skill": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-pipeline-board",
+      "arm": "device_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 108.65,
+      "turns": 1,
+      "input_tokens": 168588,
+      "cached_input_tokens": 134745,
+      "fresh_input_tokens": 33843,
+      "output_tokens": 8147,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "config_untouched": true
+      },
+      "passed": true
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-pipeline-board",
+      "arm": "lore_mcp",
+      "run": 1,
+      "exit": 0,
+      "seconds": 106.24,
+      "turns": 1,
+      "input_tokens": 152500,
+      "cached_input_tokens": 119385,
+      "fresh_input_tokens": 33115,
+      "output_tokens": 6977,
+      "tools": [
+        "get_context",
+        "get_skill",
+        "log_decision"
+      ],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "config_untouched": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "get_skill": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-pipeline-board",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 166.44,
+      "turns": 1,
+      "input_tokens": 161329,
+      "cached_input_tokens": 126050,
+      "fresh_input_tokens": 35279,
+      "output_tokens": 13217,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": false,
+        "config_untouched": true
+      },
+      "passed": false
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-readiness-planner",
+      "arm": "lore_mcp",
+      "run": 1,
+      "exit": 0,
+      "seconds": 120.77,
+      "turns": 1,
+      "input_tokens": 166649,
+      "cached_input_tokens": 132371,
+      "fresh_input_tokens": 34278,
+      "output_tokens": 9042,
+      "tools": [
+        "get_context",
+        "get_skill",
+        "log_decision"
+      ],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "config_untouched": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "get_skill": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-readiness-planner",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 120.75,
+      "turns": 1,
+      "input_tokens": 132579,
+      "cached_input_tokens": 103868,
+      "fresh_input_tokens": 28711,
+      "output_tokens": 12480,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": false,
+        "config_untouched": true
+      },
+      "passed": false
+    },
+    {
+      "project_type": "new_project",
+      "scenario": "new-readiness-planner",
+      "arm": "device_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 86.91,
+      "turns": 1,
+      "input_tokens": 127877,
+      "cached_input_tokens": 101180,
+      "fresh_input_tokens": 26697,
+      "output_tokens": 8721,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "config_untouched": true
+      },
+      "passed": true
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-reading-callout",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 230.2,
+      "turns": 1,
+      "input_tokens": 607108,
+      "cached_input_tokens": 530192,
+      "fresh_input_tokens": 76916,
+      "output_tokens": 10826,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "website_untouched": true,
+        "footer_reading_time": true
+      },
+      "passed": true
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-reading-callout",
+      "arm": "device_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 149.18,
+      "turns": 1,
+      "input_tokens": 286948,
+      "cached_input_tokens": 241590,
+      "fresh_input_tokens": 45358,
+      "output_tokens": 8137,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "website_untouched": true,
+        "footer_reading_time": true
+      },
+      "passed": true
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-reading-callout",
+      "arm": "lore_mcp",
+      "run": 1,
+      "exit": 0,
+      "seconds": 160.24,
+      "turns": 1,
+      "input_tokens": 253537,
+      "cached_input_tokens": 211035,
+      "fresh_input_tokens": 42502,
+      "output_tokens": 7259,
+      "tools": [
+        "get_context",
+        "get_skill",
+        "log_decision"
+      ],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "website_untouched": true,
+        "footer_reading_time": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "get_skill": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-security-links",
+      "arm": "device_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 135.18,
+      "turns": 1,
+      "input_tokens": 287726,
+      "cached_input_tokens": 242831,
+      "fresh_input_tokens": 44895,
+      "output_tokens": 12190,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "website_untouched": true,
+        "link_sanitized_in_ui": true,
+        "wikilink_guarded_in_ui": true
+      },
+      "passed": true
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-security-links",
+      "arm": "lore_mcp",
+      "run": 1,
+      "exit": 0,
+      "seconds": 196.79,
+      "turns": 1,
+      "input_tokens": 314646,
+      "cached_input_tokens": 266825,
+      "fresh_input_tokens": 47821,
+      "output_tokens": 12542,
+      "tools": [
+        "get_context",
+        "get_skill",
+        "log_decision"
+      ],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "website_untouched": true,
+        "link_sanitized_in_ui": true,
+        "wikilink_guarded_in_ui": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "get_skill": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-security-links",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 382.63,
+      "turns": 1,
+      "input_tokens": 1304733,
+      "cached_input_tokens": 1196871,
+      "fresh_input_tokens": 107862,
+      "output_tokens": 33701,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": false,
+        "website_untouched": true,
+        "link_sanitized_in_ui": false,
+        "wikilink_guarded_in_ui": false
+      },
+      "passed": false
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-find-a11y",
+      "arm": "lore_mcp",
+      "run": 1,
+      "exit": 0,
+      "seconds": 260.51,
+      "turns": 1,
+      "input_tokens": 512381,
+      "cached_input_tokens": 422177,
+      "fresh_input_tokens": 90204,
+      "output_tokens": 11442,
+      "tools": [
+        "get_context",
+        "get_skill",
+        "log_decision"
+      ],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "website_untouched": true
+      },
+      "passed": true,
+      "process": {
+        "get_context": true,
+        "get_skill": true,
+        "check_applied": true,
+        "log_decision": true,
+        "ok": true
+      },
+      "mcp_get_context_ok": true,
+      "mcp_get_context_error": null
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-find-a11y",
+      "arm": "no_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 259.31,
+      "turns": 1,
+      "input_tokens": 907892,
+      "cached_input_tokens": 816257,
+      "fresh_input_tokens": 91635,
+      "output_tokens": 15046,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": false,
+        "website_untouched": true
+      },
+      "passed": false
+    },
+    {
+      "project_type": "old_project",
+      "scenario": "old-find-a11y",
+      "arm": "device_skills",
+      "run": 1,
+      "exit": 0,
+      "seconds": 98.86,
+      "turns": 1,
+      "input_tokens": 195709,
+      "cached_input_tokens": 157970,
+      "fresh_input_tokens": 37739,
+      "output_tokens": 6798,
+      "tools": [],
+      "checks": {
+        "tsc_ok": true,
+        "vitest_ok": true,
+        "website_untouched": true
+      },
+      "passed": true
+    }
+  ],
+  "score": {
+    "model": "gemini-4-hydrogen-medium",
+    "runs_per_cell": 1,
+    "total_runs": 18,
+    "by_project_arm": {
+      "new_project": {
+        "no_skills": {
+          "passed": 0,
+          "total": 3,
+          "pass_rate": 0.0,
+          "median_seconds": 124.23,
+          "median_fresh_tokens": 33879,
+          "median_input_tokens": 140749,
+          "median_output_tokens": 12480,
+          "median_turns": 1.0
+        },
+        "device_skills": {
+          "passed": 3,
+          "total": 3,
+          "pass_rate": 1.0,
+          "median_seconds": 108.65,
+          "median_fresh_tokens": 30760,
+          "median_input_tokens": 162663,
+          "median_output_tokens": 8721,
+          "median_turns": 1.0
+        },
+        "lore_mcp": {
+          "passed": 3,
+          "total": 3,
+          "pass_rate": 1.0,
+          "median_seconds": 106.94,
+          "median_fresh_tokens": 33115,
+          "median_input_tokens": 152500,
+          "median_output_tokens": 9042,
+          "median_turns": 1.0
+        }
+      },
+      "old_project": {
+        "no_skills": {
+          "passed": 1,
+          "total": 3,
+          "pass_rate": 0.333,
+          "median_seconds": 259.31,
+          "median_fresh_tokens": 91635,
+          "median_input_tokens": 907892,
+          "median_output_tokens": 15046,
+          "median_turns": 1.0
+        },
+        "device_skills": {
+          "passed": 3,
+          "total": 3,
+          "pass_rate": 1.0,
+          "median_seconds": 135.18,
+          "median_fresh_tokens": 44895,
+          "median_input_tokens": 286948,
+          "median_output_tokens": 8137,
+          "median_turns": 1.0
+        },
+        "lore_mcp": {
+          "passed": 3,
+          "total": 3,
+          "pass_rate": 1.0,
+          "median_seconds": 196.79,
+          "median_fresh_tokens": 47821,
+          "median_input_tokens": 314646,
+          "median_output_tokens": 11442,
+          "median_turns": 1.0
+        }
+      }
+    },
+    "lore_process_rate": 1.0
+  }
+}

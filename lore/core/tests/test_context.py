@@ -267,3 +267,59 @@ def test_unicode_summaries_still_fit_the_budget(project: Path) -> None:
     )
     envelope = get_context(project, "", intent=" components unicode")
     assert envelope["budget"]["used"] <= envelope["budget"]["limit"]
+
+
+def test_task_round_robin_and_status_alias_do_not_starve_frontend(project: Path) -> None:
+    from lore.core.personas import write_persona
+
+    write_persona(
+        project,
+        "accessibility-engineer",
+        "Accessibility and aria status rules.",
+        "Accessibility.",
+        status="stable",
+    )
+    write_persona(
+        project,
+        "motion-engineer",
+        "Motion and reduced-motion rules.",
+        "Motion.",
+        status="stable",
+    )
+    for idx in range(6):
+        write_skill(
+            project,
+            "accessibility-engineer",
+            f"a11y-rule-{idx}@v1",
+            title=f"Accessibility rule {idx}",
+            summary="Accessibility find status aria.",
+            body="Body.\n",
+            status="stable",
+        )
+    write_skill(
+        project,
+        "motion-engineer",
+        "motion-standards@v1",
+        title="Motion standards",
+        summary="Reduced motion policy.",
+        body="Body.\n",
+        status="stable",
+    )
+    write_skill(
+        project,
+        "frontend-engineer",
+        "frontend-standards@v1",
+        title="Frontend standards",
+        summary="Frontend find bar standards.",
+        body="Body.\n",
+        status="stable",
+    )
+    envelope = get_context(
+        project,
+        "",
+        intent="Upgrade the Find bar match status following accessibility, frontend, and motion standards.",
+    )
+    served = set(envelope["data"]["cite_ids"])
+    assert "skill:frontend-engineer/frontend-standards@v1" in served
+    assert "skill:motion-engineer/motion-standards@v1" in served
+    assert any(item.startswith("skill:accessibility-engineer/") for item in served)

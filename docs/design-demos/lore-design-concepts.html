@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="intellecta">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lore — Design Concept Demos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-canvas);
+      color: var(--text-primary);
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      transition: background 0.35s ease, color 0.25s ease;
+      overflow-x: hidden;
+    }
+    button, input, select, textarea { font: inherit; color: inherit; outline: none; }
+    button { cursor: pointer; border: none; background: none; }
+
+    :root {
+      --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+
+    /* ========================================================================
+       THEME 1: INTELLECTA (Soft Frosted Lavender Bento)
+       ======================================================================== */
+    [data-theme="intellecta"] {
+      --bg-canvas: radial-gradient(circle at 6% 86%, rgba(173, 160, 232, 0.55) 0%, transparent 42%),
+                   radial-gradient(circle at 92% 10%, rgba(206, 214, 234, 0.6) 0%, transparent 45%),
+                   linear-gradient(135deg, #ececf2 0%, #e4e4ec 100%);
+      --bg-shell: rgba(255, 255, 255, 0.36);
+      --bg-card: #ffffff;
+      --bg-card-alt: #f4f4f8;
+      --bg-input: #f2f2f6;
+      --border-card: rgba(20, 22, 30, 0.06);
+      --shadow-card: 0 12px 32px -12px rgba(24, 26, 40, 0.08), 0 1px 2px rgba(24, 26, 40, 0.03);
+      --text-primary: #18191d;
+      --text-secondary: #686b75;
+      --text-muted: #9295a0;
+      --accent: #1c1d21;
+      --accent-fg: #ffffff;
+      --danger: #dc2626;
+      --danger-bg: rgba(220, 38, 38, 0.1);
+      --sidebar-w: 76px;
+      --card-radius: 24px;
+    }
+    [data-theme="intellecta"][data-mode="dark"] {
+      --bg-canvas: radial-gradient(circle at 6% 86%, rgba(124, 108, 210, 0.28) 0%, transparent 45%),
+                   radial-gradient(circle at 92% 10%, rgba(96, 118, 178, 0.22) 0%, transparent 45%),
+                   linear-gradient(135deg, #121319 0%, #181a22 100%);
+      --bg-shell: rgba(18, 19, 25, 0.55);
+      --bg-card: #1d1f28;
+      --bg-card-alt: #252834;
+      --bg-input: #252834;
+      --border-card: rgba(255, 255, 255, 0.08);
+      --shadow-card: 0 12px 32px -12px rgba(0, 0, 0, 0.55);
+      --text-primary: #f3f4f8;
+      --text-secondary: #a1a5b4;
+      --text-muted: #727788;
+      --accent: #f3f4f8;
+      --accent-fg: #14151a;
+      --danger: #f87171;
+      --danger-bg: rgba(248, 113, 113, 0.14);
+    }
+    [data-theme="intellecta"][data-mode="dark"] .nav-btn { background: rgba(255, 255, 255, 0.08); }
+    [data-theme="intellecta"][data-mode="dark"] .nav-btn:hover { background: rgba(255, 255, 255, 0.16); }
+    [data-theme="intellecta"][data-mode="dark"] .nav-btn.active { background: #f3f4f8; color: #14151a; }
+
+    /* ========================================================================
+       THEME 2: INVENTORY (Warm Gradient Editorial Neo-Bento)
+       ======================================================================== */
+    [data-theme="inventory"] {
+      --bg-canvas: linear-gradient(125deg, #f3f0c8 0%, #f1ded2 38%, #e4e5e8 78%, #d9dbdf 100%);
+      --bg-shell: rgba(255, 255, 255, 0.22);
+      --bg-card: rgba(255, 255, 255, 0.72);
+      --bg-card-alt: rgba(255, 255, 255, 0.48);
+      --bg-input: rgba(255, 255, 255, 0.65);
+      --border-card: rgba(18, 18, 20, 0.07);
+      --shadow-card: 0 8px 28px -8px rgba(20, 20, 24, 0.07);
+      --text-primary: #141517;
+      --text-secondary: #5c5f66;
+      --text-muted: #8a8d94;
+      --accent: #141517;
+      --accent-fg: #ffffff;
+      --danger: #e11d48;
+      --danger-bg: rgba(225, 29, 72, 0.1);
+      --sidebar-w: 72px;
+      --card-radius: 22px;
+    }
+
+    /* ========================================================================
+       THEME 3: RADIAL YELLOW BENTO (Wireframe Concept)
+       ======================================================================== */
+    [data-theme="radial"] {
+      --bg-canvas: radial-gradient(circle at 100% 100%, rgba(250, 218, 60, 0.48) 0%, rgba(250, 218, 60, 0.2) 38%, transparent 72%), #ffffff;
+      --bg-shell: transparent;
+      --bg-card: rgba(255, 255, 255, 0.78);
+      --bg-card-alt: rgba(255, 255, 255, 0.62);
+      --bg-input: rgba(244, 244, 246, 0.85);
+      --border-card: rgba(18, 18, 20, 0.12);
+      --shadow-card: 0 8px 28px -10px rgba(18, 18, 20, 0.06);
+      --text-primary: #121315;
+      --text-secondary: #585b62;
+      --text-muted: #8a8e96;
+      --accent: #121315;
+      --accent-fg: #ffffff;
+      --danger: #dc2626;
+      --danger-bg: rgba(220, 38, 38, 0.1);
+      --card-radius: 18px;
+    }
+    [data-theme="radial"][data-mode="dark"] {
+      --bg-canvas: radial-gradient(circle at 100% 100%, rgba(250, 218, 60, 0.34) 0%, rgba(250, 218, 60, 0.11) 40%, transparent 72%), #0b0c0d;
+      --bg-card: rgba(20, 22, 24, 0.78);
+      --bg-card-alt: rgba(28, 30, 34, 0.68);
+      --bg-input: rgba(28, 30, 34, 0.9);
+      --border-card: rgba(255, 255, 255, 0.14);
+      --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.45);
+      --text-primary: #f4f5f6;
+      --text-secondary: #a1a6ae;
+      --text-muted: #70757d;
+      --accent: #fadc3c;
+      --accent-fg: #0b0c0d;
+      --danger: #f87171;
+      --danger-bg: rgba(248, 113, 113, 0.14);
+    }
+    [data-theme="radial"] .sidebar { display: none; }
+    [data-theme="radial"] .main-wrap { padding: 26px 36px 104px; }
+
+    /* ========================================================================
+       SHELL & SIDEBAR
+       ======================================================================== */
+    .app-frame {
+      min-height: 100vh;
+      display: flex;
+      background: var(--bg-shell);
+      backdrop-filter: blur(22px);
+    }
+
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 10px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      z-index: 20;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      width: 100%;
+    }
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: var(--text-primary);
+    }
+
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      align-items: center;
+      flex: 1;
+    }
+
+    .nav-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      transition: all 0.16s ease;
+    }
+    [data-theme="intellecta"] .nav-btn { background: rgba(255, 255, 255, 0.72); box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+    [data-theme="inventory"] .nav-btn { border-radius: 14px; }
+    .nav-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.9); }
+
+    .nav-btn.active { background: #1c1d21; color: #ffffff; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+    [data-theme="inventory"] .nav-btn.active { background: #ffffff; color: #141517; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+
+    .sidebar-footer {
+      margin-top: auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ========================================================================
+       MAIN & TOPBAR
+       ======================================================================== */
+    .main-wrap {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 28px 96px;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .page-body { display: flex; flex-direction: column; gap: 18px; }
+
+    /* ========================================================================
+       SHARED PRIMITIVES
+       ======================================================================== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      border-radius: var(--card-radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow-card);
+    }
+    .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .card-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+    .card-desc { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; }
+
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    @media (max-width: 1060px) { .grid-3 { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      transition: transform 0.12s ease, opacity 0.15s ease;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent); color: var(--accent-fg); }
+    .btn-secondary { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-card); }
+    .btn-danger { background: var(--danger-bg); color: var(--danger); }
+    .btn-sm { padding: 6px 13px; font-size: 12px; }
+    .icon-circle {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: var(--bg-card); border: 1px solid var(--border-card);
+      color: var(--text-primary); flex-shrink: 0;
+    }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 600;
+      background: var(--bg-input); color: var(--text-secondary);
+      border: 1px solid var(--border-card);
+    }
+    .badge-lime { background: rgba(159, 232, 112, 0.22); color: #365314; border-color: rgba(132, 204, 22, 0.35); }
+    .badge-amber { background: rgba(245, 158, 11, 0.16); color: #b45309; border-color: rgba(245, 158, 11, 0.3); }
+    .badge-teal { background: rgba(13, 148, 136, 0.12); color: #0f766e; border-color: rgba(13, 148, 136, 0.25); }
+
+    .pill-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 13px; border-radius: 999px;
+      background: var(--bg-card); border: 1px solid var(--border-card);
+      font-size: 12px; color: var(--text-secondary);
+    }
+    .pill-chip strong { color: var(--text-primary); font-weight: 600; }
+
+    .hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+    .hero-eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
+    .hero-title { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; }
+    [data-theme="inventory"] .hero-title { font-weight: 300; font-size: 36px; }
+    .hero-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .field label { font-size: 12.5px; font-weight: 600; }
+    .field-hint { font-size: 11.5px; color: var(--text-muted); }
+    .input, .select, .textarea {
+      width: 100%; padding: 9px 12px; border-radius: 10px;
+      background: var(--bg-input); border: 1px solid var(--border-card); font-size: 13px;
+    }
+    .textarea { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; min-height: 260px; resize: vertical; }
+    .code-block {
+      font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
+      background: var(--bg-input); border: 1px solid var(--border-card);
+      border-radius: 14px; padding: 13px 15px; white-space: pre-wrap; color: var(--text-secondary);
+    }
+
+    /* ========================================================================
+       INTELLECTA SIGNATURE WIDGETS
+       ======================================================================== */
+    .intel-bento-top, .intel-bento-bot { display: grid; grid-template-columns: 0.95fr 1.55fr; gap: 18px; }
+    @media (max-width: 1000px) { .intel-bento-top, .intel-bento-bot { grid-template-columns: 1fr; } }
+
+    .intel-notch-card {
+      background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 26px; padding: 16px 18px 18px;
+      box-shadow: var(--shadow-card); display: flex; flex-direction: column;
+      justify-content: space-between; min-height: 295px;
+    }
+    .intel-tabs-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .intel-tab-pills { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-input); padding: 4px; border-radius: 999px; }
+    .intel-tab-btn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--text-secondary); }
+    .intel-tab-btn.active { background: var(--bg-card); color: var(--text-primary); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .intel-bubble { background: var(--bg-input); border-radius: 18px 18px 18px 6px; padding: 13px 15px; font-size: 13px; color: var(--text-primary); max-width: 88%; }
+    .intel-input-bar { display: flex; align-items: center; gap: 10px; background: var(--bg-input); border-radius: 999px; padding: 9px 14px; margin-top: 16px; font-size: 12.5px; color: var(--text-secondary); }
+
+    .intel-timeline { position: relative; padding-top: 8px; display: flex; flex-direction: column; gap: 12px; }
+    .intel-hours { display: grid; grid-template-columns: repeat(8, 1fr); font-size: 11px; color: var(--text-muted); text-align: center; padding-bottom: 10px; }
+    .intel-now-line { position: absolute; top: 26px; bottom: 0; left: 68%; width: 1.5px; background: var(--text-primary); z-index: 3; }
+    .intel-now-line::before { content: ""; position: absolute; top: -4px; left: -3.2px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-primary); }
+    .intel-bar-row { display: flex; align-items: center; border-radius: 16px; padding: 4px; }
+    .intel-bar-inner { border-radius: 13px; padding: 9px 14px; display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; width: 100%; color: #141517; }
+
+    /* ========================================================================
+       INVENTORY SIGNATURE WIDGETS
+       ======================================================================== */
+    .inv-grid-top { display: grid; grid-template-columns: 1fr 1fr 0.95fr; gap: 16px; }
+    @media (max-width: 1020px) { .inv-grid-top { grid-template-columns: 1fr; } }
+
+    .inv-yellow { background: #f2f533 !important; color: #141517 !important; border: none !important; }
+    .inv-orange { background: #ff8b4d !important; color: #141517 !important; border: none !important; overflow: hidden; position: relative; }
+    .inv-black  { background: #111214 !important; color: #ffffff !important; border: none !important; display: flex; flex-direction: column; justify-content: space-between; }
+
+    .hatch-bars { display: flex; align-items: flex-end; gap: 10px; height: 84px; margin-top: 10px; }
+    .hatch-bar {
+      flex: 1; border-radius: 10px 10px 4px 4px;
+      background: repeating-linear-gradient(-45deg, rgba(20,21,23,0.85), rgba(20,21,23,0.85) 3px, transparent 3px, transparent 7px);
+    }
+    .hatch-bar.solid { background: linear-gradient(180deg, #141517 0%, rgba(20,21,23,0.12) 100%); }
+
+    .inv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .inv-table th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--text-muted); padding: 10px 12px; }
+    .inv-table td { padding: 12px; border-top: 1px solid rgba(20,21,23,0.06); }
+
+    /* ========================================================================
+       RADIAL YELLOW BENTO SIGNATURE WIDGETS
+       ======================================================================== */
+    .radial-bento {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 16px;
+      min-height: 410px;
+    }
+    .radial-col {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      gap: 16px;
+    }
+    .radial-sub-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 960px) {
+      .radial-bento { grid-template-columns: 1fr; }
+      .radial-sub-row { grid-template-columns: 1fr; }
+    }
+    .radial-card {
+      background: var(--bg-card);
+      border: 1.5px solid var(--border-card);
+      border-radius: var(--card-radius);
+      padding: 20px 22px;
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-card);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .radial-dock {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      left: 36px;
+      z-index: 9990;
+      padding: 8px 10px;
+      border-radius: 18px;
+      background: var(--bg-card);
+      border: 1.5px solid var(--border-card);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-card);
+      gap: 10px;
+      align-items: center;
+    }
+    [data-theme="radial"] .radial-dock { display: inline-flex; }
+    .radial-dock-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border-card);
+      display: grid;
+      place-items: center;
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+    }
+    .radial-dock-btn:hover { color: var(--text-primary); border-color: var(--text-primary); }
+    .radial-dock-btn.active {
+      background: var(--accent);
+      color: var(--accent-fg);
+      border-color: var(--accent);
+    }
+
+    /* ========================================================================
+       BOTTOM-RIGHT FLOATING DESIGN SWITCHER (FAB)
+       ======================================================================== */
+    .fab-wrap {
+      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    }
+    .fab-menu {
+      width: 286px; background: rgba(20, 22, 26, 0.95); color: #f8fafc;
+      border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 18px;
+      padding: 10px; box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(18px); display: none; flex-direction: column; gap: 4px;
+    }
+    .fab-menu.open { display: flex; }
+    .fab-menu-title { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8; padding: 6px 10px 4px; }
+    .fab-option { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; text-align: left; color: #e2e8f0; }
+    .fab-option:hover { background: rgba(255, 255, 255, 0.08); }
+    .fab-option.active { background: rgba(255, 255, 255, 0.15); color: #ffffff; }
+    .fab-swatches { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+    .fab-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25); }
+    .fab-opt-meta { flex: 1; min-width: 0; }
+    .fab-opt-name { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+    .fab-opt-desc { font-size: 11px; color: #94a3b8; }
+    .fab-trigger {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 11px 16px; border-radius: 999px;
+      background: #14161a; color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+      font-size: 12.5px; font-weight: 600;
+    }
+
+    .toast {
+      position: fixed; bottom: 84px; right: 24px; z-index: 9998;
+      background: #14161a; color: #fff; padding: 10px 16px; border-radius: 12px;
+      font-size: 12.5px; font-weight: 500; box-shadow: 0 10px 28px rgba(0,0,0,0.25);
+      opacity: 0; pointer-events: none; transform: translateY(6px); transition: all 0.2s ease;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="app-frame">
+    <aside class="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark" id="brand-mark"></div>
+      </div>
+
+      <nav class="nav-list" id="nav-list"></nav>
+
+      <div class="sidebar-footer">
+        <button class="nav-btn" data-page="settings" onclick="navigate('settings')" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <div class="main-wrap">
+      <header class="topbar" id="topbar"></header>
+      <main class="page-body" id="page-body"></main>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Copied</div>
+
+  <!-- BOTTOM-LEFT FLOATING DOCK (Radial Yellow Bento) -->
+  <nav class="radial-dock" id="radial-dock" aria-label="Dashboard icons"></nav>
+
+  <!-- BOTTOM-RIGHT FLOATING DESIGN SWITCHER -->
+  <div class="fab-wrap">
+    <div class="fab-menu" id="fab-menu">
+      <div class="fab-menu-title">Design Concept (Keys 1–3)</div>
+      <button class="fab-option" data-theme-opt="intellecta" onclick="setTheme('intellecta')">
+        <span class="fab-swatches"><span class="fab-dot" style="background:#e6e4f2"></span><span class="fab-dot" style="background:#c8eb5e"></span><span class="fab-dot" style="background:#1c1d21"></span></span>
+        <span class="fab-opt-meta"><span class="fab-opt-name">1. Soft Bento Glass <small style="opacity:.6">Intellecta</small></span><span class="fab-opt-desc">Notched tabs · timeline · spline</span></span>
+      </button>
+      <button class="fab-option" data-theme-opt="inventory" onclick="setTheme('inventory')">
+        <span class="fab-swatches"><span class="fab-dot" style="background:#f2f533"></span><span class="fab-dot" style="background:#ff8b4d"></span><span class="fab-dot" style="background:#111214"></span></span>
+        <span class="fab-opt-meta"><span class="fab-opt-name">2. Editorial Neo-Bento <small style="opacity:.6">Inventory</small></span><span class="fab-opt-desc">Acid yellow · coral pie · black spotlight</span></span>
+      </button>
+      <button class="fab-option" data-theme-opt="radial" onclick="setTheme('radial')">
+        <span class="fab-swatches"><span class="fab-dot" style="background:#ffffff"></span><span class="fab-dot" style="background:#fadc3c"></span><span class="fab-dot" style="background:#0b0c0d"></span></span>
+        <span class="fab-opt-meta"><span class="fab-opt-name">3. Radial Yellow Bento <small style="opacity:.6">Sketch</small></span><span class="fab-opt-desc">Light/dark · yellow glow · bottom dock</span></span>
+      </button>
+    </div>
+
+    <button class="fab-trigger" id="fab-trigger" onclick="toggleFab()">
+      <span class="fab-dot" id="fab-active-dot" style="background:#c8eb5e"></span>
+      <span id="fab-active-name">Design: Soft Bento Glass</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
+    </button>
+  </div>
+
+  <script>
+    const THEME_META = {
+      intellecta: { label: 'Soft Bento Glass', dot: '#c8eb5e' },
+      inventory:  { label: 'Editorial Neo-Bento', dot: '#f2f533' },
+      radial:     { label: 'Radial Yellow Bento', dot: '#fadc3c' }
+    };
+
+    const BRAND_ICONS = {
+      intellecta: `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/><path d="M12 7a5 5 0 0 0 0 10"/></svg>`,
+      inventory:  `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3h14l-5.5 9L19 21H5l5.5-9L5 3z"/></svg>`,
+      radial:     `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>`
+    };
+
+    const NAV_ITEMS = [
+      { id: 'dashboard', label: 'Dashboard', icon: `<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>` },
+      { id: 'personas',  label: 'Personas',  icon: `<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>` },
+      { id: 'skills',    label: 'Skills',    icon: `<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>` },
+      { id: 'codebase',  label: 'Codebase',  icon: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>` }
+    ];
+
+    const SKILLS = [
+      { id: 'canvas-design', title: 'canvas-design', status: 'Waiting', governance: ['stable', 'scan:clean', 'fresh:aging'], persona: 'persona:frontend-engineer', demand: 'High', calls: 42, summary: 'Create beautiful visual art in .png and .pdf documents using design philosophy. Never copy existing templates.', steps: `These are instructions for creating design philosophies - aesthetic movements that are then EXPRESSED VISUALLY. Output only .md files, .pdf files, and .png files.\n\nComplete this in two steps:\n1. Design Philosophy Creation (.md file)\n2. Express by creating it on a canvas (.pdf file or .png file)` },
+      { id: 'design-mobile-apps', title: 'design-mobile-apps', status: 'Waiting', governance: ['stable', 'scan:clean'], persona: 'Unassigned', demand: 'High', calls: 28, summary: 'Design mobile app screens with Sleek, edit Sleek projects, and implement their designs in React Native or HTML.', steps: `Use Sleek project primitives to compose mobile viewports, verify safe-area spacing, and export tokens cleanly.` },
+      { id: 'design-taste-frontend', title: 'design taste frontend', status: 'Waiting', governance: ['stable', 'scan:clean'], persona: 'Unassigned', demand: 'High', calls: 31, summary: 'Concise, distinctive landing pages and portfolios that avoid templated AI aesthetics.', steps: `Read the design brief first to infer the right aesthetic direction before writing components.` },
+      { id: 'industrial-brutalist-ui', title: 'industrial brutalist ui', status: 'Waiting', governance: ['stable', 'scan:clean'], persona: 'Unassigned', demand: 'Low', calls: 9, summary: 'Raw mechanical interfaces fusing Swiss typography with military terminal aesthetics.', steps: `Choose one visual archetype per project: Swiss Industrial Print or Tactical Telemetry.` },
+      { id: 'minimalist-ui', title: 'minimalist ui', status: 'Waiting', governance: ['stable', 'scan:clean'], persona: 'Unassigned', demand: 'Low', calls: 11, summary: 'Premium utilitarian minimalism with warm monochrome palette, editorial typography, and bento grids.', steps: `Enforces strict design constraints: no gradients, heavy shadows, or generic SaaS aesthetics.` },
+      { id: 'shadcn', title: 'shadcn', status: 'Waiting', governance: ['stable', 'scan:clean'], persona: 'persona:frontend-engineer', demand: 'High', calls: 38, summary: 'Manages shadcn components and projects — adding, searching, fixing, debugging, styling, and composing UI.', steps: `Inspect components.json first. Prefer existing primitives in components/ui.` },
+      { id: 'vercel-composition-patterns', title: 'vercel-composition-patterns', status: 'Waiting', governance: ['stable', 'scan:clean'], persona: 'Unassigned', demand: 'Low', calls: 7, summary: 'React composition patterns that scale. Avoid boolean prop proliferation.', steps: `Replace boolean prop explosions with compound components.` },
+      { id: 'vercel-react-best-practices', title: 'vercel-react-best-practices', status: 'Waiting', governance: ['stable', 'scan:clean'], persona: 'Unassigned', demand: 'Low', calls: 14, summary: 'React and Next.js performance optimization guidelines from Vercel Engineering.', steps: `Audit client/server boundaries and eliminate waterfalls.` }
+    ];
+
+    const CONNECT_PROMPT = `/home/djrcx/Work/Lore/scripts/lore-solo connect`;
+
+    let state = { theme: 'intellecta', page: 'dashboard', skillId: 'canvas-design', skillQuery: '', skillSort: 'az', intelTab: 'chat', radialMode: 'light' };
+
+    function init() {
+      const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const savedTheme = hash.get('theme') || localStorage.getItem('lore_demo_theme') || 'intellecta';
+      const savedPage = hash.get('page') || 'dashboard';
+      state.theme = THEME_META[savedTheme] ? savedTheme : 'intellecta';
+      state.page = savedPage;
+      document.documentElement.setAttribute('data-mode', state.radialMode);
+      applyTheme(state.theme, false);
+      render();
+    }
+
+    function toggleRadialMode() {
+      state.radialMode = state.radialMode === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-mode', state.radialMode);
+      renderTopbar();
+    }
+
+    function setColorMode(mode) {
+      state.radialMode = mode;
+      document.documentElement.setAttribute('data-mode', mode);
+      renderTopbar();
+    }
+
+    function setTheme(theme) {
+      if (!THEME_META[theme]) return;
+      state.theme = theme;
+      applyTheme(theme, true);
+      document.getElementById('fab-menu').classList.remove('open');
+      render();
+    }
+
+    function applyTheme(theme, save) {
+      document.documentElement.setAttribute('data-theme', theme);
+      const meta = THEME_META[theme];
+      document.getElementById('fab-active-name').textContent = `Design: ${meta.label}`;
+      document.getElementById('fab-active-dot').style.background = meta.dot;
+      document.getElementById('brand-mark').innerHTML = BRAND_ICONS[theme];
+      document.querySelectorAll('.fab-option').forEach(el => el.classList.toggle('active', el.dataset.themeOpt === theme));
+      if (save) {
+        localStorage.setItem('lore_demo_theme', theme);
+        location.hash = `theme=${state.theme}&page=${state.page}`;
+      }
+    }
+
+    function navigate(page, skillId) {
+      state.page = page;
+      if (skillId) state.skillId = skillId;
+      location.hash = `theme=${state.theme}&page=${state.page}`;
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleFab() { document.getElementById('fab-menu').classList.toggle('open'); }
+    function copyText(text, label) {
+      if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+      const toast = document.getElementById('toast');
+      toast.textContent = label || 'Copied';
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+      const map = { '1': 'intellecta', '2': 'inventory', '3': 'radial' };
+      if (map[e.key]) setTheme(map[e.key]);
+    });
+
+    function render() { renderNav(); renderTopbar(); renderPage(); }
+
+    function renderNav() {
+      const activeGroup = state.page === 'skill-detail' ? 'skills' : state.page;
+      document.getElementById('nav-list').innerHTML = NAV_ITEMS.map(item => `
+        <button class="nav-btn ${activeGroup === item.id ? 'active' : ''}" onclick="navigate('${item.id}')" title="${item.label}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${item.icon}</svg>
+        </button>`).join('');
+      document.querySelector('.sidebar-footer .nav-btn').classList.toggle('active', state.page === 'settings');
+
+      const settingsIcon = `<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>`;
+      document.getElementById('radial-dock').innerHTML = [
+        ...NAV_ITEMS,
+        { id: 'settings', label: 'Settings', icon: settingsIcon }
+      ].map(item => `
+        <button class="radial-dock-btn ${activeGroup === item.id ? 'active' : ''}" onclick="navigate('${item.id}')" title="${item.label}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${item.icon}</svg>
+        </button>`).join('');
+    }
+
+    function renderTopbar() {
+      const titles = { dashboard: 'Dashboard', personas: 'Personas', skills: 'Skills', 'skill-detail': 'Skill Detail', codebase: 'Codebase', settings: 'Settings' };
+      const title = titles[state.page] || 'Dashboard';
+
+      if (state.theme === 'intellecta') {
+        const isDark = state.radialMode === 'dark';
+        document.getElementById('topbar').innerHTML = `
+          <div style="font-weight:700;font-size:17px;letter-spacing:-0.02em">Lore</div>
+          <div style="display:flex;gap:4px;background:${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.65)'};padding:4px;border-radius:999px">
+            <button onclick="setColorMode('dark')" title="Dark mode" style="width:30px;height:26px;border-radius:999px;display:grid;place-items:center;${isDark ? 'background:var(--bg-card);color:var(--text-primary);box-shadow:0 2px 6px rgba(0,0,0,0.25)' : 'color:var(--text-secondary)'}">☾</button>
+            <button onclick="setColorMode('light')" title="Light mode" style="width:30px;height:26px;border-radius:999px;display:grid;place-items:center;${!isDark ? 'background:#fff;color:#18191d;box-shadow:0 2px 6px rgba(0,0,0,0.08)' : 'color:var(--text-secondary)'}">☀</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="icon-circle" onclick="navigate('skills')" title="Search skills">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            </button>
+            <div class="icon-circle" style="background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:700">L</div>
+          </div>`;
+      } else if (state.theme === 'radial') {
+        document.getElementById('topbar').innerHTML = `
+          <div>
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:3px">Dashboard</div>
+            <h1 class="hero-title" style="margin:0">${title}</h1>
+          </div>
+          <button class="icon-circle" style="width:42px;height:42px;border-width:1.5px" onclick="toggleRadialMode()" title="Switch white / black background">
+            ${state.radialMode === 'light' ? '☾' : '☀'}
+          </button>`;
+      } else {
+        document.getElementById('topbar').innerHTML = `
+          <h1 class="hero-title" style="margin:0">${title}</h1>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="pill-chip">Project: <strong>dhaka-tesla-pool</strong> ▾</span>
+            <span class="pill-chip">Window: <strong>Month</strong> ▾</span>
+            <button class="icon-circle" onclick="navigate('skills')" title="Skills">⊞</button>
+            <button class="icon-circle" onclick="navigate('settings')" title="Settings">⚙</button>
+          </div>`;
+      }
+    }
+
+    function renderPage() {
+      const el = document.getElementById('page-body');
+      switch (state.page) {
+        case 'dashboard':    el.innerHTML = renderDashboard(); break;
+        case 'personas':     el.innerHTML = renderPersonas(); break;
+        case 'skills':       el.innerHTML = renderSkills(); break;
+        case 'skill-detail': el.innerHTML = renderSkillDetail(); break;
+        case 'codebase':     el.innerHTML = renderCodebase(); break;
+        case 'settings':     el.innerHTML = renderSettings(); break;
+      }
+    }
+
+    function renderDashboard() {
+      if (state.theme === 'intellecta') {
+        return `
+          <div class="hero-row">
+            <div>
+              <h1 class="hero-title">Dashboard</h1>
+              <p class="hero-sub">Let's make this coding session productive.</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap">
+              <div><div style="font-size:11.5px;color:var(--text-secondary)">Skills ready</div><div style="font-size:26px;font-weight:700">8 ↗</div></div>
+              <div><div style="font-size:11.5px;color:var(--text-secondary)">Token budget</div><div style="font-size:26px;font-weight:700">800 ↗</div></div>
+              <button class="btn btn-primary" onclick="navigate('skills')">+ Add skill</button>
+            </div>
+          </div>
+
+          <div class="intel-bento-top">
+            <div class="intel-notch-card">
+              <div>
+                <div class="intel-tabs-bar">
+                  <div class="intel-tab-pills">
+                    <button class="intel-tab-btn ${state.intelTab==='help'?'active':''}" onclick="state.intelTab='help';renderPage()">?</button>
+                    <button class="intel-tab-btn ${state.intelTab==='chat'?'active':''}" onclick="state.intelTab='chat';renderPage()">💬</button>
+                    <button class="intel-tab-btn ${state.intelTab==='cfg'?'active':''}" onclick="state.intelTab='cfg';renderPage()">⚙</button>
+                  </div>
+                  <div class="icon-circle" style="background:#a59bf3;color:#141517;font-weight:700;border:none">L</div>
+                </div>
+                <div class="intel-bubble">
+                  Hi there! Lore MCP is ready.<br/>Run <code style="font-family:var(--font-mono);font-size:11.5px">${CONNECT_PROMPT}</code> to connect your editor.
+                </div>
+              </div>
+              <div class="intel-input-bar">
+                <span style="flex:1">Copy connect command or ask a role...</span>
+                <button class="btn btn-primary btn-sm" onclick="copyText(CONNECT_PROMPT, 'Copied connect command')">Copy</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div><div class="card-title">My activity</div><div class="card-desc">Skill & codebase readiness timeline</div></div>
+                <button class="icon-circle" onclick="navigate('skills')">📅</button>
+              </div>
+              <div class="intel-timeline">
+                <div class="intel-hours"><span>07:00</span><span>08:00</span><span>09:00</span><span>10:00</span><span>11:00</span><span>12:00</span><span>01:00</span><span>02:00</span></div>
+                <div class="intel-now-line"></div>
+                <div class="intel-bar-row" style="width:66%;background:rgba(200,235,94,0.35)">
+                  <div class="intel-bar-inner" style="background:#c8eb5e;width:72%"><span>canvas-design</span><span class="badge" style="background:#18191d;color:#fff;border:none">+2</span></div>
+                </div>
+                <div class="intel-bar-row" style="width:52%;margin-left:26%;background:rgba(197,200,208,0.38)">
+                  <div class="intel-bar-inner" style="background:#c5c8d0;width:82%"><span>Design & UI skills</span><span class="badge" style="background:#18191d;color:#fff;border:none">+5</span></div>
+                </div>
+                <div class="intel-bar-row" style="width:36%;margin-left:58%;background:rgba(165,155,243,0.38)">
+                  <div class="intel-bar-inner" style="background:#a59bf3;width:84%"><span>dhaka-tesla-pool</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="intel-bento-bot">
+            <div class="card">
+              <div class="card-header">
+                <div><div class="card-title">Starter personas</div><div class="card-desc">Ready to attach skills</div></div>
+                <button class="icon-circle" onclick="navigate('personas')">↗</button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div><div style="font-weight:600;font-size:13.5px">Backend engineer</div><div class="card-desc">SQL skill only</div></div>
+                  <span style="width:26px;height:26px;border-radius:50%;background:#c8eb5e;display:grid;place-items:center;font-size:12px">✓</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div><div style="font-weight:600;font-size:13.5px">Frontend engineer</div><div class="card-desc">React & Tailwind skills</div></div>
+                  <span style="width:26px;height:26px;border-radius:50%;background:#c8eb5e;display:grid;place-items:center;font-size:12px">✓</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div><div class="card-title">Summary</div><div class="card-desc">Track your context budget & calls</div></div>
+                <div style="display:flex;gap:8px"><button class="icon-circle" onclick="navigate('settings')" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></button><button class="icon-circle" onclick="navigate('skills')">↗</button></div>
+              </div>
+              <svg width="100%" height="115" viewBox="0 0 460 115" style="color:var(--text-primary)">
+                <text x="4" y="25" fill="var(--text-muted)" font-size="10">800</text>
+                <text x="4" y="65" fill="var(--text-muted)" font-size="10">400</text>
+                <path d="M38 96 C95 92, 130 46, 200 62 C265 76, 305 26, 362 48 C400 62, 430 28, 450 20" fill="none" stroke="currentColor" stroke-width="2"/>
+                <circle cx="132" cy="64" r="4" fill="var(--bg-card)" stroke="currentColor" stroke-width="1.8"/>
+                <circle cx="312" cy="40" r="4.5" fill="#c8eb5e" stroke="currentColor" stroke-width="2"/>
+                <rect x="291" y="10" width="42" height="20" rx="6" fill="var(--accent)"/>
+                <text x="312" y="23" text-anchor="middle" fill="var(--accent-fg)" font-size="10" font-weight="600">800</text>
+              </svg>
+            </div>
+          </div>`;
+      }
+
+      if (state.theme === 'radial') {
+        return `
+          <div class="radial-bento">
+            <div class="radial-col">
+              <div class="radial-card">
+                <div class="card-header">
+                  <div>
+                    <div class="card-title">Connect an editor</div>
+                    <div class="card-desc">Register Lore MCP with your local coding editors.</div>
+                  </div>
+                  <button class="btn btn-primary btn-sm" onclick="copyText(CONNECT_PROMPT,'Copied connect command')">Copy</button>
+                </div>
+                <div class="code-block" style="font-size:11.5px">${CONNECT_PROMPT}</div>
+              </div>
+
+              <div class="radial-card">
+                <div class="card-header">
+                  <div>
+                    <div class="card-title">Starter personas</div>
+                    <div class="card-desc">Roles ready to receive attached skills.</div>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" onclick="navigate('personas')">Open</button>
+                </div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                  <span class="pill-chip"><strong>Backend engineer</strong> · SQL</span>
+                  <span class="pill-chip"><strong>Frontend engineer</strong> · React, Tailwind</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="radial-col">
+              <div class="radial-card">
+                <div class="card-header">
+                  <div>
+                    <div class="card-title">Skills waiting for a role</div>
+                    <div class="card-desc">8 saved skills passed built-in ATR scan.</div>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" onclick="navigate('skills')">View all 8 ↗</button>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  ${SKILLS.slice(0, 5).map(s => `<button class="badge" style="cursor:pointer" onclick="navigate('skill-detail','${s.id}')">${s.title}</button>`).join('')}
+                </div>
+              </div>
+
+              <div class="radial-sub-row">
+                <div class="radial-card">
+                  <div>
+                    <div class="hero-eyebrow">Codebase</div>
+                    <div class="card-title" style="font-size:18px">dhaka-tesla-pool</div>
+                    <div class="card-desc">Mapped & ready</div>
+                  </div>
+                  <div style="margin-top:14px"><button class="btn btn-secondary btn-sm" onclick="navigate('codebase')">Open project</button></div>
+                </div>
+
+                <div class="radial-card">
+                  <div>
+                    <div class="hero-eyebrow">Budget & Draft</div>
+                    <div class="card-title" style="font-size:18px">800 tokens</div>
+                    <div class="card-desc">8 pieces · Gemini 3.5</div>
+                  </div>
+                  <div style="margin-top:14px"><button class="btn btn-secondary btn-sm" onclick="navigate('settings')">Configure</button></div>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      /* Inventory */
+      return `
+        <div class="inv-grid-top">
+          <div class="card inv-yellow">
+            <div class="card-header">
+              <div class="card-title">Skills</div>
+              <span class="icon-circle" style="width:30px;height:30px;background:rgba(20,21,23,0.08);border:none">⇅</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:500">
+              <div><div style="font-size:20px;font-weight:600">1</div>Aging</div>
+              <div><div style="font-size:20px;font-weight:600">3</div>Draft</div>
+              <div><div style="font-size:20px;font-weight:600">8</div>Waiting</div>
+              <div><div style="font-size:20px;font-weight:600">128</div>Calls</div>
+            </div>
+            <div class="hatch-bars">
+              <div class="hatch-bar" style="height:26%"></div>
+              <div class="hatch-bar" style="height:48%"></div>
+              <div class="hatch-bar solid" style="height:74%"></div>
+              <div class="hatch-bar solid" style="height:96%"></div>
+            </div>
+          </div>
+
+          <div class="card inv-orange">
+            <div class="card-header">
+              <div class="card-title">Budget</div>
+              <span class="icon-circle" style="width:30px;height:30px;background:rgba(20,21,23,0.08);border:none">⇅</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+                <span>● Answer: <strong>800</strong></span>
+                <span>◐ Pieces: <strong>8</strong></span>
+                <span>◔ Clean: <strong>8 / 8</strong></span>
+                <span>● Codebase: <strong>1</strong></span>
+              </div>
+              <span class="badge" style="background:#f2f533;color:#141517;border:none;font-size:13px;padding:6px 14px">800</span>
+              <svg width="96" height="96" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="42" fill="rgba(20,21,23,0.16)"/>
+                <path d="M50 50 L50 8 A42 42 0 1 1 12 68 Z" fill="#141517"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="card inv-black">
+            <div class="card-header">
+              <div class="card-title">Featured Skill</div>
+              <button class="icon-circle" style="width:30px;height:30px;background:#26282c;color:#fff;border:none" onclick="navigate('skill-detail','canvas-design')">↗</button>
+            </div>
+            <div>
+              <span class="badge" style="background:#ff8b4d;color:#141517;border:none;margin-bottom:10px">⚡ High demand</span>
+              <div style="font-size:21px;font-weight:500">canvas-design</div>
+              <div style="font-size:12px;color:#9ca3af;margin-top:4px">Filed under persona:frontend-engineer</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+              <span style="font-size:11.5px;color:#9ca3af">Calls: 42 · In pool: 8</span>
+              <button class="btn btn-sm" style="background:#f2f533;color:#141517;border-radius:10px" onclick="navigate('skill-detail','canvas-design')">Open</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap">
+          <div>
+            <div class="card-title">Editor Routing</div>
+            <div class="card-desc">Connect command ready for Cursor, VS Code & Antigravity</div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <span class="badge">dhaka-tesla-pool</span>
+              <span class="badge" style="background:#ff8b4d;color:#141517;border:none">Active</span>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="copyText(CONNECT_PROMPT,'Copied connect command')">Copy connect command</button>
+        </div>
+
+        <div class="card" style="padding:12px 18px">
+          <table class="inv-table">
+            <thead><tr><th>Skill</th><th>Persona</th><th>Scan</th><th>Calls</th><th>Demand</th></tr></thead>
+            <tbody>
+              ${SKILLS.slice(0,4).map(s => `
+                <tr style="cursor:pointer" onclick="navigate('skill-detail','${s.id}')">
+                  <td><strong>${s.title}</strong></td>
+                  <td style="color:var(--text-secondary)">${s.persona}</td>
+                  <td>${s.governance[1]}</td>
+                  <td>${s.calls}</td>
+                  <td><span class="badge" style="background:${s.demand==='High'?'#ff8b4d':'#38bdf8'};color:#141517;border:none">${s.demand}</span></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderPersonas() {
+      return `
+        <div class="hero-row">
+          <div><h1 class="hero-title">Your personas</h1><p class="hero-sub">A persona is a role. It can only use the skills you attach to it.</p></div>
+          <button class="btn btn-primary" onclick="copyText('New persona','Created persona draft')">New persona</button>
+        </div>
+        <div class="card"><div class="card-desc">No custom personas yet. Create one, or add a starter below.</div></div>
+        <div class="hero-eyebrow">Starters</div>
+        <div class="grid-2">
+          <div class="card"><span class="badge badge-lime" style="margin-bottom:10px">starter</span><div class="card-title">Backend engineer</div><div class="card-desc" style="margin-bottom:16px">Backend work uses the SQL skill only.</div><button class="btn btn-primary btn-sm" onclick="copyText('Backend engineer','Added Backend engineer')">Add Backend engineer</button></div>
+          <div class="card"><span class="badge badge-lime" style="margin-bottom:10px">starter</span><div class="card-title">Frontend engineer</div><div class="card-desc" style="margin-bottom:16px">Frontend work uses the React and Tailwind skills only.</div><button class="btn btn-primary btn-sm" onclick="copyText('Frontend engineer','Added Frontend engineer')">Add Frontend engineer</button></div>
+        </div>`;
+    }
+
+    function renderSkills() {
+      const q = state.skillQuery.toLowerCase();
+      let list = SKILLS.filter(s => s.title.toLowerCase().includes(q) || s.summary.toLowerCase().includes(q));
+      list.sort((a, b) => state.skillSort === 'az' ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title));
+      return `
+        <div class="hero-row">
+          <div><h1 class="hero-title">Skills</h1><p class="hero-sub">Instructions a role can hand to your coding agent.</p></div>
+          <button class="btn btn-primary" onclick="copyText('Add skill','Opened add skill')">Add skill</button>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <input class="input" style="max-width:340px" placeholder="Search saved skills..." value="${state.skillQuery}" oninput="state.skillQuery=this.value;renderPage()" />
+          <select class="select" style="max-width:150px" onchange="state.skillSort=this.value;renderPage()">
+            <option value="az" ${state.skillSort==='az'?'selected':''}>Sort: A–Z</option>
+            <option value="za" ${state.skillSort==='za'?'selected':''}>Sort: Z–A</option>
+          </select>
+        </div>
+        <div class="hero-eyebrow">Waiting for a role (${list.length})</div>
+        <div class="grid-2">
+          ${list.map(s => `
+            <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:14px">
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                  <span class="badge">${s.status}</span>
+                  <span class="badge badge-teal">${s.governance[0]}</span>
+                </div>
+                <div class="card-title" style="cursor:pointer" onclick="navigate('skill-detail','${s.id}')">${s.title}</div>
+                <div class="card-desc">${s.summary}</div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm" onclick="navigate('skill-detail','${s.id}')">Choose a role</button>
+                <button class="btn btn-danger btn-sm" onclick="copyText('${s.id}','Removed ${s.title}')">Delete</button>
+              </div>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    function renderSkillDetail() {
+      const skill = SKILLS.find(s => s.id === state.skillId) || SKILLS[0];
+      return `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="navigate('skills')">← Back to Skills</button>
+          ${skill.governance.map(g => `<span class="badge ${g.includes('aging')?'badge-amber':'badge-lime'}">${g}</span>`).join('')}
+        </div>
+        <div class="hero-row">
+          <div><h1 class="hero-title">${skill.title}</h1><p class="hero-sub">Filed under ${skill.persona}</p></div>
+          <button class="btn btn-primary btn-sm" onclick="copyText('${skill.title}','Saved ${skill.title}')">Save skill</button>
+        </div>
+        <div class="card">
+          <div class="field"><label>Title</label><input class="input" value="${skill.title}" /></div>
+          <div class="field"><label>Summary</label><input class="input" value="${skill.summary}" /><span class="field-hint">A short line the coding agent sees when it asks about this skill.</span></div>
+          <div class="field" style="margin-bottom:0"><label>Steps</label><textarea class="textarea">${skill.steps}</textarea></div>
+        </div>`;
+    }
+
+    function renderCodebase() {
+      return `
+        <div class="hero-row">
+          <div><h1 class="hero-title">Projects</h1><p class="hero-sub">Choose a folder. Lore can build a map inside it. Your files stay where they are.</p></div>
+          <button class="btn btn-primary" onclick="copyText('Add project','Opened folder picker')">Add project</button>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <span class="badge badge-lime" style="margin-bottom:10px">ready</span>
+            <div class="card-title">Codebase</div>
+            <div class="card-desc" style="font-family:var(--font-mono);margin-bottom:16px">dhaka-tesla-pool</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary btn-sm" onclick="copyText('dhaka-tesla-pool','Opened project')">Open</button>
+              <button class="btn btn-danger btn-sm" onclick="copyText('dhaka-tesla-pool','Delete project')">Delete</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderSettings() {
+      return `
+        <div class="hero-row"><div><h1 class="hero-title">Settings</h1><p class="hero-sub">Configure context budget, draft LLM provider, and SkillSpector scanner.</p></div></div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">How much to send</div><div class="card-desc">Limits how much Lore sends when a coding agent asks for context.</div></div></div>
+            <div class="field"><label>Answer length</label><input class="input" value="800" /><span class="field-hint">How long one answer can be. 800 is about a page.</span></div>
+            <div class="field"><label>How many pieces</label><input class="input" value="8" /><span class="field-hint">How many skill notes and project notes can be included together.</span></div>
+            <button class="btn btn-primary" style="width:100%" onclick="copyText('Saved','Settings saved')">Save settings</button>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">Draft provider</div><div class="card-desc">Gemini is saved. Lore uses it only when you draft a role.</div></div></div>
+            <div class="grid-2" style="gap:12px">
+              <div class="field"><label>Provider</label><select class="select"><option>Gemini</option><option>Groq</option></select></div>
+              <div class="field"><label>Model</label><select class="select"><option>gemini-3.5-flash-lite</option><option>gemini-2.5-pro</option></select></div>
+            </div>
+            <div class="field"><label>API key</label><input class="input" placeholder="Saved key ending Te8g" /></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" onclick="copyText('API key saved','API key saved')">Save API key</button>
+              <button class="btn btn-primary btn-sm" onclick="copyText('Model saved','Model saved')">Save model</button>
+              <button class="btn btn-danger btn-sm" onclick="copyText('Removed','Key removed')">Remove key</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div><div class="card-title">SkillSpector</div><div class="card-desc">Optional NVIDIA CLI scanner. On approve, Lore runs built-in ATR rules.</div></div><span class="badge">Not installed</span></div>
+          <div class="field" style="margin-bottom:10px"><label>Install with uv</label><div class="code-block">uv tool install git+https://github.com/NVIDIA/skillspector.git</div></div>
+          <button class="btn btn-secondary btn-sm" onclick="copyText('uv tool install git+https://github.com/NVIDIA/skillspector.git','Copied command')">Copy</button>
+        </div>`;
+    }
+
+    init();
+  </script>
+</body>
+</html>

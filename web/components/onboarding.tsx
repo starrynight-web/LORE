@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useId, useRef, useState } from "react"
+import { CheckIcon, CopyIcon, RefreshCwIcon } from "lucide-react"
+import { toast } from "sonner"
 
 import { FolderPicker } from "@/components/folder-picker"
 import { ErrorAlert } from "@/components/error-alert"
@@ -19,14 +21,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, type Onboarding as OnboardingState, type RegistrySkill, type WaitingSkill } from "@/lib/api"
 import { PROVIDERS } from "@/lib/providers"
 
-const ORDER = ["welcome", "skills", "persona", "codebase"] as const
+const ORDER = ["welcome", "connect", "skills", "persona", "codebase"] as const
 type Step = (typeof ORDER)[number]
-type Panel = "wizard" | "skills" | "persona" | "codebase"
+type Panel = "wizard" | "connect" | "skills" | "persona" | "codebase"
 
 const PREVIEW = [
-  { n: "1", title: "Skills", text: "Choose what the coding agent should know." },
-  { n: "2", title: "Role", text: "Give those skills one job to follow." },
-  { n: "3", title: "Project", text: "Point at a folder if you want a map of it." },
+  { n: "1", title: "Connect", text: "Wire Lore MCP into your coding editors." },
+  { n: "2", title: "Skills", text: "Choose what the coding agent should know." },
+  { n: "3", title: "Role & Project", text: "Attach skills to a role and map a folder." },
 ]
 
 function installs(value: number) {
@@ -40,7 +42,7 @@ function registryKey(skill: RegistrySkill) {
 
 function startStep(panel: Panel, initial: string): Step {
   if (panel !== "wizard") return panel
-  if (initial === "skills" || initial === "persona" || initial === "codebase" || initial === "welcome") return initial
+  if (initial === "connect" || initial === "skills" || initial === "persona" || initial === "codebase" || initial === "welcome") return initial
   return "welcome"
 }
 
@@ -85,6 +87,11 @@ export function Onboarding({
   const [addProgress, setAddProgress] = useState<{ current: number; total: number; name: string } | null>(null)
   const [providerConfigured, setProviderConfigured] = useState(false)
   const [providerLast4, setProviderLast4] = useState("")
+  const [connectCommand, setConnectCommand] = useState("uvx lore-solo connect")
+  const [connectedEditors, setConnectedEditors] = useState<string[] | null>(null)
+  const [projectMcpWritten, setProjectMcpWritten] = useState<string[] | null>(null)
+  const [skillspectorInfo, setSkillspectorInfo] = useState<{ available: boolean; install: string } | null>(null)
+  const [connectBusy, setConnectBusy] = useState(false)
 
   const index = Math.max(0, ORDER.indexOf(step))
   const shown = results ?? featured
@@ -132,6 +139,22 @@ export function Onboarding({
     document.addEventListener("keydown", onKey, true)
     return () => document.removeEventListener("keydown", onKey, true)
   }, [dismissible, onClose])
+
+  function loadSkillspector() {
+    api<{ available: boolean; install: string }>("/api/skillspector")
+      .then(setSkillspectorInfo)
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    if (step !== "connect") return
+    api<{ command: string }>("/api/connect")
+      .then((row) => {
+        if (row.command) setConnectCommand(row.command)
+      })
+      .catch(() => {})
+    loadSkillspector()
+  }, [step])
 
   useEffect(() => {
     if (step !== "skills") return
@@ -418,24 +441,96 @@ export function Onboarding({
     }
   }
 
+  async function connectInstalledEditors() {
+    setError("")
+    setConnectBusy(true)
+    try {
+      const res = await api<{ written?: string[] }>("/api/connect/agents", { method: "POST" })
+      setConnectedEditors(res.written ?? [])
+      if (res.written && res.written.length > 0) {
+        toast.success(`Connected ${res.written.length} editor config(s).`)
+      } else {
+        toast.info("No local editors detected automatically; use the command or project config below.")
+      }
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "Could not connect editors.")
+    } finally {
+      setConnectBusy(false)
+    }
+  }
+
+  async function writeProjectMcp() {
+    setError("")
+    setConnectBusy(true)
+    try {
+      const res = await api<{ written?: string[] }>("/api/connect", { method: "POST" })
+      setProjectMcpWritten(res.written ?? [])
+      toast.success("Project MCP configs written.")
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "Could not write project MCP configs.")
+    } finally {
+      setConnectBusy(false)
+    }
+  }
+
+  function copyValue(text: string, label: string) {
+    navigator.clipboard.writeText(text).then(
+      () => toast.success(label),
+      () => toast.error("Could not copy to clipboard.")
+    )
+  }
+
   const previous = index > 0 ? ORDER[index - 1] : null
   const keyLabel = keyStatus === "saving" ? "Saving…" : keyStatus === "saved" ? "Key saved" : "Save key and load models"
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-md dark:bg-black/60">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex max-h-[min(44rem,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-lg"
+        className="flex max-h-[min(46rem,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-border bg-card text-card-foreground shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {panel === "wizard" ? (step === "welcome" ? "Welcome" : `Step ${index + 1} of ${ORDER.length}`) : "Lore"}
-          </p>
+        <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-4">
+          {panel === "wizard" ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {ORDER.map((item, idx) => {
+                const active = item === step
+                const done = idx < index
+                const label =
+                  item === "welcome"
+                    ? "Welcome"
+                    : item === "connect"
+                      ? "1. Connect"
+                      : item === "skills"
+                        ? "2. Skills"
+                        : item === "persona"
+                          ? "3. Role"
+                          : "4. Project"
+                return (
+                  <span
+                    key={item}
+                    className={
+                      active
+                        ? "rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground"
+                        : done
+                          ? "rounded-full bg-[#c8eb5e] px-3 py-1 text-[11px] font-semibold text-[#141517]"
+                          : "rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground"
+                    }
+                  >
+                    {label}
+                  </span>
+                )
+              })}
+            </div>
+          ) : (
+            <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-semibold tracking-wide text-foreground uppercase">
+              {step === "skills" ? "Add skills" : step === "persona" ? "New persona" : "Add project"}
+            </span>
+          )}
           {dismissible ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Close
             </Button>
           ) : null}
@@ -443,32 +538,151 @@ export function Onboarding({
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
           {step !== "persona" ? <ErrorAlert message={error} /> : null}
           {step === "welcome" ? (
-            <div className="flex flex-col gap-6 py-2">
-              <div className="flex flex-col gap-3">
-                <h2 id={titleId} className="text-3xl font-medium tracking-tight text-balance">
+            <div className="flex flex-col gap-6 py-1">
+              <div className="flex flex-col gap-2.5">
+                <h2 id={titleId} className="text-[28px] font-bold tracking-[-0.03em] leading-[1.15] text-balance">
                   Keep your coding agent on one role.
                 </h2>
-                <p className="max-w-prose text-sm leading-6 text-muted-foreground">
+                <p className="max-w-prose text-[13.5px] leading-6 text-muted-foreground">
                   Lore remembers the skills and the role on this computer. Your editor asks Lore what to follow.
-                  You can skip a step and come back to it later.
+                  You can skip any step and come back to it later.
                 </p>
               </div>
               <ol className="grid gap-3 sm:grid-cols-3">
                 {PREVIEW.map((item) => (
-                  <li key={item.n} className="flex flex-col gap-2 rounded-lg border bg-background/40 px-3 py-3">
-                    <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{item.n}</span>
-                    <span className="text-sm font-medium">{item.title}</span>
-                    <span className="text-sm leading-5 text-muted-foreground">{item.text}</span>
+                  <li key={item.n} className="flex flex-col gap-2 rounded-2xl border border-border bg-muted/50 p-4">
+                    <span className="grid size-6 place-items-center rounded-full bg-[#c8eb5e] text-[11px] font-bold text-[#141517]">
+                      {item.n}
+                    </span>
+                    <span className="text-sm font-semibold">{item.title}</span>
+                    <span className="text-xs leading-5 text-muted-foreground">{item.text}</span>
                   </li>
                 ))}
               </ol>
             </div>
           ) : null}
+          {step === "connect" ? (
+            <div className="flex flex-col gap-5">
+              <div>
+                <h2 id={titleId} className="text-xl font-bold tracking-[-0.02em]">
+                  Connect your coding editors
+                </h2>
+                <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+                  Register Lore MCP with your editors so your coding agent can request skills and log receipts automatically.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-border bg-muted/40 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold">Auto-connect installed editors</div>
+                    <div className="text-xs text-muted-foreground">
+                      Writes MCP &amp; standing rules for detected editors (Cursor, Claude, VS Code, Zed, etc.).
+                    </div>
+                  </div>
+                  <Button type="button" size="sm" disabled={connectBusy} onClick={() => connectInstalledEditors()}>
+                    {connectBusy ? "Connecting…" : "Connect editors"}
+                  </Button>
+                </div>
+                {connectedEditors !== null ? (
+                  <p className="text-xs text-muted-foreground">
+                    {connectedEditors.length > 0
+                      ? `Updated: ${connectedEditors.join(", ")}`
+                      : "No editors auto-detected. Use the universal command or project config below."}
+                  </p>
+                ) : null}
+
+                <div className="border-t border-border pt-3">
+                  <div className="mb-1.5 text-xs font-semibold text-muted-foreground">
+                    Or run / paste the universal command
+                  </div>
+                  <div className="flex items-center justify-between gap-2 rounded-2xl border border-border bg-card px-3.5 py-2">
+                    <code className="truncate font-mono text-xs">{connectCommand}</code>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => copyValue(connectCommand, "Connect command copied.")}
+                    >
+                      <CopyIcon className="size-3" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                  <span className="text-xs text-muted-foreground">
+                    {projectMcpWritten && projectMcpWritten.length > 0
+                      ? `Written: ${projectMcpWritten.join(", ")}`
+                      : "Fallback: write .mcp.json, .cursor/mcp.json, .vscode/mcp.json in this project"}
+                  </span>
+                  <Button type="button" size="sm" variant="outline" disabled={connectBusy} onClick={() => writeProjectMcp()}>
+                    Write project configs
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-border bg-muted/30 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">SkillSpector security addon</span>
+                      {skillspectorInfo?.available ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#c8eb5e] px-2.5 py-0.5 text-[11px] font-semibold text-[#141517]">
+                          <CheckIcon className="size-3" />
+                          Installed
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          Optional
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Lore already runs built-in ATR security rules before approving any skill. SkillSpector adds deeper external static checks if you want extra coverage — completely optional.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => loadSkillspector()}
+                    title="Re-check SkillSpector"
+                    aria-label="Re-check SkillSpector"
+                  >
+                    <RefreshCwIcon className="size-3.5" />
+                  </Button>
+                </div>
+
+                {!skillspectorInfo?.available ? (
+                  <div className="flex items-center justify-between gap-2 rounded-2xl border border-border bg-card px-3.5 py-2">
+                    <code className="truncate font-mono text-xs">
+                      {skillspectorInfo?.install ?? "uv tool install git+https://github.com/NVIDIA/skillspector.git"}
+                    </code>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        copyValue(
+                          skillspectorInfo?.install ?? "uv tool install git+https://github.com/NVIDIA/skillspector.git",
+                          "SkillSpector install command copied."
+                        )
+                      }
+                    >
+                      <CopyIcon className="size-3" />
+                      Copy
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {step === "skills" ? (
             <div className="flex flex-col gap-4">
               <div>
-                <h2 id={titleId} className="text-xl font-medium">Which skills should Lore keep?</h2>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                <h2 id={titleId} className="text-xl font-bold tracking-[-0.02em]">Which skills should Lore keep?</h2>
+                <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
                   Search skills.sh, or add markdown files and skill folders from this computer. Nothing is required yet.
                 </p>
               </div>
@@ -476,8 +690,9 @@ export function Onboarding({
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search skills"
+                  placeholder="Search skills..."
                   aria-label="Search skills"
+                  className="h-10 rounded-full bg-muted/60 px-4"
                 />
                 <Button type="submit" disabled={searching || query.trim().length < 2}>
                   {searching ? "Searching…" : "Search"}
@@ -491,8 +706,8 @@ export function Onboarding({
               <ul
                 className={
                   results
-                    ? "flex h-[19rem] flex-col gap-2 overflow-y-auto pr-1"
-                    : "flex flex-col gap-2"
+                    ? "flex h-[18rem] flex-col gap-2 overflow-y-auto pr-1"
+                    : "flex max-h-[18rem] flex-col gap-2 overflow-y-auto pr-1"
                 }
                 aria-busy={searching}
                 aria-live="polite"
@@ -505,15 +720,21 @@ export function Onboarding({
                       const checked = picked.some((item) => registryKey(item) === key)
                       return (
                         <li key={key}>
-                          <label className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2">
+                          <label
+                            className={
+                              checked
+                                ? "flex cursor-pointer items-start gap-3 rounded-2xl border border-foreground/25 bg-[#c8eb5e]/20 px-3.5 py-2.5 transition-colors"
+                                : "flex cursor-pointer items-start gap-3 rounded-2xl border border-border bg-muted/35 px-3.5 py-2.5 transition-colors hover:bg-muted/70"
+                            }
+                          >
                             <input
                               type="checkbox"
-                              className="mt-1 size-4 accent-foreground"
+                              className="mt-1 size-4 accent-[#1c1d21] dark:accent-[#c8eb5e]"
                               checked={checked}
                               onChange={() => toggleRegistry(skill)}
                             />
                             <span className="min-w-0">
-                              <span className="block text-sm font-medium">{skill.name}</span>
+                              <span className="block text-sm font-semibold">{skill.name}</span>
                               <span className="block truncate text-xs text-muted-foreground">
                                 {skill.source} · {installs(skill.installs)}
                               </span>
@@ -802,9 +1023,19 @@ export function Onboarding({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {step === "welcome" ? (
-              <Button type="button" disabled={busy} onClick={() => go("skills")}>
+              <Button type="button" disabled={busy} onClick={() => go("connect")}>
                 Get started
               </Button>
+            ) : null}
+            {step === "connect" ? (
+              <>
+                <Button type="button" variant="outline" disabled={busy} onClick={() => go("skills")}>
+                  Skip for now
+                </Button>
+                <Button type="button" disabled={busy} onClick={() => go("skills")}>
+                  Continue
+                </Button>
+              </>
             ) : null}
             {step === "skills" ? (
               <>

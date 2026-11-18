@@ -168,6 +168,40 @@ def test_tool_done_without_a_decision_receipt_is_not_process_success(
     assert not _BENCHMARK._lore_process([], tmp_path)["ok"]
 
 
+def test_lore_process_accepts_combined_log_decision_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from lore.core.check_applied import check_applied
+    from lore.core.decisions import allocate
+
+    decision = allocate(
+        tmp_path,
+        {
+            "tool": "get_context",
+            "verdict": "ok",
+            "directive": "proceed_and_cite",
+            "persona": "frontend-engineer",
+            "included": ["skill:frontend-engineer/react-practices@v1"],
+            "omitted": [],
+            "client": "test",
+        },
+        "Summary.\n",
+    )
+    decision_id = str(decision.get("id"))
+    check_applied(tmp_path, decision_id, ["skill:frontend-engineer/react-practices@v1"])
+
+    monkeypatch.setattr(_BENCHMARK, "_mcp_get_context_ok", lambda _events: True)
+    monkeypatch.setattr(
+        _BENCHMARK,
+        "_mcp_tool_done",
+        lambda _events, tool: tool == "log_decision",
+    )
+    proc = _BENCHMARK._lore_process([], tmp_path)
+    assert proc["check_applied"] is True
+    assert proc["log_decision"] is True
+    assert proc["ok"] is True
+
+
 @pytest.mark.parametrize("scenario", ["full-skill", "new-file", "cross-file", "stale-map", "no-map"])
 def test_new_rubrics_require_the_expected_change(scenario: str, tmp_path: Path) -> None:
     import shutil
@@ -269,3 +303,37 @@ def test_quality_runner_rotates_arms_preserves_history_and_sets_map_modes(
     assert not result["score"]["quality_claim"]
     assert set(result["task_sha256"]) == set(QUALITY_SCENARIOS)
     assert (_BENCHMARK.LIBRARY / "results-agy-quality.json").read_bytes() == historical
+
+
+def test_intensive_score_aggregates_2x3_matrix() -> None:
+    rows = []
+    for project_type, scenarios in (
+        ("new_project", _BENCHMARK.INTENSIVE_NEW_SCENARIOS),
+        ("old_project", _BENCHMARK.INTENSIVE_OLD_SCENARIOS),
+    ):
+        for scenario in scenarios:
+            for arm in _BENCHMARK.INTENSIVE_ARMS:
+                passed = arm != "no_skills"
+                row: dict[str, Any] = {
+                    "project_type": project_type,
+                    "scenario": scenario,
+                    "arm": arm,
+                    "run": 1,
+                    "exit": 0,
+                    "seconds": 25.0 if arm == "lore_mcp" else 40.0,
+                    "turns": 4 if arm == "lore_mcp" else 6,
+                    "input_tokens": 10000,
+                    "cached_input_tokens": 8000,
+                    "fresh_input_tokens": 2000,
+                    "output_tokens": 500,
+                    "passed": passed,
+                }
+                if arm == "lore_mcp":
+                    row["process"] = {"ok": True}
+                rows.append(row)
+    scored = _BENCHMARK._intensive_score(rows, expected_runs=1)
+    assert scored["total_runs"] == 18
+    assert scored["lore_process_rate"] == 1.0
+    assert scored["by_project_arm"]["new_project"]["no_skills"]["pass_rate"] == 0.0
+    assert scored["by_project_arm"]["new_project"]["lore_mcp"]["pass_rate"] == 1.0
+    assert scored["by_project_arm"]["old_project"]["lore_mcp"]["median_seconds"] == 25.0

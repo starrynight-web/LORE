@@ -76,12 +76,41 @@ export type Onboarding = { completed: boolean; step: string }
 
 export type Rank = { id: string; name: string; count: number }
 
+export type TokenPoint = {
+  id: string
+  time: string
+  tokens_used: number
+  token_budget: number
+  persona: string
+  client: string
+}
+
+export type TokenStats = {
+  total: number
+  avg: number
+  max: number
+  budget: number
+  tracked_calls: number
+  series: TokenPoint[]
+}
+
 export type Usage = {
   calls: number
   agents: Rank[]
   personas: Rank[]
   skills: Rank[]
-  recent: { id: string; time: string; client: string; persona: string; verdict: string; summary: string }[]
+  recent: {
+    id: string
+    time: string
+    client: string
+    persona: string
+    verdict: string
+    summary: string
+    tokens_used?: number | null
+    token_budget?: number | null
+  }[]
+  tokens?: TokenStats
+  tokens_by_persona?: Record<string, number>
 }
 
 export type WaitingSkill = { id: string; title: string; summary: string; source: string }

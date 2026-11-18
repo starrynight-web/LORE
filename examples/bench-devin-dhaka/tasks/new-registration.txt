@@ -1,0 +1,8 @@
+Build the Devin-a-thon Dhaka registration and venue-access module in src/registration.ts.
+
+Requirements:
+- Export `submitRegistration(input: { name: string; email: string; repoUrl?: string })` returning a `ServiceResult<RegistrationRecord>` for a new `"pending_approval"` registration.
+- Export `reviewRegistration(record: RegistrationRecord, decision: "approved" | "rejected")` returning an updated `ServiceResult<RegistrationRecord>`.
+- Export `getVenueInfo(record: RegistrationRecord, confirmedAddress: string)` returning a `ServiceResult<{ date: string; schedule: string; area: string; exactAddress: string }>`.
+- Follow the project's security, database, and backend standards skills for URL validation, approval-gated venue privacy, schema versioning, event metadata constants, and result envelopes.
+- Do not modify package.json or tsconfig.json.

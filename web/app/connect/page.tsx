@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { PageHero } from "@/components/page-hero"
 import { Shell } from "@/components/Shell"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -40,6 +41,10 @@ export default function ConnectPage() {
   return (
     <Shell>
       <ErrorAlert message={error} />
+      <PageHero
+        title="Connect"
+        subtitle="Register Lore MCP with your local coding editors."
+      />
       <div className="grid grid-cols-1 gap-4 @3xl/main:grid-cols-2">
         <Card>
           <CardHeader>
@@ -72,12 +77,16 @@ export default function ConnectPage() {
         <Card>
           <CardHeader>
             <CardTitle><h2>One project only</h2></CardTitle>
-            <CardDescription>Write .cursor/mcp.json in this project. Use this when an agent cannot run the command.</CardDescription>
+            <CardDescription>
+              Write project-local MCP configs (.mcp.json, .cursor/mcp.json, .vscode/mcp.json) in this folder. Use this when an agent cannot run the command.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <FieldDescription>This config is a backup for the open project.</FieldDescription>
+            <FieldDescription>
+              Works as a universal fallback across Claude Code, Cursor, VS Code, Antigravity, and other MCP-compatible editors.
+            </FieldDescription>
             <Button type="button" variant="outline" onClick={() => writeConfig().catch((exc: Error) => setError(exc.message))}>
-              Write project MCP config
+              Write project MCP configs
             </Button>
             {config ? (
               <>

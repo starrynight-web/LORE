@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 
 import { ErrorAlert } from "@/components/error-alert"
+import { PageHero } from "@/components/page-hero"
 import { Shell } from "@/components/Shell"
 import { api } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +31,10 @@ export default function ReplayPage() {
   return (
     <Shell>
       <ErrorAlert message={error} />
+      <PageHero
+        title="Decisions"
+        subtitle="Audit trail of context answers and agent-reported receipts."
+      />
       {rows.length === 0 ? <p className="text-sm text-muted-foreground">No decisions yet.</p> : null}
       <div className="flex flex-col gap-4">
         {rows.map((row) => (

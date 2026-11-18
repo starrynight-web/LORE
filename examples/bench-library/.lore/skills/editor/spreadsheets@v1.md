@@ -340,7 +340,7 @@ workbook.recalculate();
 ```js
 const check = await workbook.inspect({
   kind: "table",
-  range: "Dashboard!A1:H20",
+  range: "DashboardA1:H20",
   include: "values,formulas",
   tableMaxRows: 20,
   tableMaxCols: 12,

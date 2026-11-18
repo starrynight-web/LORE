@@ -1,0 +1,7 @@
+Build the interactive 6-stage Devin hands-on building tracker React component in src/SprintBoard.tsx.
+
+Requirements:
+- Export `SprintBoard` (named export) rendering the 6 workflow stages for the Dhaka hands-on building session (`Brainstorming`, `Planning`, `Writing Code`, `Implementing Features`, `Debugging`, `Shipping`).
+- Clicking or using keyboard navigation switches the active stage.
+- Follow the project's frontend, motion, and accessibility standards skills for surface attributes, reduced-motion policy, ARIA tablist/tab keyboard cycling, and live status announcements.
+- Do not modify package.json or tsconfig.json.

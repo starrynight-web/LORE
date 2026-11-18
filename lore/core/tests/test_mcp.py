@@ -287,3 +287,113 @@ def test_coding_get_skill_disambiguates_short_names(tmp_path: Path) -> None:
             assert canonical["id"] == "skill:backend-engineer/react-practices@v1"
 
     asyncio.run(call())
+
+
+def test_log_decision_runs_check_applied_automatically(tmp_path: Path) -> None:
+    project = _copy(tmp_path)
+
+    async def call() -> None:
+        async with Client(build(project, surface="coding")) as client:
+            context = _payload(
+                await client.call_tool(
+                    "get_context",
+                    {"persona": "frontend-engineer", "intent": "button label"},
+                )
+            )
+            assert isinstance(context, dict)
+            decision_id = str(context["decision_id"])
+            cite_ids = list(context["data"]["cite_ids"])
+            logged = _payload(
+                await client.call_tool(
+                    "log_decision",
+                    {
+                        "decision_id": decision_id,
+                        "outcome": "edited button",
+                        "rule_ids": cite_ids,
+                        "idempotency_key": "closeout-1",
+                    },
+                )
+            )
+            assert isinstance(logged, dict)
+            assert logged["status"] == "recorded"
+            assert logged["check_applied"] == "pass"
+            assert logged["cited"] == cite_ids
+
+            replay = _payload(
+                await client.call_tool(
+                    "log_decision",
+                    {
+                        "decision_id": decision_id,
+                        "outcome": "edited button",
+                        "rule_ids": cite_ids,
+                        "idempotency_key": "closeout-1",
+                    },
+                )
+            )
+            assert isinstance(replay, dict)
+            assert replay["status"] == "already_recorded"
+            assert replay["check_applied"] == "pass"
+
+            from lore.core.decisions import read_decision
+
+            body = read_decision(project, decision_id).body
+            assert body.count("check_applied:") == 1
+            assert "check_applied: pass" in body
+            assert "edited button" in body
+
+            # Missing rule_ids when skills were served records check_applied: fail.
+            second = _payload(
+                await client.call_tool(
+                    "get_context",
+                    {"persona": "frontend-engineer", "intent": "button label"},
+                )
+            )
+            assert isinstance(second, dict)
+            missing = _payload(
+                await client.call_tool(
+                    "log_decision",
+                    {
+                        "decision_id": second["decision_id"],
+                        "outcome": "edited without citing",
+                    },
+                )
+            )
+            assert isinstance(missing, dict)
+            assert missing["status"] == "recorded"
+            assert missing["check_applied"] == "fail"
+
+    asyncio.run(call())
+
+
+def test_coding_get_skill_batches_multiple_names(tmp_path: Path) -> None:
+    project = _copy(tmp_path)
+
+    async def call() -> None:
+        async with Client(build(project, surface="coding")) as client:
+            batched = _payload(
+                await client.call_tool(
+                    "get_skill",
+                    {
+                        "names": ["react-practices", "tailwind-rules"],
+                        "persona": "frontend-engineer",
+                    },
+                )
+            )
+            assert isinstance(batched, dict)
+            assert batched["count"] == 2
+            skills = batched["skills"]
+            assert len(skills) == 2
+            assert skills[0]["id"] == "skill:frontend-engineer/react-practices@v1"
+            assert BODY_MARKER in skills[0]["body"]
+            assert skills[1]["id"] == "skill:frontend-engineer/tailwind-rules@v1"
+
+            bad_calls: tuple[dict[str, object], ...] = (
+                {},
+                {"names": []},
+                {"names": ["react-practices", "secret-steps"]},
+            )
+            for bad in bad_calls:
+                with pytest.raises(ToolError):
+                    await client.call_tool("get_skill", bad)
+
+    asyncio.run(call())

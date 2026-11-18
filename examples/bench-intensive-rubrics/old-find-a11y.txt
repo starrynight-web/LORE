@@ -1,0 +1,4 @@
+Upgrade the in-document Find bar in the desktop Markdown editor so match status is announced accessibly and the find bar container carries the required accessibility and motion attributes.
+
+Follow the project's accessibility, frontend, and motion standards skills for the exact ARIA landmark, live-region text format, and data attributes.
+Do not modify files under website/.

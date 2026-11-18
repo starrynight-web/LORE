@@ -99,7 +99,7 @@ def mcp_entry(
 
 def install_command() -> str:
     launcher = os.environ.get("LORE_LAUNCHER", "").strip()
-    if launcher:
+    if launcher and "/" not in launcher and "\\" not in launcher:
         return f"{launcher} connect"
     return "uvx lore-solo connect"
 

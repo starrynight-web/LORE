@@ -6,7 +6,14 @@ import json
 import sys
 from pathlib import Path
 
-from lore.core.governance import check_freshness, scan_skill, skillspector
+from lore.core.governance import (
+    GovernanceBlock,
+    approve_item,
+    check_freshness,
+    governance_summary,
+    scan_skill,
+    skillspector,
+)
 from lore.core.okf import Doc, read_doc
 from lore.core.paths import LoreNotFound, find_project
 from lore.core.personas import find_any, list_personas, list_skill_files, locate_skill
@@ -109,12 +116,62 @@ def run_check(argv: list[str]) -> int:
     return 0 if aging == 0 else 2
 
 
+def run_approve(argv: list[str]) -> int:
+    as_json = "--json" in argv
+    accept_risk = "--accept-risk" in argv
+    note = ""
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok in {"--json", "--accept-risk"}:
+            i += 1
+            continue
+        if tok == "--note" and i + 1 < len(argv):
+            note = argv[i + 1]
+            i += 2
+            continue
+        if tok.startswith("--note="):
+            note = tok.split("=", 1)[1]
+            i += 1
+            continue
+        positional.append(tok)
+        i += 1
+    if not positional:
+        print("usage: lore-solo govern approve <item_id> [--accept-risk] [--note TEXT] [--json]", file=sys.stderr)
+        return 2
+    item_id = positional[0]
+    project = _project()
+    try:
+        doc = approve_item(project, item_id, accept_risk=accept_risk, accept_note=note)
+    except FileNotFoundError:
+        print(f"No skill or persona {item_id!r}", file=sys.stderr)
+        return 1
+    except GovernanceBlock as exc:
+        if as_json:
+            print(json.dumps({"error": exc.message, "blocked": True, "governance": exc.governance}, indent=2))
+        else:
+            print(f"Blocked: {exc.message}", file=sys.stderr)
+        return 1
+    payload = {
+        "id": doc.get("id"),
+        "status": doc.get("status"),
+        "governance": governance_summary(doc),
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"Approved {payload['id']} -> {payload['status']}")
+    return 0
+
+
 def run(argv: list[str] | None = None) -> int:
     args = list(argv or [])
     if not args or args[0] in {"-h", "--help"}:
         print(
             "usage: lore-solo govern scan [path] [--json]\n"
-            "       lore-solo govern check [path] [--json]",
+            "       lore-solo govern check [path] [--json]\n"
+            "       lore-solo govern approve <item_id> [--accept-risk] [--note TEXT] [--json]",
             file=sys.stderr,
         )
         return 0
@@ -123,5 +180,7 @@ def run(argv: list[str] | None = None) -> int:
         return run_scan(rest)
     if command == "check":
         return run_check(rest)
-    print(f"unknown govern command {command!r}; use scan or check", file=sys.stderr)
+    if command == "approve":
+        return run_approve(rest)
+    print(f"unknown govern command {command!r}; use scan, check, or approve", file=sys.stderr)
     return 2

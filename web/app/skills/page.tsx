@@ -2,16 +2,19 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { ArrowUpRightIcon, CheckIcon, SearchIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { ErrorAlert } from "@/components/error-alert"
 import { Onboarding } from "@/components/onboarding"
+import { PageHero } from "@/components/page-hero"
 import { Shell } from "@/components/Shell"
 import { api, type Persona, type Skill, type WaitingSkill } from "@/lib/api"
 import { personaHref, skillHref } from "@/lib/routes"
 import { SKILL_SORT_OPTIONS, sortBySkillOption, statusLabel, type SkillSort } from "@/lib/sort"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -81,26 +84,27 @@ export default function SkillsPage() {
   return (
     <Shell>
       <ErrorAlert message={error} />
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-medium">Skills</h2>
-          <p className="text-sm text-muted-foreground">Instructions a role can hand to your coding agent.</p>
-        </div>
-        <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
-          Add skill
-        </Button>
-      </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="max-w-md flex-1">
+      <PageHero
+        title="Skills"
+        subtitle="Instructions a role can hand to your coding agent."
+        action={
+          <Button type="button" onClick={() => setAddOpen(true)}>
+            + Add skill
+          </Button>
+        }
+      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative max-w-md flex-1">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="Search saved skills"
+            placeholder="Search saved skills..."
             aria-label="Search saved skills"
+            className="h-10 rounded-full bg-card pl-10"
           />
         </div>
-        <Field className="w-full sm:w-48">
-          <FieldLabel htmlFor="skill-sort">Sort</FieldLabel>
+        <div className="w-full sm:w-48">
           <Select
             items={SKILL_SORT_OPTIONS}
             value={sort}
@@ -108,7 +112,7 @@ export default function SkillsPage() {
               if (value === "name-asc" || value === "name-desc" || value === "status") setSort(value)
             }}
           >
-            <SelectTrigger id="skill-sort" className="w-full">
+            <SelectTrigger id="skill-sort" aria-label="Sort skills" className="h-10 w-full rounded-full bg-card px-4">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -121,62 +125,117 @@ export default function SkillsPage() {
               </SelectGroup>
             </SelectContent>
           </Select>
-        </Field>
+        </div>
       </div>
+
       {waiting.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-medium">Waiting for a role</h2>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Waiting for a role</h2>
+            <p className="text-[12.5px] text-muted-foreground">Inbox skills ready to be filed under a persona.</p>
+          </div>
           {visibleWaiting.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No waiting skills match that search.</p>
+            <Card className="p-6 text-sm text-muted-foreground">No waiting skills match that search.</Card>
           ) : null}
-          <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
+          <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 lg:grid-cols-3">
             {visibleWaiting.map((skill) => (
-              <Card key={skill.id}>
-                <CardHeader>
-                  <p className="text-xs text-muted-foreground">Waiting</p>
-                  <CardTitle>{skill.title}</CardTitle>
-                  <CardDescription className="line-clamp-2">{skill.summary || "No summary yet."}</CardDescription>
-                </CardHeader>
-                <CardFooter className="gap-2">
-                  <Button type="button" onClick={() => setAccepting(skill)}>
+              <Card key={skill.id} className="flex flex-col justify-between gap-4 px-[22px] py-5">
+                <div>
+                  <span className="inline-flex rounded-full bg-[#a59bf3]/25 px-2.5 py-0.5 text-[11px] font-semibold text-foreground">
+                    inbox
+                  </span>
+                  <h3 className="mt-2.5 truncate text-[16px] font-semibold tracking-[-0.01em]">{skill.title}</h3>
+                  <p className="mt-1 line-clamp-2 text-[12.5px] text-muted-foreground">
+                    {skill.summary || "No summary yet."}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <button
+                    type="button"
+                    onClick={() => removeWaiting(skill.id).catch((exc: Error) => setError(exc.message))}
+                    aria-label={`Delete ${skill.title}`}
+                    className="grid size-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2Icon className="size-4" />
+                  </button>
+                  <Button type="button" size="sm" onClick={() => setAccepting(skill)}>
                     Choose a role
                   </Button>
-                  <Button type="button" variant="destructive" onClick={() => removeWaiting(skill.id).catch((exc: Error) => setError(exc.message))}>
-                    Delete
-                  </Button>
-                </CardFooter>
+                </div>
               </Card>
             ))}
           </div>
         </section>
       ) : null}
+
       <section className="flex flex-col gap-3">
-        <h2 className="text-base font-medium">Saved skills</h2>
-        {skills.length === 0 ? <p className="text-sm text-muted-foreground">No skills are filed under a role yet.</p> : null}
-        {skills.length > 0 && visibleSkills.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No saved skills match that search.</p>
+        <div>
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Saved skills</h2>
+          <p className="text-[12.5px] text-muted-foreground">Skills filed under personas and ready for review.</p>
+        </div>
+        {skills.length === 0 ? (
+          <Card className="p-6 text-sm text-muted-foreground">No skills are filed under a role yet.</Card>
         ) : null}
-        <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-          {visibleSkills.map((skill) => (
-            <Card key={skill.id}>
-              <CardHeader>
-                <p className="text-xs text-muted-foreground">{statusLabel(skill.status)}</p>
-                <CardTitle>
-                  <Link href={skillHref(skill.id)} className="hover:underline">{skill.title}</Link>
-                </CardTitle>
-                <CardDescription className="line-clamp-2">{skill.summary || "No summary yet."}</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {skill.persona ? <Link href={personaHref(skill.persona)} className="hover:underline">{skill.persona.replace(/^persona:/, "")}</Link> : "No role yet"}
-              </CardContent>
-              <CardFooter className="gap-2">
-                <Button variant="outline" nativeButton={false} render={<Link href={skillHref(skill.id)} />}>Open</Button>
-                <Button type="button" variant="destructive" onClick={() => remove(skill.id).catch((exc: Error) => setError(exc.message))}>
-                  Delete
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
+        {skills.length > 0 && visibleSkills.length === 0 ? (
+          <Card className="p-6 text-sm text-muted-foreground">No saved skills match that search.</Card>
+        ) : null}
+        <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 lg:grid-cols-3">
+          {visibleSkills.map((skill) => {
+            const isStable = skill.status === "stable"
+            return (
+              <Card key={skill.id} className="flex flex-col justify-between gap-4 px-[22px] py-5">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                        isStable
+                          ? "bg-[#c8eb5e] text-[#141517]"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                      )}
+                    >
+                      {isStable ? <CheckIcon className="size-3" /> : null}
+                      {statusLabel(skill.status)}
+                    </span>
+                    {skill.persona ? (
+                      <Link
+                        href={personaHref(skill.persona)}
+                        className="truncate rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        {skill.persona.replace(/^persona:/, "")}
+                      </Link>
+                    ) : null}
+                  </div>
+                  <h3 className="mt-2.5 truncate text-[16px] font-semibold tracking-[-0.01em]">
+                    <Link href={skillHref(skill.id)} className="hover:underline">
+                      {skill.title}
+                    </Link>
+                  </h3>
+                  <p className="mt-1 line-clamp-2 text-[12.5px] text-muted-foreground">
+                    {skill.summary || "No summary yet."}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <button
+                    type="button"
+                    onClick={() => remove(skill.id).catch((exc: Error) => setError(exc.message))}
+                    aria-label={`Delete ${skill.title}`}
+                    className="grid size-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2Icon className="size-4" />
+                  </button>
+                  <Link
+                    href={skillHref(skill.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                  >
+                    Open
+                    <ArrowUpRightIcon className="size-3.5" />
+                  </Link>
+                </div>
+              </Card>
+            )
+          })}
         </div>
       </section>
       {addOpen ? (

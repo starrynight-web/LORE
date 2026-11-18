@@ -1,0 +1,4 @@
+Harden external link insertion and wikilink target validation in the desktop Markdown editor's document utilities and editor component so unsafe link protocols and path-traversal wikilink targets are blocked.
+
+Follow the project's security standards skill for the exact helper names, allowed/blocked schemes, and traversal rules.
+Do not modify files under website/.

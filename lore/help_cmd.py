@@ -16,7 +16,10 @@ COMMANDS: list[tuple[str, str]] = [
     ("mcp", "Start the MCP server for coding agents"),
     ("map", "Build a codebase map for the current project"),
     ("doctor", "Check that Lore and optional tools are ready"),
-    ("govern", "Scan skills and personas for governance findings"),
+    ("govern", "Scan skills, check freshness, and approve drafts"),
+    ("skill", "Search, install, inbox, adopt, create, and approve skills"),
+    ("persona", "List, show, create, update, approve, and delete personas"),
+    ("stats", "Show call and token usage telemetry"),
     ("help", "Show this help, or help for one command"),
 ]
 
@@ -41,7 +44,10 @@ def _command_help(name: str) -> int:
             doctor_cmd,
             govern_cmd,
             install_cmd,
+            persona_cmd,
             setup_cmd,
+            skill_cmd,
+            stats_cmd,
             uninstall_cmd,
             update_cmd,
         )
@@ -53,6 +59,9 @@ def _command_help(name: str) -> int:
         runners["uninstall"] = uninstall_cmd.run
         runners["doctor"] = doctor_cmd.run
         runners["govern"] = govern_cmd.run
+        runners["skill"] = skill_cmd.run
+        runners["persona"] = persona_cmd.run
+        runners["stats"] = stats_cmd.run
         runners["container"] = run_container
 
     if name in {"connect", "mcp", "map"}:

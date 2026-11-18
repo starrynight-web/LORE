@@ -11,7 +11,7 @@ not assert that upload has happened.
 
 - Windows: `lore-solo update` / `install` no longer try to replace the running
   tool Python in-place (Access is denied / os error 5). When started from
-  `~/.lore\\tools\\lore-solo`, they hand off to a fresh `uv tool run`
+  `~/.lore/tools/lore-solo`, they hand off to a fresh `uv tool run`
   process after exit. Recovery hint still points at `uvx lore-solo install`.
 
 ## 0.2.3 — 2026-11-16

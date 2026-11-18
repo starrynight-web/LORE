@@ -118,7 +118,8 @@ def test_register_keeps_servers_already_in_the_file(
     assert "get_context once" in agents
     assert "get_context once" in claude
     project_agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-    assert "check_applied" in project_agents
+    assert "log_decision" in project_agents
+    assert "rule_ids" in project_agents
     anti = (tmp_path / ".agents" / "rules" / "lore.md").read_text(encoding="utf-8")
     assert "trigger: always_on" in anti
     copilot = (tmp_path / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")

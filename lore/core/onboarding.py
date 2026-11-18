@@ -7,7 +7,7 @@ from pathlib import Path
 
 from lore.core.personas import list_personas, list_skill_files
 
-STEPS = ("welcome", "skills", "persona", "codebase", "done")
+STEPS = ("welcome", "connect", "skills", "persona", "codebase", "done")
 
 
 def _file(project: Path) -> Path:

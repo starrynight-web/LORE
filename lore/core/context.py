@@ -130,7 +130,7 @@ _ALIASES: dict[str, frozenset[str]] = {
     "button": frozenset({"frontend", "ui", "label", "accessible"}),
     "label": frozenset({"a11y", "accessibility", "accessible", "aria", "button"}),
     "health": frozenset({"api", "backend", "status", "endpoint"}),
-    "status": frozenset({"api", "backend", "health", "ready"}),
+    "status": frozenset({"health", "ready"}),
     "review": frozenset({"reviewer", "security", "guidelines"}),
 }
 
@@ -261,6 +261,7 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
         omitted_raw = []
     omitted_files = [f"file:{item}" for item in omitted_raw if item]
     paths = [str(item.get("path")) for item in files if isinstance(item, dict) and item.get("path")]
+    direct_words = _tokens(intent)
     words = _query_tokens(intent)
     # Path hints come from the explicit file_path only, not locate hits, so a
     # weak intent cannot pin a persona through incidental map matches.
@@ -278,7 +279,7 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
                 drafts += 1
             continue
         stable.append((name, doc))
-        score = _overlap_score(distinctive, words)
+        score = _weighted_score(distinctive, direct_words, words)
         if score:
             scored_personas.append((score, name))
 
@@ -298,19 +299,31 @@ def _for_task(start: Path, intent: str, file_path: str) -> dict[str, Any]:
     # against the raw intent (not alias expansion alone) so weak sentences stay
     # ok_with_notes instead of pulling random skills.
     skill_query = words or path_words
-    strict_query = _tokens(intent) or path_words
-    ranked: list[tuple[int, str, Doc]] = []
+    strict_query = direct_words or path_words
+    per_persona: list[list[tuple[int, str, Doc]]] = []
     for name in personas:
+        bucket: list[tuple[int, str, Doc]] = []
         for skill in served_skills(project, name):
             hay = _skill_tokens(skill)
             if listed_all:
                 score = _overlap_score(hay, strict_query) if strict_query else 0
             else:
-                score = _overlap_score(hay, skill_query) if skill_query else 0
+                score = _weighted_score(hay, direct_words, skill_query) if skill_query else 0
             if score:
-                ranked.append((score, str(skill.get("id") or ""), skill))
-    ranked.sort(key=lambda row: (-row[0], row[1]))
-    chosen = [skill for _score, _ident, skill in ranked]
+                bucket.append((score, str(skill.get("id") or ""), skill))
+        bucket.sort(key=lambda row: (-row[0], row[1]))
+        if bucket:
+            per_persona.append(bucket)
+    round_idx = 0
+    while True:
+        added = False
+        for bucket in per_persona:
+            if round_idx < len(bucket):
+                chosen.append(bucket[round_idx][2])
+                added = True
+        if not added:
+            break
+        round_idx += 1
 
     if not personas and not paths:
         summary = "No persona or file matched this task."
@@ -437,6 +450,11 @@ def _query_tokens(text: str) -> set[str]:
 
 def _overlap_score(hay: set[str], query: set[str]) -> int:
     return len(hay & query)
+
+
+def _weighted_score(hay: set[str], direct: set[str], expanded: set[str]) -> int:
+    """Score literal prompt tokens 2x and alias-only expansions 1x."""
+    return len(hay & direct) * 2 + len((hay & expanded) - direct)
 
 
 def _persona_tokens(doc: Doc, name: str) -> set[str]:
@@ -600,6 +618,8 @@ def _finish(
             "included": included,
             "omitted": kept_omitted,
             "client": os.environ.get("LORE_CLIENT", "").strip() or "Unknown",
+            "tokens_used": used,
+            "token_budget": limit,
         },
         final_summary + "\n",
     )

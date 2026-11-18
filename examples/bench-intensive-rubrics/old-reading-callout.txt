@@ -1,0 +1,4 @@
+Add a reading-time helper to the document utilities and display it in the desktop editor's status footer, and add a Callout block item to the slash command menu.
+
+Follow the project's frontend and accessibility standards skills for the exact reading-time formula, footer data-stat attribute, and slash command definition.
+Do not modify files under website/.

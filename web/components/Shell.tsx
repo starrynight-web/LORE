@@ -5,7 +5,6 @@ import { useEffect, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Onboarding } from "@/components/onboarding"
 import { SiteHeader } from "@/components/site-header"
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { api, type Onboarding as OnboardingState } from "@/lib/api"
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -20,14 +19,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const showWelcome = setup !== null && setup.completed === false
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
+    <div className="relative flex min-h-screen w-full">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 -z-10 backdrop-blur-[22px]"
+        style={{ background: "var(--lore-shell)" }}
+      />
       <a
         href="#content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-3 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:ring-2"
@@ -35,19 +32,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
       <AppSidebar />
-      <SidebarInset>
+      <div className="mx-auto flex min-w-0 w-full max-w-[1400px] flex-1 flex-col px-4 pt-[18px] pb-16 sm:px-7">
         <SiteHeader />
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-2">
-            <div id="content" className="flex flex-col gap-4 px-4 py-4 md:gap-6 md:py-6 lg:px-6">
-              {children}
-            </div>
-          </div>
-        </div>
-      </SidebarInset>
+        <main id="content" className="flex flex-1 flex-col gap-[18px]">
+          {children}
+        </main>
+      </div>
       {showWelcome && setup ? (
         <Onboarding initial={setup} onDone={() => setSetup({ completed: true, step: "done" })} />
       ) : null}
-    </SidebarProvider>
+    </div>
   )
 }
