@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.5 — 2026-11-18
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+### Added
+
+- Token telemetry: `allocate()` persists `tokens_used` and `token_budget` in
+  context call frontmatter, aggregated into `lore/core/usage.py` (`total`,
+  `avg`, `max`, `budget`, `tracked_calls`, `series`, `tokens_by_persona`) and
+  visualized on the dashboard.
+- Autonomous CLI subcommands (`lore-solo skill`, `persona`, `stats`,
+  `govern approve`) with `--json` output, and `--full` MCP tools
+  (`search_skills`, `install_skill`, `list_inbox`, `list_skills`,
+  `setup_persona`, `approve_item`, `check_security`, `check_freshness`,
+  `get_telemetry`, plus `include_drafts` on `list_personas`).
+- Intellecta ("Soft Bento Glass") UI across the setup dashboard (`web/`):
+  `Plus Jakarta Sans` + `JetBrains Mono`, lime/mint accent tokens, desktop
+  floating left rail with bottom theme switcher, mobile top bar with centered
+  circular navigation pills, hero quick-add combo (`Installed skills`,
+  `Created personas`, `+ Add`), `Most called skills` bar chart, token spline
+  chart, and themed Graphify codebase viewer.
+- Onboarding Connect step (`Welcome -> 1. Connect -> 2. Skills -> 3. Role ->
+  4. Project`) writing `.mcp.json`, `.cursor/mcp.json`, and `.vscode/mcp.json`
+  with an optional SkillSpector addon prompt.
+
+### Fixed
+
+- `lore-solo setup` surfaces early exit causes (such as port-in-use from
+  `~/.lore/setup.log`) and forwards `SIGHUP`/`SIGTERM` so closing the terminal
+  stops Django and Next.js child process groups cleanly.
+- `lore-solo connect` install command always prints `uvx lore-solo connect`
+  instead of leaking local launcher paths.
+- Moved `backdrop-blur` to a `fixed inset-0 -z-10` layer in `Shell.tsx` so
+  modals no longer clip or scroll inside a `backdrop-filter` containing block.
+
 ## 0.2.4 — 2026-11-16
 
 GitHub release artifacts are produced by the tag-triggered release workflow
