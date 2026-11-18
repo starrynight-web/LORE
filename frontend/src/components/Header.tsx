@@ -1,10 +1,26 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, ChevronDown, Building2, User, Search, LogOut, Check, Menu } from 'lucide-react';
+import { 
+  Upload, 
+  ChevronDown, 
+  Search, 
+  LogOut, 
+  Check, 
+  Menu, 
+  PanelLeft, 
+  Sun, 
+  Moon, 
+  FileUp, 
+  Archive, 
+  Globe, 
+  Mail, 
+  User as UserIcon,
+  Sparkles
+} from 'lucide-react';
 import { Workspace, Organization, User as UserType } from '@/lib/api';
-import { useI18n } from '@/lib/i18n';
-import { ThemeToggle, LanguageToggle } from '@/components/PremiumToggles';
+import { useI18n, Language } from '@/lib/i18n';
+import { useTheme } from '@/lib/theme';
 
 interface HeaderProps {
   currentUser: UserType | null;
@@ -13,12 +29,14 @@ interface HeaderProps {
   workspaces: Workspace[];
   isGuestMode?: boolean;
   onSelectWorkspace: (ws: Workspace) => void;
-  onOpenUpload: () => void;
+  onOpenUpload: (mode?: 'files' | 'zip' | 'scraper') => void;
   onSearchClick: () => void;
   onLogout: () => void;
   onOpenAuthModal?: () => void;
   isSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
+  onNavigateTab?: (tab: string) => void;
+  onOpenWorkspaceSwitcher?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,16 +51,28 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onOpenAuthModal,
   isSidebarOpen = true,
-  onToggleSidebar
+  onToggleSidebar,
+  onNavigateTab,
+  onOpenWorkspaceSwitcher
 }) => {
-  const { t } = useI18n();
-  const [isWsDropdownOpen, setIsWsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { t, language, setLanguage } = useI18n();
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
 
+  const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+
+  const uploadMenuRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close menus on outside click
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsWsDropdownOpen(false);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target as Node)) {
+        setIsUploadMenuOpen(false);
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsProfileMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -50,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const getInitials = (user: UserType | null) => {
-    if (!user) return '??';
+    if (!user) return isGuestMode ? 'GS' : 'EU';
     if (user.first_name && user.last_name) {
       return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase();
     }
@@ -58,216 +88,295 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const getDisplayName = (user: UserType | null) => {
-    if (!user) return 'Enterprise User';
+    if (!user) return isGuestMode ? 'Guest Admin' : 'Enterprise User';
     if (user.first_name || user.last_name) {
       return `${user.first_name} ${user.last_name}`.trim();
     }
     return user.username;
   };
 
+  const currentRole = currentWorkspace?.role || currentOrg?.role || (isGuestMode ? 'Demo Admin' : 'Member');
+
   return (
     <header 
-      className="h-16 border-b flex items-center justify-between px-4 sm:px-6 z-20 sticky top-0 transition-colors duration-200 gap-3"
+      className="h-[52px] border-b flex items-center justify-between px-4 z-30 sticky top-0 transition-colors shrink-0"
       style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderColor: 'var(--border-color)',
+        backgroundColor: isDark ? 'rgba(28, 28, 30, 0.72)' : 'rgba(255, 255, 255, 0.72)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        borderColor: 'var(--hairline)',
       }}
     >
-      {/* Left: Menu Open Button (when sidebar is closed) + Workspace Switcher */}
-      <div className="flex items-center gap-3">
-        {!isSidebarOpen && onToggleSidebar && (
+      {/* LEFT CLUSTER: Ghost sidebar-toggle · "LORE" 13/700 + "Knowledge Grid" 11 overline + quiet "· {workspace} ▾" pull-down */}
+      <div className="flex items-center gap-2.5 min-w-0">
+        {onToggleSidebar && (
           <button
-            id="lore-open-sidebar-btn"
             onClick={onToggleSidebar}
-            className="p-2 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition cursor-pointer active:scale-95 shadow-sm hover:bg-[var(--bg-surface-soft)] shrink-0"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--border-color)',
-              color: 'var(--text-primary)',
-            }}
-            title="Open navigation menu"
+            className="w-7 h-7 rounded-md flex items-center justify-center text-[#6E6E73] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 transition-colors cursor-pointer shrink-0"
+            title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
           >
-            <Menu className="w-4 h-4 text-[var(--brand-accent)]" />
-            <span className="hidden sm:inline">Menu</span>
+            <PanelLeft className="w-4 h-4" />
           </button>
         )}
 
-        <div className="flex items-center gap-4 relative" ref={dropdownRef}>
-          <div 
-            onClick={() => setIsWsDropdownOpen(!isWsDropdownOpen)}
-            className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl cursor-pointer border transition-all duration-200 select-none shadow-sm"
-            style={{
-              backgroundColor: 'var(--bg-surface-soft)',
-              borderColor: isWsDropdownOpen ? 'var(--brand-accent)' : 'var(--border-color)',
-            }}
-          >
-            <Building2 className="w-4 h-4 text-[var(--brand-accent)]" />
-            <div className="text-left">
-            <div className="text-xs font-semibold text-[var(--text-primary)]">
-              {currentWorkspace ? currentWorkspace.name : t('header.select_workspace')}
-            </div>
-            <div className="text-[10px] text-[var(--text-muted)]">
-              {currentOrg ? currentOrg.name : t('header.organization')}
-            </div>
-          </div>
-          <ChevronDown 
-            className={`w-3.5 h-3.5 text-[var(--text-muted)] ml-1 transition-transform duration-200 ${
-              isWsDropdownOpen ? 'rotate-180' : ''
-            }`} 
-          />
+        <div className="flex items-baseline gap-1.5 select-none shrink-0">
+          <span className="text-[13px] font-bold text-[var(--text-primary)] tracking-tight">
+            LORE
+          </span>
+          <span className="sonoma-overline text-[#86868B] text-[10px] hidden sm:inline">
+            Knowledge Grid
+          </span>
         </div>
 
-        {isWsDropdownOpen && (
-          <div 
-            className="absolute top-12 left-0 w-72 border rounded-xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--border-color)',
-            }}
-          >
-            <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">
-              {t('header.available_workspaces')}
-            </div>
-            <div className="max-h-60 overflow-y-auto">
-              {workspaces.map((ws) => {
-                const isSelected = currentWorkspace?.id === ws.id;
-                return (
-                  <button
-                    key={ws.id}
-                    onClick={() => {
-                      onSelectWorkspace(ws);
-                      setIsWsDropdownOpen(false);
-                    }}
-                    className="w-full px-3 py-2 text-left flex items-center justify-between transition-colors duration-150 cursor-pointer"
-                    style={{
-                      backgroundColor: isSelected ? 'var(--accent-light)' : 'transparent',
-                      color: isSelected ? 'var(--brand-accent)' : 'var(--text-primary)',
-                    }}
-                  >
-                    <div>
-                      <div className="text-xs font-semibold">{ws.name}</div>
-                      <div className="text-[10px] text-[var(--text-muted)]">
-                        {ws.organization_name} • {t('header.role')}: {ws.role}
-                      </div>
-                    </div>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-[var(--brand-accent)]" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-      </div>
-
-      {/* Middle & Right: Search, Upload, Toggles, User Profile */}
-      <div className="flex items-center gap-3">
-        {/* Quick Search */}
-        <div 
-          onClick={onSearchClick}
-          className="hidden sm:flex items-center gap-2 border px-3.5 py-1.5 rounded-xl text-sm cursor-pointer w-56 md:w-64 transition-all duration-200 shadow-sm"
-          style={{
-            backgroundColor: 'var(--bg-surface-soft)',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-muted)',
-          }}
-        >
-          <Search className="w-4 h-4 text-[var(--text-muted)]" />
-          <span className="truncate text-xs">{t('header.search_placeholder')}</span>
-        </div>
-
-        {/* Upload Action */}
+        {/* Quiet workspace pull-down (no box) */}
         <button
-          onClick={onOpenUpload}
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-95"
+          onClick={onOpenWorkspaceSwitcher}
+          className="flex items-center gap-1 text-[12px] text-[#6E6E73] hover:text-[var(--text-primary)] px-1.5 py-0.5 rounded transition-colors cursor-pointer truncate max-w-[160px] sm:max-w-[240px]"
+          title="Click to switch workspace"
+        >
+          <span className="text-[#86868B]">·</span>
+          <span className="truncate font-medium">{currentWorkspace?.name || 'Default Workspace'}</span>
+          <ChevronDown className="w-3 h-3 text-[#86868B] shrink-0" />
+        </button>
+      </div>
+
+      {/* CENTER CLUSTER: Search 380×28, inset track, radius 8, magnifier + ⌘K keycap chip */}
+      <div className="flex-1 max-w-[380px] mx-4 hidden md:block">
+        <button
+          onClick={onSearchClick}
+          className="w-full h-7 px-2.5 rounded-lg border flex items-center justify-between text-xs text-[#6E6E73] cursor-pointer transition-colors hover:border-[#007AFF]/40"
           style={{
-            backgroundColor: 'var(--brand-accent)',
-            color: 'var(--cta-text)',
+            backgroundColor: 'var(--inset)',
+            borderColor: 'var(--hairline)',
           }}
         >
-          <Upload className="w-3.5 h-3.5" />
-          <span>{t('header.upload_button')}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Search className="w-3.5 h-3.5 text-[#86868B] shrink-0" />
+            <span className="truncate text-[12px]">{t('header.search_placeholder') || 'Search workspace, rules, docs...'}</span>
+          </div>
+          <kbd 
+            className="px-1.5 py-0.5 text-[10px] font-mono rounded border text-[#86868B] bg-white/60 dark:bg-black/20 shrink-0"
+            style={{ borderColor: 'var(--hairline)' }}
+          >
+            ⌘K
+          </kbd>
+        </button>
+      </div>
+
+      {/* RIGHT CLUSTER: Exactly ONE filled control: split [Upload Document ▾] filled blue · divider · EN|বাংলা · ghost theme · divider · avatar */}
+      <div className="flex items-center gap-2.5 shrink-0">
+        {/* Split [Upload Document ▾] Button (Filled blue #007AFF) */}
+        <div className="relative inline-flex items-center rounded-lg shadow-xs" ref={uploadMenuRef}>
+          <button
+            onClick={() => onOpenUpload('files')}
+            className="h-7 px-2.5 rounded-l-lg text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer active:brightness-95 transition-all"
+            style={{ backgroundColor: '#007AFF' }}
+            title="Upload document"
+          >
+            <Upload className="w-3.5 h-3.5 stroke-[2.2]" />
+            <span className="hidden sm:inline">Upload Document</span>
+          </button>
+          <button
+            onClick={() => setIsUploadMenuOpen(!isUploadMenuOpen)}
+            className="h-7 px-1.5 rounded-r-lg text-white border-l border-white/20 flex items-center justify-center cursor-pointer active:brightness-95 transition-all"
+            style={{ backgroundColor: '#007AFF' }}
+            title="Upload options"
+          >
+            <ChevronDown className="w-3 h-3 stroke-[2.5]" />
+          </button>
+
+          {/* Upload Dropdown Menu */}
+          {isUploadMenuOpen && (
+            <div 
+              className="absolute right-0 top-8 w-48 sonoma-card sonoma-elevation py-1 z-50 animate-in fade-in zoom-in-95 duration-100"
+              style={{
+                backgroundColor: 'var(--card)',
+                borderColor: 'var(--hairline)',
+              }}
+            >
+              <button
+                onClick={() => {
+                  setIsUploadMenuOpen(false);
+                  onOpenUpload('files');
+                }}
+                className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
+              >
+                <FileUp className="w-3.5 h-3.5 text-[#007AFF]" />
+                <span>Files…</span>
+              </button>
+              <button
+                onClick={() => {
+                  setIsUploadMenuOpen(false);
+                  onOpenUpload('zip');
+                }}
+                className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
+              >
+                <Archive className="w-3.5 h-3.5 text-[#5E5CE6]" />
+                <span>ZIP Archive…</span>
+              </button>
+              <button
+                onClick={() => {
+                  setIsUploadMenuOpen(false);
+                  onOpenUpload('scraper');
+                }}
+                className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
+              >
+                <Globe className="w-3.5 h-3.5 text-[#FF9500]" />
+                <span>Web Source…</span>
+              </button>
+              <button
+                onClick={() => {
+                  setIsUploadMenuOpen(false);
+                  if (onNavigateTab) onNavigateTab('email_connect');
+                }}
+                className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer border-t"
+                style={{ borderColor: 'var(--hairline)' }}
+              >
+                <Mail className="w-3.5 h-3.5 text-[#34C759]" />
+                <span>Email Sync (Gmail)…</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Hairline Divider */}
+        <div className="w-px h-5 bg-[var(--hairline)]" />
+
+        {/* EN|বাংলা Segmented Control (28px) */}
+        <div 
+          className="h-7 p-0.5 rounded-lg border flex items-center select-none"
+          style={{
+            backgroundColor: 'var(--inset)',
+            borderColor: 'var(--hairline)',
+          }}
+          role="group"
+          aria-label="Language selector"
+        >
+          <button
+            type="button"
+            onClick={() => setLanguage('en')}
+            className="h-6 px-2 text-[11px] font-semibold rounded-md transition-all cursor-pointer"
+            style={{
+              backgroundColor: language === 'en' ? 'var(--card)' : 'transparent',
+              color: language === 'en' ? 'var(--text-primary)' : '#86868B',
+              boxShadow: language === 'en' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+            }}
+          >
+            EN
+          </button>
+          <button
+            type="button"
+            onClick={() => setLanguage('bn')}
+            className="h-6 px-2 text-[11px] font-semibold rounded-md transition-all cursor-pointer"
+            style={{
+              backgroundColor: language === 'bn' ? 'var(--card)' : 'transparent',
+              color: language === 'bn' ? 'var(--text-primary)' : '#86868B',
+              boxShadow: language === 'bn' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+            }}
+          >
+            বাংলা
+          </button>
+        </div>
+
+        {/* Ghost Theme Icon (28px) */}
+        <button
+          onClick={toggleTheme}
+          className="w-7 h-7 rounded-md flex items-center justify-center text-[#6E6E73] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 transition-colors cursor-pointer"
+          title={isDark ? "Switch to Light mode" : "Switch to Dark mode"}
+        >
+          {isDark ? (
+            <Moon className="w-3.5 h-3.5 text-[#0A84FF]" />
+          ) : (
+            <Sun className="w-3.5 h-3.5 text-[#FF9500]" />
+          )}
         </button>
 
-        {/* Language Toggle (Bangla / English) */}
-        <div className="pl-1">
-          <LanguageToggle />
-        </div>
+        {/* Hairline Divider */}
+        <div className="w-px h-5 bg-[var(--hairline)] hidden sm:block" />
 
-        {/* Custom Sliding-Pill Theme Toggle (78x40px desktop, 68x36px compact) */}
-        <div className="pl-1">
-          <ThemeToggle />
-        </div>
-
-        {/* User profile / Guest Mode */}
-        {isGuestMode ? (
-          <div 
-            className="flex items-center gap-2.5 pl-3 border-l"
-            style={{ borderColor: 'var(--border-color)' }}
+        {/* 28px Avatar + Name 12/600 over Role 10/500 → Profile Menu */}
+        <div className="relative" ref={profileMenuRef}>
+          <button
+            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+            className="flex items-center gap-2 p-0.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer transition-colors"
           >
+            {/* 28px Avatar */}
             <div 
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
+              className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-2xs"
               style={{
-                backgroundColor: 'var(--accent-light)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--brand-accent)',
+                backgroundColor: isGuestMode ? '#8E8E93' : '#007AFF',
               }}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] animate-pulse" />
-              <span className="text-[11px] font-semibold">{t('header.guest_mode')}</span>
+              {getInitials(currentUser)}
             </div>
-            {onOpenAuthModal && (
-              <button
-                onClick={onOpenAuthModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--bg-surface-soft)',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <User className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
-                <span>{t('header.sign_in')}</span>
-              </button>
-            )}
-          </div>
-        ) : (
-          <div 
-            className="flex items-center gap-3 pl-3 border-l"
-            style={{ borderColor: 'var(--border-color)' }}
-          >
-            <div className="flex items-center gap-2.5">
-              <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
-                style={{
-                  backgroundColor: 'var(--brand-accent)',
-                  color: 'var(--cta-text)',
-                }}
-              >
-                {getInitials(currentUser)}
-              </div>
-              <div className="hidden md:block text-left">
-                <div className="text-xs font-semibold text-[var(--text-primary)]">
+
+            {/* Name 12/600 over Role 10/500 */}
+            <div className="hidden lg:flex flex-col text-left leading-tight">
+              <span className="text-[12px] font-semibold text-[var(--text-primary)] truncate max-w-[110px]">
+                {getDisplayName(currentUser)}
+              </span>
+              <span className="text-[10px] font-medium text-[#6E6E73] capitalize truncate max-w-[110px]">
+                {currentRole}
+              </span>
+            </div>
+
+            <ChevronDown className="w-3 h-3 text-[#86868B] hidden lg:block" />
+          </button>
+
+          {/* Profile Menu Dropdown */}
+          {isProfileMenuOpen && (
+            <div 
+              className="absolute right-0 top-9 w-60 sonoma-card sonoma-elevation p-2 z-50 animate-in fade-in zoom-in-95 duration-100 space-y-2"
+              style={{
+                backgroundColor: 'var(--card)',
+                borderColor: 'var(--hairline)',
+              }}
+            >
+              <div className="p-2 rounded-lg bg-[var(--inset)]">
+                <div className="text-xs font-bold text-[var(--text-primary)]">
                   {getDisplayName(currentUser)}
                 </div>
-                <div className="text-[10px] text-[var(--brand-accent)] font-medium capitalize">
-                  {currentOrg?.role || 'Member'}
+                <div className="text-[11px] text-[#6E6E73] mt-0.5">
+                  {currentUser?.email || (isGuestMode ? 'admin@northstar.demo' : 'guest@lore.enterprise')}
+                </div>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="text-[10px] font-semibold uppercase px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-[var(--text-primary)]">
+                    {currentRole}
+                  </span>
+                  <span className="text-[10px] font-bold text-[#007AFF] px-1.5 py-0.2 rounded bg-[#007AFF]/10">
+                    Sovereign Grid
+                  </span>
                 </div>
               </div>
-            </div>
 
-            <button
-              onClick={onLogout}
-              className="p-1.5 rounded-lg transition-colors cursor-pointer hover:text-red-500"
-              style={{
-                color: 'var(--text-muted)',
-              }}
-              title={t('header.sign_out')}
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+              {isGuestMode ? (
+                onOpenAuthModal && (
+                  <button
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onOpenAuthModal();
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
+                  >
+                    <UserIcon className="w-3.5 h-3.5 text-[#007AFF]" />
+                    <span>Sign In to Account</span>
+                  </button>
+                )
+              ) : (
+                <button
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-[#FF3B30] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

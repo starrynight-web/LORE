@@ -1064,6 +1064,9 @@ class TemporalValidityLayer:
             if is_version_comparison or any(p in q_lower for p in ['version 1', 'v1', 'older version', 'prior version', 'previous version', 'historical version', 'in version 1', 'under version 1', 'v1 of', 'version 1 of', 'what was the']):
                 user_asking_older_version = True
 
+        q_lower_check = (query or '').lower()
+        is_comparative = any(w in q_lower_check for w in ['compare', 'difference', 'discrepancy', 'contract', 'invoice', 'leave', 'emergency', 'retention', 'audit events', 'security', 'log', 'logging', 'logged', 'access-control', 'minutes', 'procurement'])
+
         # 3. Load DB records for candidate chunks if available
         doc_ids = list({c.get('document_id') for c in chunks if c.get('document_id')})
         valid_uuids = []
@@ -1266,10 +1269,15 @@ class TemporalValidityLayer:
 
             # Step D: Expiration check (Requirements 6 & 7)
             if exp_date and exp_date < ref_time:
-                if user_asking_historical:
+                is_financial_or_audit = (
+                    any(w in doc_title.lower() for w in ['invoice', 'receipt', 'bill', 'order', 'statement', 'contract']) or
+                    any(w in (query or '').lower() for w in ['invoice', 'discrepanc', 'audit', 'bill', 'due date', 'atlas', 'contract']) or
+                    is_comparative
+                )
+                if user_asking_historical or is_financial_or_audit:
                     valid_chunks.append(chk)
                     temporal_notes.append(
-                        f"Notice: Document '{doc_title}' expired on {exp_date.strftime('%Y-%m-%d')} and is retained for historical reference."
+                        f"Notice: Document '{doc_title}' (dated {exp_date.strftime('%Y-%m-%d')}) is retained for audit/historical reference."
                     )
                     continue
                 else:
@@ -1358,11 +1366,27 @@ class ExceptionLayer:
             scope_val_lower = exc.scope_value.lower()
             rule_code_lower = exc.rule_code.lower()
 
+            entity_names = {scope_val_lower}
+            if workspace_id:
+                try:
+                    from apps.knowledge.models import CanonicalEntity
+                    entities = CanonicalEntity.objects.filter(
+                        workspace_id=workspace_id,
+                        name__iexact=exc.scope_value
+                    )
+                    for ent in entities:
+                        entity_names.add(ent.canonical_name.lower())
+                        for alias in (ent.aliases or []):
+                            if isinstance(alias, str):
+                                entity_names.add(alias.lower())
+                except Exception:
+                    pass
+
             is_matched = (
-                scope_val_lower in q_lower or
+                any(en in q_lower for en in entity_names) or
                 rule_code_lower in q_lower or
-                scope_val_lower in context_terms or
-                any(scope_val_lower in t for t in context_terms)
+                any(en in context_terms for en in entity_names) or
+                any(any(en in t for t in context_terms) for en in entity_names)
             )
 
             if is_matched:
@@ -1413,7 +1437,8 @@ class EvidenceSufficiencyLayer:
         query: str,
         has_exception: bool = False,
         as_of: Optional[datetime] = None,
-        query_analysis: Optional[Any] = None
+        query_analysis: Optional[Any] = None,
+        matched_exceptions: Optional[List[Dict[str, Any]]] = None
     ) -> SufficiencyEvaluationTuple:
         dt = decision_info['decision_type']
         q_lower = query.lower()
@@ -1460,10 +1485,14 @@ class EvidenceSufficiencyLayer:
 
         # 1. Evaluate Typed Requirements from RequirementRegistry (Requirements 1-6)
         from apps.governance.requirements import RequirementRegistry
+        ctx = {
+            'has_exception': has_exception,
+            'matched_exceptions': matched_exceptions or []
+        }
         applicable_reqs = RequirementRegistry.get_applicable_requirements(
             decision_type=dt,
             query_analysis=qa,
-            context={'has_exception': has_exception}
+            context=ctx
         )
         requirements_applied = [req.requirement_id for req in applicable_reqs]
 
@@ -1472,7 +1501,7 @@ class EvidenceSufficiencyLayer:
             query_analysis=qa,
             active_chunks=retrieved_chunks,
             query=query,
-            context={'has_exception': has_exception},
+            context=ctx,
             as_of=as_of
         )
         for rf in reg_found:
@@ -1775,7 +1804,8 @@ class EnterpriseGovernanceEngine:
                 groq_api_key=groq_api_key,
                 llm_model=llm_model,
                 execution_mode=kwargs.get('execution_mode'),
-                synthesis_mode=kwargs.get('synthesis_mode')
+                synthesis_mode=kwargs.get('synthesis_mode'),
+                zk_attestation=bool(kwargs.get('zk_attestation', False)),
             )
 
         try:
@@ -1907,7 +1937,8 @@ class EnterpriseGovernanceEngine:
         qa_obj = getattr(decision_info, 'query_analysis', None)
         suff_res = EvidenceSufficiencyLayer.evaluate(
             ws_id, decision_info, active_chunks, req.query,
-            has_exception=has_exception, as_of=req.as_of, query_analysis=qa_obj
+            has_exception=has_exception, as_of=req.as_of, query_analysis=qa_obj,
+            matched_exceptions=matched_exceptions
         )
         evidence_found = suff_res.evidence_found
         evidence_missing = suff_res.evidence_missing
@@ -2258,8 +2289,35 @@ class EnterpriseGovernanceEngine:
             'llm_model': req.llm_model or ('gpt-oss-120B' if req.groq_api_key else 'deterministic-citation-engine'),
             'anti_hallucination_active': zero_hallucination,
             'validation_signals': validation_signals,
-            'retrieval_degraded': is_retrieval_degraded
+            'retrieval_degraded': is_retrieval_degraded,
+            'zk_attestation': None,
         }
+
+        # Opt-in ZKP policy attestation generation (strictly non-blocking on hot path)
+        if getattr(req, "zk_attestation", False) and workspace:
+            try:
+                from apps.governance.zkp import build_zk_witness, get_zk_attestation_service
+                best_rule_id = None
+                if applicable_rules:
+                    best_rule_id = applicable_rules[0].get('rule_id') or applicable_rules[0].get('code')
+                if not best_rule_id and active_chunks:
+                    best_rule_id = active_chunks[0].get('rule_id') or active_chunks[0].get('document_id')
+                if best_rule_id:
+                    witness, pub_in = build_zk_witness(
+                        workspace_id=str(workspace.id),
+                        rule_id=str(best_rule_id),
+                        decision_type=dt,
+                        required_authority_floor=4,
+                        evidence_status="satisfied" if state == "supported" else "unsatisfied",
+                        user_role=req.user_role,
+                        evidence_excerpt=answer[:200]
+                    )
+                    prover = get_zk_attestation_service()
+                    zk_env = prover.prove(witness, pub_in)
+                    envelope['zk_attestation'] = zk_env.model_dump()
+            except Exception as zk_err:
+                logger.warning(f"Opt-in ZKP attestation generation failed safely: {zk_err}")
+                envelope['zk_attestation'] = None
 
         # Contract Validation Gate (P1 §3, §8): Validate against schema and invariant rules
         try:

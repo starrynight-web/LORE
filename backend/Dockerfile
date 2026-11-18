@@ -16,8 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python requirements
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-layout.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements-layout.txt || true
 
 # Copy backend codebase
 COPY . /app/
@@ -27,7 +28,7 @@ RUN chmod +x /app/entrypoint.sh
 ENV PYTHONUNBUFFERED=1
 ENV TESSERACT_CMD=/usr/bin/tesseract
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 

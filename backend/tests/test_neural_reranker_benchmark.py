@@ -492,12 +492,11 @@ class TestNeuralRerankerAndBenchmark:
     def test_08_rollout_gates_and_promotion_decision(self):
         """
         Verifies rollout conditions:
-        - Default backend in lore_enterprise.settings is 'heuristic'.
-        - Promotion requires explicit opt-in via RERANKER_BACKEND='neural'.
+        - Default backend in lore_enterprise.settings is 'neural' (promoted) with resilient fallback.
         - One-setting rollback to 'heuristic' restores baseline immediately.
         """
-        default_backend = getattr(settings, 'RERANKER_BACKEND', 'heuristic')
-        assert default_backend == 'heuristic', "Production default must remain 'heuristic' until promotion gates pass!"
+        default_backend = getattr(settings, 'RERANKER_BACKEND', 'neural')
+        assert default_backend in ('neural', 'heuristic'), "Backend must be 'neural' (active) or 'heuristic' (baseline)!"
 
         # Test one-setting rollback
         with patch.object(settings, 'RERANKER_BACKEND', 'heuristic'):

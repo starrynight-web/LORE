@@ -693,6 +693,87 @@ def compliance_packs_apply_view(request):
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def zk_attest_view(request):
+    """
+    POST /api/governance/zk-attest/
+    Generates a zero-knowledge attestation envelope for a policy rule or decision.
+    """
+    data = request.data or {}
+    workspace_id = data.get('workspace_id')
+    if not workspace_id:
+        return Response({'error': 'workspace_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    decision_type = data.get('decision_type', 'general_inquiry')
+    rule_id = data.get('rule_id')
+    required_authority_floor = int(data.get('required_authority_floor', 4))
+    evidence_status = data.get('evidence_status', 'satisfied')
+    user_role = data.get('user_role', 'member')
+    backend = data.get('backend', 'auto')
+
+    from apps.workspaces.models import Workspace
+    from apps.knowledge.models import KnowledgeItem
+    from apps.governance.zkp import build_zk_witness, get_zk_attestation_service
+
+    ws = Workspace.objects.filter(id=workspace_id).first()
+    if not ws:
+        return Response({'error': 'Workspace not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not rule_id:
+        first_rule = KnowledgeItem.objects.filter(workspace=ws, status='stable').first()
+        if first_rule:
+            rule_id = str(first_rule.id)
+        else:
+            return Response({'error': 'No stable rules found in workspace to bind ZK attestation.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        witness, pub_in = build_zk_witness(
+            workspace_id=str(ws.id),
+            rule_id=str(rule_id),
+            decision_type=decision_type,
+            required_authority_floor=required_authority_floor,
+            evidence_status=evidence_status,
+            user_role=user_role,
+        )
+        prover = get_zk_attestation_service()
+        envelope = prover.prove(witness, pub_in, backend=backend)
+        return Response(envelope.model_dump(), status=status.HTTP_200_OK)
+    except Exception as ex:
+        logger.exception(f"Error in zk_attest_view: {ex}")
+        return Response({'error': f"Failed to generate ZK attestation: {ex}"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def zk_verify_view(request):
+    """
+    POST /api/governance/zk-verify/
+    Cryptographically verifies an external ZKAttestationEnvelope offline.
+    """
+    data = request.data or {}
+    env_data = data.get('attestation_envelope') or data
+    if not isinstance(env_data, dict) or 'proof_system' not in env_data:
+        return Response({'error': 'Valid attestation_envelope is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        from apps.governance.zkp import ZKAttestationEnvelope, get_zk_attestation_service
+        envelope_obj = ZKAttestationEnvelope(**env_data)
+        prover = get_zk_attestation_service()
+        is_valid = prover.verify(envelope_obj)
+
+        return Response({
+            "verified": is_valid,
+            "proof_system": envelope_obj.proof_system,
+            "workspace_state_root": envelope_obj.workspace_state_root,
+            "public_inputs": envelope_obj.public_inputs,
+            "message": "Cryptographic zero-knowledge proof verified successfully." if is_valid else "Verification failed: proof invalid or constraint violated."
+        }, status=status.HTTP_200_OK)
+    except Exception as ex:
+        logger.warning(f"Error in zk_verify_view: {ex}")
+        return Response({'error': f"Verification error: {ex}"}, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 
 

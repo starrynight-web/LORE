@@ -6,7 +6,7 @@ Registers and instantiates enterprise connectors:
 """
 
 import logging
-from typing import Dict, Type, Any, Optional
+from typing import Dict, Type, Any, Optional, List
 from .base import BaseConnector
 from .confluence import ConfluenceConnector
 from .sharepoint import SharePointConnector
@@ -81,61 +81,62 @@ class EnterpriseConnectorRegistry:
     @classmethod
     def get_connectors_status(cls, workspace_id: Optional[str] = None) -> List[Dict[str, Any]]:
         from datetime import datetime, timezone
-        now_str = datetime.now(timezone.utc).isoformat()
+        from apps.sources.models import SourceDocument
+        from django.db.models import Q
+
+        def resolve_connector_state(connector_id: str, name: str, category: str, query_filter, is_evidence: bool = False) -> Dict[str, Any]:
+            if not workspace_id:
+                return {
+                    "id": connector_id,
+                    "name": name,
+                    "category": category,
+                    "status": "STANDBY",
+                    "last_sync": None,
+                    "freshness": "NO DATA",
+                    "items_count": 0,
+                }
+
+            if is_evidence:
+                from apps.governance.models import EvidenceRequirement
+                try:
+                    ev_count = EvidenceRequirement.objects.filter(workspace_id=workspace_id).count()
+                except Exception:
+                    ev_count = 0
+                return {
+                    "id": connector_id,
+                    "name": name,
+                    "category": category,
+                    "status": "CONNECTED" if ev_count > 0 else "STANDBY",
+                    "last_sync": datetime.now(timezone.utc).isoformat() if ev_count > 0 else None,
+                    "freshness": "ACTIVE" if ev_count > 0 else "NO DATA",
+                    "items_count": ev_count,
+                }
+
+            try:
+                docs = SourceDocument.objects.filter(workspace_id=workspace_id).filter(query_filter)
+                count = docs.count()
+                latest_doc = docs.order_by('-created_at').first()
+                last_sync = latest_doc.created_at.isoformat() if latest_doc else None
+            except Exception:
+                count = 0
+                last_sync = None
+
+            return {
+                "id": connector_id,
+                "name": name,
+                "category": category,
+                "status": "ONLINE" if count > 0 else "STANDBY",
+                "last_sync": last_sync,
+                "freshness": "FRESH" if count > 0 else "NO DATA",
+                "items_count": count,
+            }
+
         return [
-            {
-                "id": "confluence",
-                "name": "Atlassian Confluence",
-                "category": "Knowledge Base",
-                "status": "ONLINE",
-                "last_sync": now_str,
-                "freshness": "FRESH",
-                "items_count": 142,
-            },
-            {
-                "id": "sharepoint",
-                "name": "Microsoft SharePoint",
-                "category": "Cloud Storage",
-                "status": "ONLINE",
-                "last_sync": now_str,
-                "freshness": "FRESH",
-                "items_count": 89,
-            },
-            {
-                "id": "jira",
-                "name": "Atlassian Jira",
-                "category": "Issue Tracking",
-                "status": "ONLINE",
-                "last_sync": now_str,
-                "freshness": "FRESH",
-                "items_count": 215,
-            },
-            {
-                "id": "github",
-                "name": "GitHub Enterprise",
-                "category": "Version Control & ADRs",
-                "status": "ONLINE",
-                "last_sync": now_str,
-                "freshness": "FRESH",
-                "items_count": 64,
-            },
-            {
-                "id": "web_scraper",
-                "name": "Enterprise Web Scraper",
-                "category": "Intranet & Documentation",
-                "status": "ONLINE",
-                "last_sync": now_str,
-                "freshness": "FRESH",
-                "items_count": 38,
-            },
-            {
-                "id": "live_evidence",
-                "name": "Live Evidence (Vanta / ServiceNow / Jira)",
-                "category": "Continuous Compliance",
-                "status": "CONNECTED",
-                "last_sync": now_str,
-                "freshness": "ACTIVE",
-                "items_count": 18,
-            },
+            resolve_connector_state("confluence", "Atlassian Confluence", "Knowledge Base", Q(source_uri__icontains="confluence") | Q(title__icontains="confluence")),
+            resolve_connector_state("sharepoint", "Microsoft SharePoint", "Cloud Storage", Q(source_uri__icontains="sharepoint") | Q(source_uri__icontains="onedrive")),
+            resolve_connector_state("jira", "Atlassian Jira", "Issue Tracking", Q(source_uri__icontains="jira") | Q(title__icontains="jira")),
+            resolve_connector_state("github", "GitHub Enterprise", "Version Control & ADRs", Q(source_uri__icontains="github") | Q(source_uri__icontains="git")),
+            resolve_connector_state("web_scraper", "Enterprise Web Scraper", "Intranet & Documentation", Q(source_uri__startswith="http://") | Q(source_uri__startswith="https://") | Q(metadata__source="web_scraper")),
+            resolve_connector_state("live_evidence", "Live Evidence (Vanta / ServiceNow / Jira)", "Continuous Compliance", None, is_evidence=True),
         ]
 

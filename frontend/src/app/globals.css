@@ -3,53 +3,92 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* =========================================================================
-   PARROT & CREAM — LIGHT THEME (EXACT TOKENS)
+   macOS SONOMA SYSTEM SETTINGS DNA — EXACT TOKENS (FINAL v3)
    ========================================================================= */
+
+/* LIGHT THEME */
 :root,
 [data-theme="light"],
 html:not(.dark) {
-  --bg-primary: #FAF8F5;          /* Main page canvas */
-  --bg-surface: #FFFFFF;          /* Cards, dialogs, navigation surfaces */
-  --bg-surface-soft: #F3EFE6;     /* Inputs, selected controls, secondary panels */
-  --border-color: #E6DFD1;        /* Borders, dividers, outlines */
-  --border-focus: #15803D;        /* Keyboard focus */
-  --text-primary: #151F16;        /* Main headings and body content */
-  --text-secondary: #3B4A3D;      /* Secondary text and labels */
-  --text-muted: #596B5B;          /* Metadata and supporting content */
-  --brand-accent: #15803D;        /* Primary actions and active states */
-  --brand-accent-hover: #126E34;  /* Hover state for primary actions */
-  --accent-deep: #0F5132;         /* Deep green emphasis */
-  --accent-parrot: #1EA955;       /* Restrained brand highlight */
-  --accent-cream: #FAF8F5;        /* Cream accent surface */
-  --accent-cream-soft: #F3EFE6;   /* Soft cream accent */
-  --accent-light: rgba(21, 128, 61, 0.08); /* Selected row or navigation wash */
-  --cta-text: #FFFFFF;            /* Text on primary green actions */
-  --success: #15803D;             /* Positive status */
-  --success-bg: #EAF7EE;          /* Positive status surface */
-  --warning: #B45309;             /* Warning status */
-  --warning-bg: #FEF3C7;          /* Warning surface */
-  --error: #DC2626;               /* Error and destructive actions */
-  --error-bg: #FEE2E2;            /* Error surface */
+  /* Style Law & Fixed Palette */
+  --canvas: #FFFFFF;
+  --card: #FFFFFF;
+  --inset: #F5F5F7;
+  --hover: #ECECEE;
+  --hairline: #E5E5E7;
+  --inset-separator: rgba(0, 0, 0, 0.06);
 
-  /* Semantic Additions */
-  --input-bg: #F3EFE6;
-  --input-border: #E6DFD1;
+  /* Typography Colors */
+  --text-primary: #1D1D1F;
+  --text-secondary: #6E6E73;
+  --text-overline: #86868B;
+  --text-muted: #86868B;
+
+  /* Single Interactive Accent */
+  --accent: #007AFF;
+  --accent-hover: #0066D6;
+  --accent-tint: rgba(0, 122, 255, 0.08);
+
+  /* Status Tokens (6px dots + text-tint pills) */
+  --green: #34C759;
+  --green-text: #1F7A33;
+  --green-tint: rgba(52, 199, 89, 0.12);
+
+  --orange: #FF9500;
+  --orange-text: #B25000;
+  --orange-tint: rgba(255, 149, 0, 0.12);
+
+  --red: #FF3B30;
+  --red-text: #D70015;
+  --red-tint: rgba(255, 59, 48, 0.10);
+
+  /* Sidebar Gradient (Peach -> Lavender -> Soft Violet) */
+  --sidebar-gradient: linear-gradient(180deg, #F7D6C4 0%, #E8D5F5 50%, #D4C5F0 100%);
+
+  /* Exactly SIX Tile Hues (Reused across product, never a seventh) */
+  --tile-blue: #007AFF;
+  --tile-indigo: #5E5CE6;
+  --tile-purple: #AF52DE;
+  --tile-green: #34C759;
+  --tile-orange: #FF9500;
+  --tile-gray: #8E8E93;
+
+  /* Backward Compatibility Aliases for App Components */
+  --bg-primary: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-surface-soft: #F5F5F7;
+  --border-color: #E5E5E7;
+  --border-focus: #007AFF;
+  --brand-accent: #007AFF;
+  --brand-accent-hover: #0066D6;
+  --accent-deep: #0056B3;
+  --accent-parrot: #007AFF;
+  --accent-cream: #FFFFFF;
+  --accent-cream-soft: #F5F5F7;
+  --accent-light: rgba(0, 122, 255, 0.08);
+  --cta-text: #FFFFFF;
+  --success: #34C759;
+  --success-bg: rgba(52, 199, 89, 0.12);
+  --warning: #FF9500;
+  --warning-bg: rgba(255, 149, 0, 0.12);
+  --error: #FF3B30;
+  --error-bg: rgba(255, 59, 48, 0.10);
+
+  --input-bg: #F5F5F7;
+  --input-border: #E5E5E7;
   --popover-bg: #FFFFFF;
-  --modal-overlay: rgba(21, 31, 22, 0.48);
-  --table-header-bg: #F3EFE6;
-  --table-row-hover: #F3EFE6;
-  --table-row-selected: rgba(21, 128, 61, 0.08);
-  --disabled-bg: #F3EFE6;
-  --disabled-text: #596B5B;
-  --tooltip-bg: #151F16;
+  --modal-overlay: rgba(0, 0, 0, 0.28);
+  --table-header-bg: #F5F5F7;
+  --table-row-hover: #ECECEE;
+  --table-row-selected: rgba(0, 122, 255, 0.08);
+  --disabled-bg: #F5F5F7;
+  --disabled-text: #86868B;
+  --tooltip-bg: #1D1D1F;
   --tooltip-text: #FFFFFF;
-  --skeleton-bg: #E6DFD1;
-  --badge-neutral-bg: #EFEAE0;
-  --badge-neutral-text: #3B4A3D;
-  --badge-neutral-border: #DCD4C4;
-  --scrollbar-track: #F3EFE6;
-  --scrollbar-thumb: #E6DFD1;
-  --selection-bg: rgba(21, 128, 61, 0.20);
+  --skeleton-bg: #F5F5F7;
+  --scrollbar-track: #F5F5F7;
+  --scrollbar-thumb: #D1D1D6;
+  --selection-bg: rgba(0, 122, 255, 0.18);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -57,9 +96,7 @@ html:not(.dark) {
   color-scheme: light;
 }
 
-/* =========================================================================
-   OBSIDIAN & EMERALD — DARK THEME (EXACT TOKENS)
-   ========================================================================= */
+/* DARK THEME */
 :root.dark,
 :root[data-theme="dark"],
 html.dark,
@@ -67,48 +104,85 @@ html[data-theme="dark"],
 body.dark,
 body[data-theme="dark"],
 .dark {
-  --bg-primary: #0C130E;          /* Main page canvas */
-  --bg-surface: #121E16;          /* Cards, dialogs, navigation surfaces */
-  --bg-surface-soft: #18281E;     /* Inputs, selected controls, secondary panels */
-  --border-color: #243B2D;        /* Borders, dividers, outlines */
-  --border-focus: #22C55E;        /* Keyboard focus */
-  --text-primary: #F8F9F5;        /* Main headings and body content */
-  --text-secondary: #C8D6CA;      /* Secondary text and labels */
-  --text-muted: #8FA693;          /* Metadata and supporting content */
-  --brand-accent: #16A34A;        /* Primary actions and active states */
-  --brand-accent-hover: #15803D;  /* Hover state for primary actions */
-  --accent-deep: #22C55E;         /* Bright green emphasis */
-  --accent-parrot: #1EA955;       /* Brand highlight */
-  --accent-cream: #F8F9F5;        /* Light text accent */
-  --accent-cream-soft: #18281E;   /* Dark soft surface */
-  --accent-light: rgba(22, 163, 74, 0.12); /* Selected row or navigation wash */
-  --cta-text: #FFFFFF;            /* Text on primary green actions */
-  --success: #16A34A;             /* Positive status */
-  --success-bg: #064E3B;          /* Positive status surface */
-  --warning: #F59E0B;             /* Warning status */
-  --warning-bg: #78350F;          /* Warning surface */
-  --error: #EF4444;               /* Error and destructive actions */
-  --error-bg: #7F1D1D;            /* Error surface */
+  /* Style Law & Fixed Palette */
+  --canvas: #1C1C1E;
+  --card: #2C2C2E;
+  --inset: #3A3A3C;
+  --hover: #48484A;
+  --hairline: rgba(255, 255, 255, 0.10);
+  --inset-separator: rgba(255, 255, 255, 0.06);
 
-  /* Semantic Additions */
-  --input-bg: #18281E;
-  --input-border: #243B2D;
-  --popover-bg: #121E16;
-  --modal-overlay: rgba(0, 0, 0, 0.64);
-  --table-header-bg: #18281E;
-  --table-row-hover: #18281E;
-  --table-row-selected: rgba(22, 163, 74, 0.12);
-  --disabled-bg: #18281E;
-  --disabled-text: #8FA693;
-  --tooltip-bg: #F8F9F5;
-  --tooltip-text: #0C130E;
-  --skeleton-bg: #243B2D;
-  --badge-neutral-bg: #18281E;
-  --badge-neutral-text: #C8D6CA;
-  --badge-neutral-border: #243B2D;
-  --scrollbar-track: #18281E;
-  --scrollbar-thumb: #243B2D;
-  --selection-bg: rgba(34, 197, 94, 0.25);
+  /* Typography Colors */
+  --text-primary: #F5F5F7;
+  --text-secondary: #98989D;
+  --text-overline: #86868B;
+  --text-muted: #98989D;
+
+  /* Interactive Accent */
+  --accent: #0A84FF;
+  --accent-hover: #007AFF;
+  --accent-tint: rgba(10, 132, 255, 0.12);
+
+  /* Status Tokens */
+  --green: #30D158;
+  --green-text: #30D158;
+  --green-tint: rgba(48, 209, 88, 0.16);
+
+  --orange: #FF9F0A;
+  --orange-text: #FF9F0A;
+  --orange-tint: rgba(255, 159, 10, 0.16);
+
+  --red: #FF453A;
+  --red-text: #FF453A;
+  --red-tint: rgba(255, 69, 58, 0.16);
+
+  /* Sidebar: peach->lavender hues at ~12% tint over #221E26 */
+  --sidebar-gradient: linear-gradient(180deg, #3A2E2C 0%, #2E2838 50%, #28243A 100%);
+
+  /* Six Tile Hues */
+  --tile-blue: #0A84FF;
+  --tile-indigo: #5E5CE6;
+  --tile-purple: #BF5AF2;
+  --tile-green: #30D158;
+  --tile-orange: #FF9F0A;
+  --tile-gray: #8E8E93;
+
+  /* Backward Compatibility Aliases */
+  --bg-primary: #1C1C1E;
+  --bg-surface: #2C2C2E;
+  --bg-surface-soft: #3A3A3C;
+  --border-color: rgba(255, 255, 255, 0.10);
+  --border-focus: #0A84FF;
+  --brand-accent: #0A84FF;
+  --brand-accent-hover: #007AFF;
+  --accent-deep: #0A84FF;
+  --accent-parrot: #0A84FF;
+  --accent-cream: #F5F5F7;
+  --accent-cream-soft: #3A3A3C;
+  --accent-light: rgba(10, 132, 255, 0.12);
+  --cta-text: #FFFFFF;
+  --success: #30D158;
+  --success-bg: rgba(48, 209, 88, 0.16);
+  --warning: #FF9F0A;
+  --warning-bg: rgba(255, 159, 10, 0.16);
+  --error: #FF453A;
+  --error-bg: rgba(255, 69, 58, 0.16);
+
+  --input-bg: #3A3A3C;
+  --input-border: rgba(255, 255, 255, 0.10);
+  --popover-bg: #2C2C2E;
+  --modal-overlay: rgba(0, 0, 0, 0.60);
+  --table-header-bg: #3A3A3C;
+  --table-row-hover: #48484A;
+  --table-row-selected: rgba(10, 132, 255, 0.12);
+  --disabled-bg: #3A3A3C;
+  --disabled-text: #98989D;
+  --tooltip-bg: #F5F5F7;
+  --tooltip-text: #1C1C1E;
+  --skeleton-bg: #3A3A3C;
+  --scrollbar-track: #2C2C2E;
+  --scrollbar-thumb: #48484A;
+  --selection-bg: rgba(10, 132, 255, 0.30);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -117,24 +191,24 @@ body[data-theme="dark"],
 }
 
 /* =========================================================================
-   GLOBAL RESET & TYPOGRAPHY SYSTEM
+   PLAIN WHITE LAW & TYPOGRAPHY SYSTEM
    ========================================================================= */
 *, *::before, *::after {
   box-sizing: border-box;
 }
 
 html {
-  background-color: var(--bg-primary) !important;
+  background-color: var(--canvas) !important;
   color: var(--text-primary) !important;
   transition: background-color 200ms ease, color 200ms ease;
   overflow-x: hidden;
 }
 
 body {
-  background-color: var(--bg-primary) !important;
+  background-color: var(--canvas) !important;
   color: var(--text-primary) !important;
-  font-family: var(--font-sans, "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-sans, "Inter"), system-ui, sans-serif;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
@@ -142,50 +216,116 @@ body {
   overflow-x: hidden;
 }
 
-/* Bangla Typography Optimization: Hind Siliguri / Noto Sans Bengali with 1.62 line-height */
+/* Bangla Typography: Hind Siliguri, line-height 1.62, overlines stay Latin */
 html[lang="bn"] body,
 [lang="bn"] {
-  font-family: var(--font-bangla, "Hind Siliguri", "Noto Sans Bengali", "Tiro Bangla", "Kalpurush", system-ui, sans-serif);
+  font-family: var(--font-bangla, "Hind Siliguri"), "Noto Sans Bengali", system-ui, sans-serif;
   line-height: 1.62;
 }
 
-/* Monospace metadata, citations, IDs */
+/* Monospace: SF Mono first */
 .font-mono,
 code,
 pre,
-kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+kbd,
+.sonoma-mono {
+  font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-feature-settings: "tnum" 1;
 }
 
-/* Text selection */
-::selection {
-  background: var(--selection-bg);
+/* Tabular Numerals */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Apple Sonoma Specific Typography Utilities */
+.sonoma-kpi {
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.sonoma-title {
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.sonoma-section {
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.sonoma-overline {
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-overline);
+}
+
+.sonoma-row-primary {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
+}
+
+.sonoma-row-secondary {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.sonoma-control {
+  font-size: 13px;
+  font-weight: 590;
+}
+
+/* Sonoma System Settings Elevation & Cards */
+.sonoma-card {
+  background-color: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.sonoma-inset-card {
+  background-color: var(--inset);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+
+/* Elevation (soft shadow + blur overlay) ONLY on sheets, popovers, menus, toasts */
+.sonoma-elevation {
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 4px;
+  background: var(--hairline);
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--brand-accent);
+  background: var(--text-secondary);
 }
 
-/* Accessible focus ring */
+/* Focus ring: 2px #007AFF offset 2 */
 *:focus-visible {
-  outline: var(--focus-ring-width, 2px) solid var(--border-focus);
-  outline-offset: var(--focus-ring-offset, 2px);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* Suppress raw browser outline on text fields that provide custom focus designs */
 input:focus,
 input:focus-visible,
 textarea:focus,
@@ -193,7 +333,13 @@ textarea:focus-visible {
   outline: none !important;
 }
 
-/* Theme transition rule */
+/* Selection */
+::selection {
+  background: var(--selection-bg);
+  color: var(--text-primary);
+}
+
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

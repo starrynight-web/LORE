@@ -539,8 +539,9 @@ class EvidencePresentationEngine:
             already_covered_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b', " ".join(n['shortest_passage'].lower() for n in necessary)))
             new_values = cit_values.intersection(ans_values) - already_covered_values
             if new_values:
-                necessary.append(cit)
-                covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
+                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                    necessary.append(cit)
+                    covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
                 continue
 
             # Condition D: Multi-entity question where this source covers an unrepresented entity (Requirement 8)
@@ -549,8 +550,9 @@ class EvidencePresentationEngine:
                 for ent in multi_entities
             )
             if covers_unrepresented_entity:
-                necessary.append(cit)
-                covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
+                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                    necessary.append(cit)
+                    covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
                 continue
 
             # Do not duplicate citations for the same document unless proving an unrepresented value (handled above in C & D)
@@ -564,4 +566,19 @@ class EvidencePresentationEngine:
 
             # Otherwise: Exclude unrelated or redundant documents (Requirement 6)
 
-        return necessary
+        # Strict final deduplication by document title and ID (Dimension 9 / Gate 2 contract)
+        deduped_necessary: List[Dict[str, Any]] = []
+        seen_titles: Set[str] = set()
+        seen_ids: Set[str] = set()
+        for c in necessary:
+            t = c.get('document_title')
+            did = str(c.get('document_id') or '')
+            if (t and t in seen_titles) or (did and did in seen_ids):
+                continue
+            if t:
+                seen_titles.add(t)
+            if did:
+                seen_ids.add(did)
+            deduped_necessary.append(c)
+
+        return deduped_necessary

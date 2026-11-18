@@ -3,7 +3,8 @@ from typing import Dict, Any, Optional, List
 from django.utils import timezone
 from apps.sources.models import SourceDocument
 from apps.knowledge.models import DocumentChunk
-from apps.retrieval.vector_store import QdrantVectorStore
+from apps.retrieval.vector_store import get_vector_store
+from apps.knowledge.graph_adapters import get_graph_store
 from apps.retrieval.embeddings import get_embedding_adapter
 from apps.audit.models import AuditEvent
 
@@ -12,8 +13,9 @@ logger = logging.getLogger(__name__)
 class StoreReconciliationService:
     """
     Enterprise Data Store Reconciliation Service (P2).
-    Verifies and repairs cross-store consistency between PostgreSQL (canonical truth)
-    and Qdrant (derived vector store).
+    Verifies and repairs cross-store consistency between PostgreSQL (canonical truth),
+    active Vector Store (Qdrant or pgvector), and active Graph Store (Kuzu or Neo4j).
+    Preserves transactional join key (rule_id).
     """
 
     @classmethod
@@ -24,20 +26,24 @@ class StoreReconciliationService:
         collection_name: str = "lore_chunks"
     ) -> Dict[str, Any]:
         """
-        Executes cross-store audit between PostgreSQL chunks and Qdrant vectors.
+        Executes cross-store audit between PostgreSQL chunks, vector store, and graph store.
         
         Args:
             workspace_id: Optional workspace UUID string to restrict audit.
             fix: If True, repairs discrepancies by re-indexing missing vectors or purging orphaned vectors.
-            collection_name: Qdrant collection name.
+            collection_name: Vector store collection name.
         """
-        vstore = QdrantVectorStore()
+        vstore = get_vector_store()
+        gstore = get_graph_store()
+
         summary = {
             'total_documents_checked': 0,
             'healthy_documents': 0,
             'mismatches': [],
             'orphans': [],
             'fixed_count': 0,
+            'vector_backend': vstore.__class__.__name__,
+            'graph_backend': gstore.__class__.__name__,
             'timestamp': timezone.now().isoformat()
         }
 
@@ -55,17 +61,19 @@ class StoreReconciliationService:
 
             pg_chunks = list(DocumentChunk.objects.filter(document=doc).order_by('chunk_index'))
             pg_chunk_count = len(pg_chunks)
-            qdrant_vector_count = vstore.count_document_chunks(collection_name, doc_id_str)
+            vector_chunk_count = vstore.count_document_chunks(collection_name, doc_id_str)
 
-            if pg_chunk_count == qdrant_vector_count and pg_chunk_count > 0:
+            if pg_chunk_count == vector_chunk_count and pg_chunk_count > 0:
                 summary['healthy_documents'] += 1
             else:
                 mismatch_info = {
                     'document_id': doc_id_str,
                     'title': doc.title,
                     'postgres_chunk_count': pg_chunk_count,
-                    'qdrant_vector_count': qdrant_vector_count,
+                    'vector_chunk_count': vector_chunk_count,
+                    'qdrant_vector_count': vector_chunk_count,
                     'status': doc.status,
+                    'reason': 'zero_chunks_in_postgres' if pg_chunk_count == 0 else 'vector_count_mismatch',
                     'fixed': False
                 }
 
@@ -81,6 +89,8 @@ class StoreReconciliationService:
                             {
                                 'chunk_id': str(c.id),
                                 'document_id': doc_id_str,
+                                'rule_id': getattr(c, 'rule_id', '') or getattr(doc, 'document_code', '') or '',
+                                'document_code': getattr(doc, 'document_code', '') or '',
                                 'document_version': doc.current_version_number,
                                 'document_title': doc.title,
                                 'organization_id': str(doc.organization_id),
@@ -115,7 +125,7 @@ class StoreReconciliationService:
                             details={
                                 'action': 'reindexed_missing_vectors',
                                 'postgres_chunk_count': pg_chunk_count,
-                                'previous_vector_count': qdrant_vector_count
+                                'previous_vector_count': vector_chunk_count
                             }
                         )
                     except Exception as err:
@@ -124,7 +134,7 @@ class StoreReconciliationService:
 
                 summary['mismatches'].append(mismatch_info)
 
-        # 2. Audit orphaned vectors in Qdrant (vectors that reference deleted or inactive documents)
+        # 2. Audit orphaned vectors in active vector store (vectors that reference deleted or inactive documents)
         try:
             indexed_doc_ids = vstore.list_indexed_document_ids(collection_name)
             for indexed_id in indexed_doc_ids:
@@ -148,7 +158,7 @@ class StoreReconciliationService:
                             vstore.delete_document_chunks(collection_name, indexed_id)
                             orphan_info['fixed'] = True
                             summary['fixed_count'] += 1
-                            logger.info(f"Purged orphaned vectors in Qdrant for doc {indexed_id}")
+                            logger.info(f"Purged orphaned vectors in {summary['vector_backend']} for doc {indexed_id}")
                         except Exception as oerr:
                             logger.exception(f"Failed to purge orphan doc {indexed_id}: {oerr}")
                             orphan_info['purge_error'] = str(oerr)
@@ -156,6 +166,6 @@ class StoreReconciliationService:
                     summary['orphans'].append(orphan_info)
 
         except Exception as qerr:
-            logger.warning(f"Could not audit orphaned vectors in Qdrant: {qerr}")
+            logger.warning(f"Could not audit orphaned vectors in {summary['vector_backend']}: {qerr}")
 
         return summary

@@ -167,7 +167,7 @@ class RerankerFactory:
             return HeuristicReranker(min_relevance_threshold=threshold)
 
         # Neural Cross-Encoder Reranker
-        model = model_name or getattr(settings, 'RERANKER_MODEL', 'BAAI/bge-reranker-v2-m3')
+        model = model_name or getattr(settings, 'RERANKER_MODEL_NAME', getattr(settings, 'RERANKER_MODEL', 'BAAI/bge-reranker-v2-m3'))
         revision = model_revision or getattr(settings, 'RERANKER_MODEL_REVISION', 'main')
         dev = device or getattr(settings, 'RERANKER_DEVICE', None)
         bs = batch_size or int(getattr(settings, 'RERANKER_BATCH_SIZE', 16))
@@ -190,3 +190,8 @@ class RerankerFactory:
             fallback_policy=selected_fallback,
             fallback_reranker=HeuristicReranker(min_relevance_threshold=threshold)
         )
+
+
+def get_reranker(*args, **kwargs) -> BaseReranker:
+    """Convenience alias for RerankerFactory.get_reranker."""
+    return RerankerFactory.get_reranker(*args, **kwargs)

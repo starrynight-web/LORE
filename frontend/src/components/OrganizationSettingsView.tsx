@@ -39,6 +39,7 @@ import {
 import { 
   api, 
   Organization, 
+  Workspace,
   Plan, 
   SubscriptionData, 
   OrganizationMember, 
@@ -53,6 +54,7 @@ import { ThemeToggle, LanguageToggle } from '@/components/PremiumToggles';
 
 interface OrgSettingsProps {
   currentOrg: Organization | null;
+  currentWorkspace?: Workspace | null;
   userRole?: string;
   onRefreshOrg?: () => void;
   initialSection?: string;
@@ -60,6 +62,7 @@ interface OrgSettingsProps {
 
 export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
   currentOrg,
+  currentWorkspace,
   userRole = 'member',
   onRefreshOrg,
   initialSection = 'all'
@@ -113,6 +116,31 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
   const [provisioningPackId, setProvisioningPackId] = useState<string | null>(null);
   const [packMessage, setPackMessage] = useState<string | null>(null);
   const [sovereigntyRegion, setSovereigntyRegion] = useState<string>('eu_central');
+
+  // Database & Storage Purge State (Danger Zone)
+  const [isPurging, setIsPurging] = useState(false);
+  const [purgeConfirmText, setPurgeConfirmText] = useState('');
+  const [purgeUnderstood, setPurgeUnderstood] = useState(false);
+  const [purgeSuccessMsg, setPurgeSuccessMsg] = useState<string | null>(null);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+
+  const handlePurgeDatabase = async () => {
+    if (!currentWorkspace) return;
+    setIsPurging(true);
+    setPurgeError(null);
+    setPurgeSuccessMsg(null);
+    try {
+      const res = await api.purgeWorkspaceDatabase(currentWorkspace.id);
+      setPurgeSuccessMsg(res.message || 'Workspace database purged successfully.');
+      setPurgeConfirmText('');
+      setPurgeUnderstood(false);
+      if (onRefreshOrg) onRefreshOrg();
+    } catch (err: any) {
+      setPurgeError(err.message || 'Failed to purge workspace database.');
+    } finally {
+      setIsPurging(false);
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -473,6 +501,7 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
           { id: 'mcp', label: 'LORE MCP Server Hub', icon: Server, highlight: true },
           { id: 'theme', label: 'Appearance & Language', icon: Palette },
           { id: 'team', label: 'Team & Quotas', icon: Users },
+          { id: 'maintenance', label: 'Database & Maintenance', icon: Trash2, highlight: true },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSection === tab.id;
@@ -1890,6 +1919,123 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
         </div>
       </div>
       </>
+      )}
+
+      {/* Workspace Database & Storage Maintenance (Danger Zone) */}
+      {(activeSection === 'all' || activeSection === 'maintenance') && (
+        <div 
+          className="p-6 sonoma-card border space-y-5"
+          style={{
+            backgroundColor: 'var(--card)',
+            borderColor: 'var(--hairline)',
+          }}
+        >
+          <div className="border-b pb-3 flex items-center justify-between" style={{ borderColor: 'var(--hairline)' }}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[rgba(255,59,48,0.10)] text-[#FF3B30] flex items-center justify-center font-bold">
+                <Trash2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="sonoma-section text-[var(--text-primary)]">
+                  Workspace Database & Storage Maintenance
+                </h2>
+                <p className="sonoma-row-secondary text-[#6E6E73] text-[12px] mt-0.5">
+                  Manage data retention, purge vectors and graph stores, or reset this workspace partition.
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[rgba(255,59,48,0.10)] text-[#D70015] border border-[#FF3B30]/20">
+              Danger Zone
+            </span>
+          </div>
+
+          {purgeSuccessMsg && (
+            <div className="p-3.5 rounded-xl border flex items-center gap-2 text-xs bg-[rgba(52,199,89,0.12)] text-[#1F7A33] border-[#34C759]/20">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{purgeSuccessMsg}</span>
+            </div>
+          )}
+
+          {purgeError && (
+            <div className="p-3.5 rounded-xl border flex items-center gap-2 text-xs bg-[rgba(255,59,48,0.10)] text-[#D70015] border-[#FF3B30]/20">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{purgeError}</span>
+            </div>
+          )}
+
+          {/* Active Partition Info Card */}
+          <div className="p-4 rounded-xl border bg-[var(--inset)] space-y-2" style={{ borderColor: 'var(--hairline)' }}>
+            <div className="flex items-center justify-between text-xs font-semibold text-[var(--text-primary)]">
+              <span>Target Workspace:</span>
+              <span className="font-mono text-[#007AFF]">{currentWorkspace?.name || 'Active Workspace'}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px] font-mono text-[#6E6E73]">
+              <span>Partition UUID:</span>
+              <span>{currentWorkspace?.id || 'default-partition'}</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px] font-mono text-[#6E6E73]">
+              <span>Role:</span>
+              <span className="capitalize">{currentWorkspace?.role || userRole || 'workspace_admin'}</span>
+            </div>
+          </div>
+
+          {/* Purge Card */}
+          <div className="p-5 rounded-xl border border-[#FF3B30]/30 bg-[rgba(255,59,48,0.03)] space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-xs font-bold text-[#D70015] flex items-center gap-1.5 uppercase tracking-wide">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Delete Workspace Database & Purge All Knowledge</span>
+              </h3>
+              <p className="text-xs text-[#6E6E73] leading-relaxed">
+                By default, this will permanently wipe <strong>all documents, OCR extracts, dense vector embeddings (Qdrant & pgvector), and Knowledge Graph entities/edges</strong> from <strong>{currentWorkspace?.name || 'this workspace'}</strong>.
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-1">
+              <label className="flex items-start gap-2.5 cursor-pointer text-xs select-none">
+                <input
+                  type="checkbox"
+                  checked={purgeUnderstood}
+                  onChange={(e) => setPurgeUnderstood(e.target.checked)}
+                  className="mt-0.5 rounded border-[#E5E5E7] text-[#FF3B30] focus:ring-[#FF3B30]"
+                />
+                <span className="text-[var(--text-primary)]">
+                  I understand this action is permanent and will completely clear the documents, graph entities, and embeddings in this specific workspace.
+                </span>
+              </label>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-[#6E6E73] mb-1">
+                  Type <span className="font-mono text-[#D70015] font-bold">DELETE</span> to confirm:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Type DELETE"
+                  value={purgeConfirmText}
+                  onChange={(e) => setPurgeConfirmText(e.target.value)}
+                  className="w-full max-w-xs px-3 py-1.5 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#FF3B30]"
+                  style={{
+                    backgroundColor: 'var(--card)',
+                    borderColor: 'var(--hairline)',
+                    color: 'var(--text-primary)'
+                  }}
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  disabled={!purgeUnderstood || purgeConfirmText.trim() !== 'DELETE' || isPurging || !currentWorkspace}
+                  onClick={handlePurgeDatabase}
+                  className="h-8 px-4 rounded-lg text-xs font-semibold text-white flex items-center gap-2 bg-[#FF3B30] hover:bg-[#D70015] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isPurging ? 'Purging Database...' : 'Delete Workspace Database'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

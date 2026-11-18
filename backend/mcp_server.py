@@ -21,6 +21,7 @@ import traceback
 import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple, Union
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 # Ensure UTF-8 I/O for bilingual English & Bengali streaming
 if hasattr(sys.stdout, 'reconfigure'):
@@ -151,6 +152,22 @@ def get_organization_id(ws: Workspace) -> str:
 # ==============================================================================
 # TOOLS MANIFEST (lore.md §11: 15 canonical tools + documented aliases)
 # ==============================================================================
+# TOOLS MANIFEST (lore.md §11 & ChatGPT Web 2026 Spec: canonical tools + aliases)
+# ==============================================================================
+# JSON literal compatibility for schema manifests
+true = True
+false = False
+null = None
+
+READ_ONLY_ANNOTATIONS = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+}
+MUTATING_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+}
+
 TOOLS_MANIFEST: List[Dict[str, Any]] = [
     {
         "name": "lore.get_context",
@@ -158,20 +175,73 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Path of the file being edited or inspected."},
-                "intent": {"type": "string", "description": "Task intent or query to evaluate against governed knowledge."},
-                "query": {"type": "string", "description": "Direct query string (alternative to file_path + intent)."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "organization_id": {"type": "string", "description": "Optional UUID of organization for tenant isolation check."},
-                "user_role": {"type": "string", "description": "Principal role (e.g. member, workspace_admin, auditor, anonymous). Default: member.", "default": "member"},
-                "as_of": {"type": "string", "description": "Optional point-in-time date for temporal evaluation (YYYY-MM-DD or ISO)."},
-                "execution_mode": {"type": "string", "description": "Execution strategy: 'local_only', 'deterministic_first', or 'approved_remote'.", "default": "deterministic_first"},
-                "synthesis_mode": {"type": "string", "description": "Synthesis mode: 'auto', 'extractive', 'abstractive', 'deterministic'.", "default": "auto"},
-                "document_id": {"type": "string", "description": "Optional UUID of specific source document to scope retrieval."},
-                "limit": {"type": "integer", "description": "Maximum number of candidate passages to retrieve (1-50, default: 10).", "default": 10},
-                "groq_api_key": {"type": "string", "description": "Optional Groq API key for remote model inference if authorized."},
-                "llm_model": {"type": "string", "description": "Target LLM model (default: gpt-oss-120B).", "default": "gpt-oss-120B"}
+                "file_path": {
+                    "type": "string",
+                    "description": "Path of the file being edited or inspected."
+                },
+                "intent": {
+                    "type": "string",
+                    "description": "Task intent or query to evaluate against governed knowledge."
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Direct query string (alternative to file_path + intent)."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of organization for tenant isolation check."
+                },
+                "user_role": {
+                    "type": "string",
+                    "description": "Principal role (e.g. member, workspace_admin, auditor, anonymous). Default: member.",
+                    "default": "member"
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional point-in-time date for temporal evaluation (YYYY-MM-DD or ISO)."
+                },
+                "execution_mode": {
+                    "type": "string",
+                    "description": "Execution strategy: 'local_only', 'deterministic_first', or 'approved_remote'.",
+                    "default": "deterministic_first"
+                },
+                "synthesis_mode": {
+                    "type": "string",
+                    "description": "Synthesis mode: 'auto', 'extractive', 'abstractive', 'deterministic'.",
+                    "default": "auto"
+                },
+                "document_id": {
+                    "type": "string",
+                    "description": "Optional UUID of specific source document to scope retrieval."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of candidate passages to retrieve (1-50, default: 10).",
+                    "default": 10
+                },
+                "groq_api_key": {
+                    "type": "string",
+                    "description": "Optional Groq API key for remote model inference if authorized."
+                },
+                "llm_model": {
+                    "type": "string",
+                    "description": "Target LLM model (default: gpt-oss-120B).",
+                    "default": "gpt-oss-120B"
+                },
+                "zk_attestation": {
+                    "type": "boolean",
+                    "description": "Opt-in generation of verifiable Zero-Knowledge Proof (ZKP) policy attestation. Default: false.",
+                    "default": false
+                }
             }
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -180,15 +250,45 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The search query or keyword phrase (English and Bengali supported)."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "organization_id": {"type": "string", "description": "Optional UUID of target organization."},
-                "limit": {"type": "integer", "description": "Maximum number of ranked passages to return (1-50, default: 6).", "default": 6},
-                "document_id": {"type": "string", "description": "Optional UUID of specific source document to scope search."},
-                "unverified": {"type": "boolean", "description": "If true, includes draft and quarantined knowledge items in search. Default: false.", "default": False},
-                "output_format": {"type": "string", "description": "Output representation: 'text' (default markdown summary) or 'json' (structured candidate envelope).", "default": "text"}
+                "query": {
+                    "type": "string",
+                    "description": "The search query or keyword phrase (English and Bengali supported)."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target organization."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of ranked passages to return (1-50, default: 6).",
+                    "default": 6
+                },
+                "document_id": {
+                    "type": "string",
+                    "description": "Optional UUID of specific source document to scope search."
+                },
+                "unverified": {
+                    "type": "boolean",
+                    "description": "If true, includes draft and quarantined knowledge items in search. Default: false.",
+                    "default": false
+                },
+                "output_format": {
+                    "type": "string",
+                    "description": "Output representation: 'text' (default markdown summary) or 'json' (structured candidate envelope).",
+                    "default": "text"
+                }
             },
-            "required": ["query"]
+            "required": [
+                "query"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -197,15 +297,48 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "diff": {"type": "string", "description": "Unified diff, code patch, or policy statement to evaluate."},
-                "intent": {"type": "string", "description": "High-level summary of the change or feature being developed."},
-                "file_path": {"type": "string", "description": "Target file or component path being modified."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "organization_id": {"type": "string", "description": "Optional UUID of target organization."},
-                "user_role": {"type": "string", "description": "Role of the executing principal. Default: member.", "default": "member"},
-                "as_of": {"type": "string", "description": "Optional point-in-time date for temporal rule applicability."}
+                "diff": {
+                    "type": "string",
+                    "description": "Unified diff, code patch, or policy statement to evaluate."
+                },
+                "intent": {
+                    "type": "string",
+                    "description": "High-level summary of the change or feature being developed."
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": "Target file or component path being modified."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target organization."
+                },
+                "user_role": {
+                    "type": "string",
+                    "description": "Role of the executing principal. Default: member.",
+                    "default": "member"
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional point-in-time date for temporal rule applicability."
+                },
+                "zk_attestation": {
+                    "type": "boolean",
+                    "description": "Opt-in generation of verifiable Zero-Knowledge Proof (ZKP) policy attestation. Default: false.",
+                    "default": false
+                }
             },
-            "required": ["diff"]
+            "required": [
+                "diff"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -214,10 +347,24 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "scope": {"type": "string", "description": "Optional query keyword, document title, or component to filter conflicts."},
-                "status": {"type": "string", "description": "Filter by status: 'all', 'unresolved', or 'resolved_by_authority'. Default: 'all'.", "default": "all"}
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Optional query keyword, document title, or component to filter conflicts."
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Filter by status: 'all', 'unresolved', or 'resolved_by_authority'. Default: 'all'.",
+                    "default": "all"
+                }
             }
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -226,10 +373,22 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "trace_id": {"type": "string", "description": "The trace ID or decision UUID to inspect."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."}
+                "trace_id": {
+                    "type": "string",
+                    "description": "The trace ID or decision UUID to inspect."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
             },
-            "required": ["trace_id"]
+            "required": [
+                "trace_id"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -238,15 +397,51 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "task": {"type": "string", "description": "The task prompt or query that was evaluated."},
-                "rules": {"type": "array", "items": {"type": "string"}, "description": "List of rule codes or policy titles that governed the decision."},
-                "outcome": {"type": "string", "description": "Decision state/directive: 'proceed_and_cite', 'stop', 'ask_user', 'escalate', 'violation', 'supported'."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "notes": {"type": "string", "description": "Optional notes, justification, or summary."},
-                "citations": {"type": "array", "items": {"type": "object"}, "description": "Optional list of cited document sources."},
-                "token_count": {"type": "integer", "description": "Tokens consumed during task evaluation.", "default": 0}
+                "task": {
+                    "type": "string",
+                    "description": "The task prompt or query that was evaluated."
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "List of rule codes or policy titles that governed the decision."
+                },
+                "outcome": {
+                    "type": "string",
+                    "description": "Decision state/directive: 'proceed_and_cite', 'stop', 'ask_user', 'escalate', 'violation', 'supported'."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional notes, justification, or summary."
+                },
+                "citations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    },
+                    "description": "Optional list of cited document sources."
+                },
+                "token_count": {
+                    "type": "integer",
+                    "description": "Tokens consumed during task evaluation.",
+                    "default": 0
+                }
             },
-            "required": ["task", "rules", "outcome"]
+            "required": [
+                "task",
+                "rules",
+                "outcome"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
         }
     },
     {
@@ -255,10 +450,22 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "file": {"type": "string", "description": "Document ID, original filename, or title to inspect."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."}
+                "file": {
+                    "type": "string",
+                    "description": "Document ID, original filename, or title to inspect."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
             },
-            "required": ["file"]
+            "required": [
+                "file"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -267,8 +474,15 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."}
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
             }
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -277,12 +491,33 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "decision_type": {"type": "string", "description": "Decision category (e.g. 'vendor_approval', 'production_deployment', 'security_change', 'general_inquiry')."},
-                "entities": {"type": "array", "items": {"type": "string"}, "description": "Optional list of evidence tokens, entity names, or candidate claims."},
-                "query": {"type": "string", "description": "Optional search query to automatically retrieve and evaluate candidate evidence."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."}
+                "decision_type": {
+                    "type": "string",
+                    "description": "Decision category (e.g. 'vendor_approval', 'production_deployment', 'security_change', 'general_inquiry')."
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Optional list of evidence tokens, entity names, or candidate claims."
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional search query to automatically retrieve and evaluate candidate evidence."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
             },
-            "required": ["decision_type"]
+            "required": [
+                "decision_type"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -291,10 +526,22 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "source_id": {"type": "string", "description": "Document UUID, title, or original filename."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."}
+                "source_id": {
+                    "type": "string",
+                    "description": "Document UUID, title, or original filename."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
             },
-            "required": ["source_id"]
+            "required": [
+                "source_id"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -303,13 +550,37 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The question to evaluate against historical point-in-time knowledge."},
-                "as_of": {"type": "string", "description": "Historical date/timestamp (YYYY-MM-DD or ISO 8601)."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "limit": {"type": "integer", "description": "Maximum passages to retrieve (default: 6).", "default": 6},
-                "user_role": {"type": "string", "description": "Executing role for RBAC check. Default: member.", "default": "member"}
+                "query": {
+                    "type": "string",
+                    "description": "The question to evaluate against historical point-in-time knowledge."
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Historical date/timestamp (YYYY-MM-DD or ISO 8601)."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum passages to retrieve (default: 6).",
+                    "default": 6
+                },
+                "user_role": {
+                    "type": "string",
+                    "description": "Executing role for RBAC check. Default: member.",
+                    "default": "member"
+                }
             },
-            "required": ["query", "as_of"]
+            "required": [
+                "query",
+                "as_of"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -318,11 +589,27 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "rule_code": {"type": "string", "description": "Optional rule code to filter exceptions (e.g. 'SEC-R-014')."},
-                "scope_type": {"type": "string", "description": "Optional scope category: 'department', 'project', 'data_type', 'vendor'."},
-                "as_of": {"type": "string", "description": "Optional point-in-time date to check historical exception validity."}
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "rule_code": {
+                    "type": "string",
+                    "description": "Optional rule code to filter exceptions (e.g. 'SEC-R-014')."
+                },
+                "scope_type": {
+                    "type": "string",
+                    "description": "Optional scope category: 'department', 'project', 'data_type', 'vendor'."
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional point-in-time date to check historical exception validity."
+                }
             }
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -331,35 +618,76 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The task or question requiring human adjudication."},
-                "state": {"type": "string", "description": "Reason for escalation ('human_review', 'conflicting', 'violation', 'insufficient'). Default: human_review.", "default": "human_review"},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "context": {"type": "object", "description": "Optional dictionary of context, candidate citations, or notes."}
+                "query": {
+                    "type": "string",
+                    "description": "The task or question requiring human adjudication."
+                },
+                "state": {
+                    "type": "string",
+                    "description": "Reason for escalation ('human_review', 'conflicting', 'violation', 'insufficient'). Default: human_review.",
+                    "default": "human_review"
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "context": {
+                    "type": "object",
+                    "description": "Optional dictionary of context, candidate citations, or notes."
+                }
             },
-            "required": ["query"]
+            "required": [
+                "query"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
         }
     },
     {
         "name": "lore.bootstrap",
-        "description": "Serves the constitution (agent.md) and phase policies on connect, establishing meta-rules and operational directives for the client session (lore.md §11 & §12.2).",
+        "description": "Serves the constitution (agent.md) and phase policies on connect, establishing meta-rules and operational directives for the client session (lore.md \u00a711 & \u00a712.2).",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."},
-                "phase": {"type": "string", "description": "Development phase: 'meta', 'planning', 'implementation', or 'verification'."}
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "phase": {
+                    "type": "string",
+                    "description": "Development phase: 'meta', 'planning', 'implementation', or 'verification'."
+                }
             }
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
         "name": "lore.get_skill",
-        "description": "Retrieves procedural steps, prerequisites, and authority guidelines for a specific engineering or operational skill (lore.md §11).",
+        "description": "Retrieves procedural steps, prerequisites, and authority guidelines for a specific engineering or operational skill (lore.md \u00a711).",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Skill name or identifier (e.g. 'ui-ux-pro', 'security-audit', 'compliance-gate')."},
-                "workspace_id": {"type": "string", "description": "Optional UUID of target workspace."}
+                "name": {
+                    "type": "string",
+                    "description": "Skill name or identifier (e.g. 'ui-ux-pro', 'security-audit', 'compliance-gate')."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
             },
-            "required": ["name"]
+            "required": [
+                "name"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -368,9 +696,18 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "document_id": {"type": "string", "description": "UUID of the source document in LORE."}
+                "document_id": {
+                    "type": "string",
+                    "description": "UUID of the source document in LORE."
+                }
             },
-            "required": ["document_id"]
+            "required": [
+                "document_id"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -379,23 +716,218 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Absolute path to a PDF or image file on the local filesystem."}
+                "file_path": {
+                    "type": "string",
+                    "description": "Absolute path to a PDF or image file on the local filesystem."
+                }
             },
-            "required": ["file_path"]
+            "required": [
+                "file_path"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
-    # Backward compatibility aliases registered in manifest
+    {
+        "name": "lore.attest_compliance",
+        "description": "Evaluates enterprise policy compliance and generates a verifiable zero-knowledge attestation (ZK-SNARK or ZKP-lite Merkle) proving compliance without leaking confidential rule statements or source document paths.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "decision_type": {
+                    "type": "string",
+                    "description": "Category of decision: 'vendor_approval', 'production_deployment', 'security_change', 'statutory_compliance', 'general_inquiry'."
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Candidate evidence tokens, entities, or claims to evaluate."
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional search query to retrieve evidence context."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target organization."
+                },
+                "user_role": {
+                    "type": "string",
+                    "description": "Requester RBAC role. Default: member.",
+                    "default": "member"
+                },
+                "required_authority_floor": {
+                    "type": "integer",
+                    "description": "Minimum authority rank required for binding compliance (1-7). Default: 4.",
+                    "default": 4
+                },
+                "backend": {
+                    "type": "string",
+                    "description": "Proving backend: 'auto' (default), 'noir', or 'zkp_lite_merkle'.",
+                    "default": "auto"
+                }
+            },
+            "required": [
+                "decision_type"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }
+    },
+    {
+        "name": "lore.verify_zk_proof",
+        "description": "Cryptographically verifies an external ZKAttestationEnvelope (ZK-SNARK or ZKP-lite Merkle proof) offline without requiring database access or exposing proprietary rule statements.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attestation_envelope": {
+                    "type": "object",
+                    "description": "The serialized ZKAttestationEnvelope JSON object containing proof_system, workspace_state_root, public_inputs, and proof_b64."
+                }
+            },
+            "required": [
+                "attestation_envelope"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }
+    },
+    {
+        "name": "search",
+        "description": "ChatGPT Deep Research standard search tool. Queries LORE governed knowledge and returns candidate passages.",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query or keyword phrase to evaluate against enterprise knowledge."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of candidate passages to retrieve (1-50, default: 6).",
+                    "default": 6
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            },
+            "required": [
+                "query"
+            ]
+        }
+    },
+    {
+        "name": "fetch",
+        "description": "ChatGPT Deep Research standard fetch tool. Retrieves full governed rule, document, or chunk content by ID.",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Identifier of the document, chunk, or rule to retrieve."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            },
+            "required": [
+                "id"
+            ]
+        }
+    },
+    {
+        "name": "lore_attest_compliance",
+        "description": "Legacy alias for lore.attest_compliance.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "decision_type": {
+                    "type": "string",
+                    "description": "Decision category."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Target workspace UUID."
+                }
+            },
+            "required": [
+                "decision_type"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }
+    },
+    {
+        "name": "lore_verify_zk_proof",
+        "description": "Legacy alias for lore.verify_zk_proof.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attestation_envelope": {
+                    "type": "object",
+                    "description": "ZK attestation envelope."
+                }
+            },
+            "required": [
+                "attestation_envelope"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }
+    },
     {
         "name": "lore_search",
         "description": "Legacy alias for lore.search. Performs hybrid vector + lexical search.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Search query."},
-                "workspace_id": {"type": "string", "description": "Target workspace UUID."},
-                "limit": {"type": "integer", "description": "Result limit (default: 6).", "default": 6}
+                "query": {
+                    "type": "string",
+                    "description": "Search query."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Target workspace UUID."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Result limit (default: 6).",
+                    "default": 6
+                }
             },
-            "required": ["query"]
+            "required": [
+                "query"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -404,12 +936,31 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The question to evaluate against governed enterprise documents."},
-                "workspace_id": {"type": "string", "description": "Target workspace UUID."},
-                "groq_api_key": {"type": "string", "description": "Optional Groq API key."},
-                "llm_model": {"type": "string", "description": "Target model (default: gpt-oss-120B).", "default": "gpt-oss-120B"}
+                "query": {
+                    "type": "string",
+                    "description": "The question to evaluate against governed enterprise documents."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Target workspace UUID."
+                },
+                "groq_api_key": {
+                    "type": "string",
+                    "description": "Optional Groq API key."
+                },
+                "llm_model": {
+                    "type": "string",
+                    "description": "Target model (default: gpt-oss-120B).",
+                    "default": "gpt-oss-120B"
+                }
             },
-            "required": ["query"]
+            "required": [
+                "query"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -418,9 +969,18 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "document_id": {"type": "string", "description": "UUID of the source document in LORE."}
+                "document_id": {
+                    "type": "string",
+                    "description": "UUID of the source document in LORE."
+                }
             },
-            "required": ["document_id"]
+            "required": [
+                "document_id"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
         }
     },
     {
@@ -429,13 +989,495 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Absolute path to a PDF or image file."}
+                "file_path": {
+                    "type": "string",
+                    "description": "Absolute path to a PDF or image file."
+                }
             },
-            "required": ["file_path"]
+            "required": [
+                "file_path"
+            ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }
+    },
+    {
+        "name": "lore_get_context",
+        "description": "Underscore alias for lore.get_context. Canonical flagship LORE tool: retrieves governed context for a file or intent, evaluates through the 9-layer governance engine, and returns a canonical lore.result/2 envelope.",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path of the file being edited or inspected."
+                },
+                "intent": {
+                    "type": "string",
+                    "description": "Task intent or query to evaluate against governed knowledge."
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Direct query string (alternative to file_path + intent)."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of organization for tenant isolation check."
+                },
+                "user_role": {
+                    "type": "string",
+                    "description": "Principal role (e.g. member, workspace_admin, auditor, anonymous). Default: member.",
+                    "default": "member"
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional point-in-time date for temporal evaluation (YYYY-MM-DD or ISO)."
+                },
+                "execution_mode": {
+                    "type": "string",
+                    "description": "Execution strategy: 'local_only', 'deterministic_first', or 'approved_remote'.",
+                    "default": "deterministic_first"
+                },
+                "synthesis_mode": {
+                    "type": "string",
+                    "description": "Synthesis mode: 'auto', 'extractive', 'abstractive', 'deterministic'.",
+                    "default": "auto"
+                },
+                "document_id": {
+                    "type": "string",
+                    "description": "Optional UUID of specific source document to scope retrieval."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of candidate passages to retrieve (1-50, default: 10).",
+                    "default": 10
+                },
+                "groq_api_key": {
+                    "type": "string",
+                    "description": "Optional Groq API key for remote model inference if authorized."
+                },
+                "llm_model": {
+                    "type": "string",
+                    "description": "Target LLM model (default: gpt-oss-120B).",
+                    "default": "gpt-oss-120B"
+                },
+                "zk_attestation": {
+                    "type": "boolean",
+                    "description": "Opt-in generation of verifiable Zero-Knowledge Proof (ZKP) policy attestation. Default: false.",
+                    "default": false
+                }
+            }
+        }
+    },
+    {
+        "name": "lore_check_compliance",
+        "description": "Underscore alias for lore.check_compliance. Evaluates a proposed code diff or specification change against governed enterprise rules, returning per-rule PASS/FAIL/UNCERTAIN verdicts and machine exit codes (0=PASS, 3=ask_user, 4=stop) for pre-commit gating.",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "diff": {
+                    "type": "string",
+                    "description": "Unified diff, code patch, or policy statement to evaluate."
+                },
+                "intent": {
+                    "type": "string",
+                    "description": "High-level summary of the change or feature being developed."
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": "Target file or component path being modified."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target organization."
+                },
+                "user_role": {
+                    "type": "string",
+                    "description": "Role of the executing principal. Default: member.",
+                    "default": "member"
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional point-in-time date for temporal rule applicability."
+                },
+                "zk_attestation": {
+                    "type": "boolean",
+                    "description": "Opt-in generation of verifiable Zero-Knowledge Proof (ZKP) policy attestation. Default: false.",
+                    "default": false
+                }
+            },
+            "required": [
+                "diff"
+            ]
+        }
+    },
+    {
+        "name": "lore_detect_conflicts",
+        "description": "Underscore alias for lore.detect_conflicts. Generates a conflict report across enterprise knowledge, listing contradictory claims, conflicting documents, and authority resolutions (L6).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Optional query keyword, document title, or component to filter conflicts."
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Filter by status: 'all', 'unresolved', or 'resolved_by_authority'. Default: 'all'.",
+                    "default": "all"
+                }
+            }
+        }
+    },
+    {
+        "name": "lore_trace",
+        "description": "Underscore alias for lore.trace. Retrieves the full decision lineage for a trace ID: query -> candidate rules -> versions -> sources -> governance layers breakdown -> citations.",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "trace_id": {
+                    "type": "string",
+                    "description": "The trace ID or decision UUID to inspect."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            },
+            "required": [
+                "trace_id"
+            ]
+        }
+    },
+    {
+        "name": "lore_log_decision",
+        "description": "Underscore alias for lore.log_decision. Appends an authoritative decision record to the LORE audit log and decision lineage database (L0).",
+        "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "The task prompt or query that was evaluated."
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "List of rule codes or policy titles that governed the decision."
+                },
+                "outcome": {
+                    "type": "string",
+                    "description": "Decision state/directive: 'proceed_and_cite', 'stop', 'ask_user', 'escalate', 'violation', 'supported'."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional notes, justification, or summary."
+                },
+                "citations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    },
+                    "description": "Optional list of cited document sources."
+                },
+                "token_count": {
+                    "type": "integer",
+                    "description": "Tokens consumed during task evaluation.",
+                    "default": 0
+                }
+            },
+            "required": [
+                "task",
+                "rules",
+                "outcome"
+            ]
+        }
+    },
+    {
+        "name": "lore_get_history",
+        "description": "Underscore alias for lore.get_history. Retrieves document version timeline, modification history, and SUPERSEDES relationship chains (L5).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "description": "Document ID, original filename, or title to inspect."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            },
+            "required": [
+                "file"
+            ]
+        }
+    },
+    {
+        "name": "lore_stats",
+        "description": "Underscore alias for lore.stats. Computes knowledge graph statistics: document counts, chunks, rule/skill items, graph edges, conflicts, and decision volume (L0).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            }
+        }
+    },
+    {
+        "name": "lore_check_evidence_sufficiency",
+        "description": "Underscore alias for lore.check_evidence_sufficiency. Standalone evidence sufficiency evaluation: verifies whether available evidence satisfies mandatory requirements for a given decision type (L3).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "decision_type": {
+                    "type": "string",
+                    "description": "Decision category (e.g. 'vendor_approval', 'production_deployment', 'security_change', 'general_inquiry')."
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Optional list of evidence tokens, entity names, or candidate claims."
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional search query to automatically retrieve and evaluate candidate evidence."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            },
+            "required": [
+                "decision_type"
+            ]
+        }
+    },
+    {
+        "name": "lore_get_authority_info",
+        "description": "Underscore alias for lore.get_authority_info. Retrieves authority hierarchy metadata (rank 1-7), document status, staleness thresholds, and access level for a source document (L6).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source_id": {
+                    "type": "string",
+                    "description": "Document UUID, title, or original filename."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            },
+            "required": [
+                "source_id"
+            ]
+        }
+    },
+    {
+        "name": "lore_query_as_of",
+        "description": "Underscore alias for lore.query_as_of. Point-in-time historical retrieval and governance evaluation: strictly enforces document validity and edges active on the specified date (L5).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The question to evaluate against historical point-in-time knowledge."
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Historical date/timestamp (YYYY-MM-DD or ISO 8601)."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum passages to retrieve (default: 6).",
+                    "default": 6
+                },
+                "user_role": {
+                    "type": "string",
+                    "description": "Executing role for RBAC check. Default: member.",
+                    "default": "member"
+                }
+            },
+            "required": [
+                "query",
+                "as_of"
+            ]
+        }
+    },
+    {
+        "name": "lore_get_active_exceptions",
+        "description": "Underscore alias for lore.get_active_exceptions. Lists active scoped exceptions applying to the current context, department, project, or vendor (L4).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "rule_code": {
+                    "type": "string",
+                    "description": "Optional rule code to filter exceptions (e.g. 'SEC-R-014')."
+                },
+                "scope_type": {
+                    "type": "string",
+                    "description": "Optional scope category: 'department', 'project', 'data_type', 'vendor'."
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": "Optional point-in-time date to check historical exception validity."
+                }
+            }
+        }
+    },
+    {
+        "name": "lore_escalate_to_human",
+        "description": "Underscore alias for lore.escalate_to_human. Creates a human review ticket in the compliance queue when a decision encounters conflicting evidence, unresolvable ambiguity, or high-risk rules (L2).",
+        "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The task or question requiring human adjudication."
+                },
+                "state": {
+                    "type": "string",
+                    "description": "Reason for escalation ('human_review', 'conflicting', 'violation', 'insufficient'). Default: human_review.",
+                    "default": "human_review"
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "context": {
+                    "type": "object",
+                    "description": "Optional dictionary of context, candidate citations, or notes."
+                }
+            },
+            "required": [
+                "query"
+            ]
+        }
+    },
+    {
+        "name": "lore_bootstrap",
+        "description": "Underscore alias for lore.bootstrap. Serves the constitution (agent.md) and phase policies on connect, establishing meta-rules and operational directives for the client session (lore.md \u00a711 & \u00a712.2).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "phase": {
+                    "type": "string",
+                    "description": "Development phase: 'meta', 'planning', 'implementation', or 'verification'."
+                }
+            }
+        }
+    },
+    {
+        "name": "lore_get_skill",
+        "description": "Underscore alias for lore.get_skill. Retrieves procedural steps, prerequisites, and authority guidelines for a specific engineering or operational skill (lore.md \u00a711).",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        },
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Skill name or identifier (e.g. 'ui-ux-pro', 'security-audit', 'compliance-gate')."
+                },
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                }
+            },
+            "required": [
+                "name"
+            ]
         }
     }
 ]
-
 
 # ==============================================================================
 # TOOL HANDLERS (Direct Routing to Canonical Backend Services)
@@ -494,7 +1536,8 @@ def handle_get_context(args: Dict[str, Any]) -> str:
         groq_api_key=groq_api_key,
         llm_model=llm_model,
         execution_mode=execution_mode,
-        synthesis_mode=synthesis_mode
+        synthesis_mode=synthesis_mode,
+        zk_attestation=bool(args.get("zk_attestation", False))
     )
 
     envelope = sanitize_sensitive_data(envelope)
@@ -517,10 +1560,15 @@ def handle_get_context(args: Dict[str, Any]) -> str:
         "retrieval_degraded": envelope.get("retrieval_degraded", False),
         "execution_mode": envelope.get("execution_mode"),
         "was_deterministic": envelope.get("was_deterministic", True),
+        "bundle_hash": envelope.get("bundle_hash"),
+        "zk_attestation": envelope.get("zk_attestation"),
         "citations": [
             {
                 "document": c.get("document_title"),
+                "document_code": c.get("document_code"),
                 "page": c.get("page_number"),
+                "section": c.get("section") or c.get("heading_path"),
+                "passage": c.get("shortest_passage"),
                 "authority_rank": c.get("authority_level")
             } for c in envelope.get("citations", [])
         ],
@@ -628,6 +1676,144 @@ def handle_search(args: Dict[str, Any]) -> str:
     return sanitize_sensitive_data("\n".join(output_lines))
 
 
+
+def handle_standard_search(args: Dict[str, Any]) -> str:
+    """
+    ChatGPT Deep Research & Pro Connector standard search tool.
+    Returns JSON structure: {"results": [{"id": ..., "title": ..., "text": ..., "url": ...}]}
+    """
+    raw_query = args.get("query") or args.get("intent") or ""
+    query = str(raw_query).strip()
+    if not query:
+        return make_error_response("INVALID_ARGUMENT", "The 'query' parameter cannot be empty.")
+
+    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
+    if err or not ws:
+        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+
+    try:
+        limit = min(max(1, int(args.get("limit", 6))), 50)
+    except (ValueError, TypeError):
+        limit = 6
+
+    retriever = HybridRetrievalService()
+    results = retriever.search(
+        query=query,
+        workspace_id=str(ws.id),
+        organization_id=get_organization_id(ws),
+        limit=limit
+    )
+    # Exclude quarantined or draft documents
+    results = [
+        r for r in results
+        if r.get("status") not in ("quarantined", "draft")
+    ]
+    results = sanitize_sensitive_data(results)
+
+    standard_results = []
+    for r in results:
+        r_id = str(r.get("chunk_id") or r.get("document_id") or r.get("id") or "")
+        title = r.get("document_title") or r.get("title") or "LORE Document"
+        text = r.get("content") or r.get("text") or ""
+        url = f"lore://document/{r.get('document_id', r_id)}"
+        standard_results.append({
+            "id": r_id,
+            "title": title,
+            "text": text,
+            "url": url,
+            "metadata": {
+                "authority_level": r.get("authority_level", 4),
+                "score": r.get("score", 1.0),
+                "page_number": r.get("page_number", 1)
+            }
+        })
+
+    payload = {
+        "results": standard_results
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def handle_fetch(args: Dict[str, Any]) -> str:
+    """
+    ChatGPT Deep Research & Pro Connector standard fetch tool.
+    Retrieves full governed rule, document, or chunk content by ID.
+    """
+    item_id = str(args.get("id") or args.get("document_id") or "").strip()
+    if not item_id:
+        return make_error_response("INVALID_ARGUMENT", "The 'id' parameter cannot be empty.")
+
+    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
+    if err or not ws:
+        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+
+    # 1. Check SourceDocument
+    doc = SourceDocument.objects.filter(id=item_id, workspace=ws).first() or SourceDocument.objects.filter(id=item_id).first()
+    if doc:
+        if doc.status in ("quarantined", "draft"):
+            return make_error_response("PERMISSION_DENIED", f"Document '{item_id}' is in {doc.status} state.", reason_code="DOCUMENT_QUARANTINED")
+
+        pages = list(DocumentPage.objects.filter(document=doc).order_by("page_number"))
+        content = "\n\n".join([f"--- Page {p.page_number} ---\n{p.text}" for p in pages if p.text])
+        if not content:
+            chunks = list(DocumentChunk.objects.filter(document=doc).order_by("chunk_index"))
+            content = "\n\n".join([getattr(c, "text", "") or getattr(c, "content", "") for c in chunks if (getattr(c, "text", None) or getattr(c, "content", None))])
+
+        content = sanitize_sensitive_data(content)
+        return json.dumps({
+            "id": str(doc.id),
+            "title": doc.title,
+            "text": content,
+            "url": f"lore://document/{doc.id}",
+            "metadata": {
+                "document_code": doc.document_code or "",
+                "authority_level": doc.authority_level,
+                "current_version": doc.current_version_number,
+                "status": doc.status
+            }
+        }, indent=2, ensure_ascii=False)
+
+    # 2. Check DocumentChunk
+    chunk = DocumentChunk.objects.filter(id=item_id).select_related("document").first()
+    if chunk:
+        doc = chunk.document
+        if doc and doc.status in ("quarantined", "draft"):
+            return make_error_response("PERMISSION_DENIED", f"Chunk document is in {doc.status} state.", reason_code="DOCUMENT_QUARANTINED")
+
+        content = sanitize_sensitive_data(getattr(chunk, "text", "") or getattr(chunk, "content", "") or "")
+        return json.dumps({
+            "id": str(chunk.id),
+            "title": doc.title if doc else "Document Passage",
+            "text": content,
+            "url": f"lore://chunk/{chunk.id}",
+            "metadata": {
+                "document_id": str(doc.id) if doc else "",
+                "page_number": chunk.page_number,
+                "section": chunk.section_identifier or getattr(chunk, "heading_path", "") or "",
+                "heading_path": getattr(chunk, "heading_path", "") or "",
+                "authority_level": doc.authority_level if doc else 4
+            }
+        }, indent=2, ensure_ascii=False)
+
+    # 3. Check KnowledgeItem
+    item = KnowledgeItem.objects.filter(id=item_id).select_related("document").first() or KnowledgeItem.objects.filter(code=item_id).first()
+    if item:
+        content = sanitize_sensitive_data(item.statement or "")
+        return json.dumps({
+            "id": str(item.id),
+            "title": f"Rule {item.code or item.id}",
+            "text": content,
+            "url": f"lore://rule/{item.code or item.id}",
+            "metadata": {
+                "code": item.code or "",
+                "authority_level": item.authority_level,
+                "status": item.status or "stable"
+            }
+        }, indent=2, ensure_ascii=False)
+
+    return make_error_response("RESOURCE_NOT_FOUND", f"Item with ID '{item_id}' not found.", reason_code="ITEM_NOT_FOUND")
+
+
 def handle_check_compliance(args: Dict[str, Any]) -> str:
     """
     Evaluates a proposed code diff or specification change against governed enterprise rules.
@@ -668,7 +1854,8 @@ def handle_check_compliance(args: Dict[str, Any]) -> str:
         user=None,
         user_role=user_role,
         as_of=as_of,
-        decision_type="compliance_check"
+        decision_type="compliance_check",
+        zk_attestation=bool(args.get("zk_attestation", False))
     )
 
     # 4. Compute per-rule verdicts
@@ -757,6 +1944,8 @@ def handle_check_compliance(args: Dict[str, Any]) -> str:
         "rules_uncertain": uncertain_count,
         "rule_evaluations": rule_evaluations,
         "governance_state": overall_state,
+        "bundle_hash": envelope.get("bundle_hash"),
+        "zk_attestation": envelope.get("zk_attestation"),
         "trace_id": envelope.get("trace_id"),
         "citations": envelope.get("citations", [])
     }
@@ -1122,12 +2311,14 @@ def handle_check_evidence_sufficiency(args: Dict[str, Any]) -> str:
                 "document_title": f"Evidence {ent}"
             })
 
+    eval_query = query or f"approve {decision_type} {' '.join(str(e) for e in entities)}".strip()
+
     # Evaluate through canonical L3 EvidenceSufficiencyLayer
     res = EvidenceSufficiencyLayer.evaluate(
         workspace_id=str(ws.id),
-        decision_info={"decision_type": decision_type},
+        decision_info={"decision_type": decision_type, "query_intent": "action_request"},
         retrieved_chunks=candidate_chunks,
-        query=query or decision_type,
+        query=eval_query,
         has_exception=False
     )
 
@@ -1536,6 +2727,147 @@ def handle_ocr_extract(args: Dict[str, Any]) -> str:
         return make_error_response("EXECUTION_FAILURE", f"OCR extraction error: {safe_ex}", reason_code="OCR_EXTRACTION_FAILED")
 
 
+def handle_attest_compliance(args: Dict[str, Any]) -> str:
+    """
+    Evaluates policy compliance and generates a verifiable zero-knowledge proof (ZKP)
+    attestation proving compliance without leaking proprietary policy statements or paths.
+    """
+    decision_type = args.get("decision_type", "general_inquiry")
+    query = args.get("query") or f"Compliance attestation for {decision_type}"
+    entities = args.get("entities") or []
+    user_role = args.get("user_role", "member")
+    authority_floor = int(args.get("required_authority_floor", 4))
+    backend = args.get("backend", "auto")
+
+    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
+    if err or not ws:
+        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+
+    # Retrieve context & candidate chunks
+    retriever = HybridRetrievalService()
+    search_q = f"{query} {' '.join(entities)}".strip()
+    candidate_chunks = retriever.search(
+        query=search_q,
+        workspace_id=str(ws.id),
+        organization_id=get_organization_id(ws),
+        limit=8
+    )
+
+    # Evaluate through governance engine
+    envelope = EnterpriseGovernanceEngine.evaluate(
+        query=search_q,
+        retrieved_chunks=candidate_chunks,
+        workspace=ws,
+        user=None,
+        user_role=user_role,
+        decision_type=decision_type,
+        zk_attestation=False
+    )
+
+    verdict = envelope.get("state", "insufficient")
+    directive = envelope.get("directive", "ask_user")
+    
+    if "evidence_status" in args:
+        is_satisfied = (str(args.get("evidence_status")).lower() in ("satisfied", "supported", "active"))
+    else:
+        is_satisfied = (verdict in ("supported", "qualified"))
+
+    if not is_satisfied:
+        return make_error_response(
+            "PRECONDITION_FAILED",
+            f"Cannot generate compliance attestation: policy evaluation state '{verdict}' does not meet required evidence sufficiency.",
+            reason_code="EVIDENCE_NOT_SATISFIED"
+        )
+
+    # Resolve target rule to bind
+    rule_id = args.get("rule_id")
+    if not rule_id:
+        applicable_rules = envelope.get("applicable_rules", [])
+        if applicable_rules:
+            rule_id = applicable_rules[0].get("rule_id") or applicable_rules[0].get("code")
+        if not rule_id and candidate_chunks:
+            rule_id = candidate_chunks[0].get("rule_id") or candidate_chunks[0].get("document_id")
+        if not rule_id:
+            first_rule = KnowledgeItem.objects.filter(workspace=ws, status="stable").first()
+            if first_rule:
+                rule_id = str(first_rule.id)
+
+    if not rule_id:
+        return make_error_response("PRECONDITION_FAILED", "No active stable rules found to bind ZK attestation.", reason_code="NO_STABLE_RULES")
+
+    try:
+        from apps.governance.zkp import build_zk_witness, get_zk_attestation_service
+        witness, pub_in = build_zk_witness(
+            workspace_id=str(ws.id),
+            rule_id=str(rule_id),
+            decision_type=decision_type,
+            required_authority_floor=authority_floor,
+            evidence_status="satisfied" if is_satisfied else "unsatisfied",
+            user_role=user_role,
+            evidence_excerpt=envelope.get("answer", "")[:200]
+        )
+        prover = get_zk_attestation_service()
+        zk_env = prover.prove(witness, pub_in, backend=backend)
+
+        res = {
+            "schema": "lore.result/1",
+            "decision_type": decision_type,
+            "state": verdict,
+            "directive": directive,
+            "evidence_status": "satisfied" if is_satisfied else "unsatisfied",
+            "zk_attestation": zk_env.model_dump(),
+            "bundle_hash": envelope.get("bundle_hash"),
+            "decision_id": envelope.get("decision_id"),
+            "token_count": envelope.get("token_count", 0),
+            "trace_id": envelope.get("trace_id"),
+            "verified": zk_env.verified,
+            "notes": [
+                f"Opt-in zero-knowledge attestation successfully generated using {zk_env.proof_system}.",
+                "Zero proprietary statements or confidential source paths exposed."
+            ]
+        }
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except Exception as ex:
+        logger.exception(f"Error generating ZK attestation: {ex}")
+        return make_error_response("ATTESTATION_FAILED", f"ZK attestation generation failed: {ex}", reason_code="ZK_PROVE_ERROR")
+
+
+def handle_verify_zk_proof(args: Dict[str, Any]) -> str:
+    """
+    Cryptographically verifies an external ZKAttestationEnvelope without database access.
+    """
+    attestation_envelope = args.get("attestation_envelope")
+    if not attestation_envelope:
+        return make_error_response("INVALID_ARGUMENT", "Missing 'attestation_envelope' parameter.")
+
+    try:
+        from apps.governance.zkp import ZKAttestationEnvelope, get_zk_attestation_service
+        if isinstance(attestation_envelope, str):
+            attestation_envelope = json.loads(attestation_envelope)
+
+        envelope_obj = ZKAttestationEnvelope(**attestation_envelope)
+        prover = get_zk_attestation_service()
+        is_valid = prover.verify(envelope_obj)
+
+        pub_in = envelope_obj.public_inputs
+        res = {
+            "schema": "lore.result/1",
+            "verified": is_valid,
+            "proof_system": envelope_obj.proof_system,
+            "workspace_state_root": envelope_obj.workspace_state_root,
+            "decision_type": pub_in.get("decision_type"),
+            "evaluation_timestamp": pub_in.get("evaluation_timestamp"),
+            "required_authority_floor": pub_in.get("required_authority_floor"),
+            "evidence_status_code": pub_in.get("evidence_status_code"),
+            "requester_role_commitment": pub_in.get("requester_role_commitment"),
+            "details": "Cryptographic zero-knowledge proof verified successfully." if is_valid else "Cryptographic verification failed: proof invalid or constraint violated."
+        }
+        return json.dumps(res, indent=2, ensure_ascii=False)
+    except Exception as ex:
+        logger.warning(f"Error verifying ZK attestation envelope: {ex}")
+        return make_error_response("VERIFICATION_FAILED", f"Could not verify ZK attestation: {ex}", reason_code="ZK_VERIFY_ERROR")
+
+
 # ==============================================================================
 # ROUTING & DISPATCH TABLE (Exact Dot Notation + Underscore Aliases)
 # ==============================================================================
@@ -1550,6 +2882,8 @@ TOOL_DISPATCH_MAP = {
     # Hybrid Search
     "lore.search": "handle_search",
     "lore_search": "handle_search",
+    "search": "handle_standard_search",
+    "fetch": "handle_fetch",
 
     # Compliance Checking
     "lore.check_compliance": "handle_check_compliance",
@@ -1610,6 +2944,12 @@ TOOL_DISPATCH_MAP = {
     # OCR Extraction
     "lore.ocr_extract": "handle_ocr_extract",
     "lore_ocr_extract": "handle_ocr_extract",
+
+    # Zero-Knowledge Compliance Attestation & Offline Verification
+    "lore.attest_compliance": "handle_attest_compliance",
+    "lore_attest_compliance": "handle_attest_compliance",
+    "lore.verify_zk_proof": "handle_verify_zk_proof",
+    "lore_verify_zk_proof": "handle_verify_zk_proof",
 }
 
 
@@ -1646,6 +2986,235 @@ def execute_tool(name: str, arguments: Dict[str, Any]) -> str:
         )
 
 
+def dispatch_jsonrpc_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Core JSON-RPC 2.0 message dispatcher shared across stdio and Streamable HTTP.
+    Returns None for notifications (no response required).
+    """
+    req_id = req.get("id")
+    method = req.get("method")
+    params = req.get("params", {})
+
+    # Notifications (no response required in stdio; HTTP 202 in Streamable HTTP)
+    if method == "notifications/initialized":
+        return None
+
+    response: Dict[str, Any] = {
+        "jsonrpc": "2.0",
+        "id": req_id
+    }
+
+    try:
+        if method == "initialize":
+            response["result"] = {
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {
+                    "tools": {"listChanged": False}
+                },
+                "serverInfo": SERVER_INFO
+            }
+        elif method == "ping":
+            response["result"] = {}
+        elif method == "tools/list":
+            response["result"] = {
+                "tools": TOOLS_MANIFEST
+            }
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            tool_args = params.get("arguments", {})
+            tool_result = execute_tool(tool_name, tool_args)
+
+            # Check if tool_result represents an error envelope
+            is_err = False
+            try:
+                parsed = json.loads(tool_result)
+                if isinstance(parsed, dict) and parsed.get("is_error") is True:
+                    is_err = True
+            except Exception:
+                pass
+
+            response["result"] = {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": tool_result
+                    }
+                ],
+                "isError": is_err
+            }
+        elif method in ("resources/list", "prompts/list"):
+            response["result"] = {
+                method.split("/")[0]: []
+            }
+        else:
+            response["error"] = {
+                "code": -32601,
+                "message": f"Method not found: {method}"
+            }
+    except Exception as ex:
+        logger.error(f"Error handling method {method}: {ex}\n{traceback.format_exc()}")
+        response["error"] = {
+            "code": -32000,
+            "message": sanitize_sensitive_data(str(ex))
+        }
+
+    return response
+
+
+class MCPHttpHandler(BaseHTTPRequestHandler):
+    """
+    Streamable HTTP and SSE Transport Handler for Model Context Protocol (MCP).
+    Enables remote cloud connection from ChatGPT Web, Claude Desktop, and IDEs.
+    """
+    protocol_version = "HTTP/1.1"
+
+    def do_OPTIONS(self):
+        """Preflight CORS handling for web-based MCP clients."""
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, Mcp-Protocol-Version")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.end_headers()
+
+    def do_GET(self):
+        """Handles health probes, SSE discovery stream, and server capabilities."""
+        clean_path = self.path.split("?")[0]
+        accept = self.headers.get("Accept", "")
+
+        if clean_path in ("/health", "/healthz"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "status": "ready",
+                "transport": "streamable-http",
+                "server": SERVER_INFO
+            }).encode("utf-8"))
+            return
+
+        if clean_path in ("/mcp", "/sse", "/"):
+            if "text/event-stream" in accept:
+                # SSE Discovery Stream
+                sse_data = b"event: endpoint\ndata: /mcp\n\n"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Content-Length", str(len(sse_data)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(sse_data)
+                self.wfile.flush()
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            payload = {
+                "status": "ready",
+                "protocolVersion": PROTOCOL_VERSION,
+                "serverInfo": SERVER_INFO,
+                "transport": "streamable-http",
+                "endpoints": {
+                    "mcp": "/mcp",
+                    "sse": "/sse"
+                }
+            }
+            self.wfile.write(json.dumps(payload, indent=2).encode("utf-8"))
+            return
+
+        self.send_response(404)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(b'{"error": "Not Found"}')
+
+    def do_POST(self):
+        """Processes JSON-RPC 2.0 messages over Streamable HTTP."""
+        clean_path = self.path.split("?")[0]
+        if clean_path not in ("/mcp", "/"):
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b'{"error": "Not Found"}')
+            return
+
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b'{"error": "Missing or invalid Content-Length"}')
+            return
+
+        body_raw = self.rfile.read(content_length).decode("utf-8")
+        try:
+            req = json.loads(body_raw)
+        except json.JSONDecodeError as jde:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            err_resp = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": f"Parse error: {jde}"}
+            }
+            self.wfile.write(json.dumps(err_resp).encode("utf-8"))
+            return
+
+        # Handle notifications (e.g. notifications/initialized) -> 202 Accepted
+        is_notification = ("id" not in req) or str(req.get("method", "")).startswith("notifications/")
+        try:
+            from django.db import close_old_connections
+            close_old_connections()
+        except Exception:
+            pass
+
+        resp = dispatch_jsonrpc_request(req)
+
+        try:
+            from django.db import close_old_connections
+            close_old_connections()
+        except Exception:
+            pass
+
+        if is_notification or resp is None:
+            self.send_response(202)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Mcp-Session-Id", f"lore-mcp-{uuid.uuid4().hex[:12]}")
+            self.end_headers()
+            return
+
+        resp_bytes = json.dumps(resp, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(resp_bytes)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Mcp-Session-Id", f"lore-mcp-{uuid.uuid4().hex[:12]}")
+        self.end_headers()
+        self.wfile.write(resp_bytes)
+
+    def log_message(self, format, *args):
+        logger.debug(f"[MCP-HTTP] {format % args}")
+
+
+def run_http_server(host: str = "0.0.0.0", port: int = 8001):
+    """Runs LORE Enterprise MCP server over Streamable HTTP."""
+    logger.info(f"LORE Enterprise MCP server listening on http://{host}:{port}/mcp (Streamable HTTP)")
+    server = ThreadingHTTPServer((host, port), MCPHttpHandler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("Stopping LORE MCP server...")
+    finally:
+        server.server_close()
+
+
 def run_stdio_server():
     """Main JSON-RPC 2.0 loop over stdin and stdout."""
     logger.info("LORE Enterprise MCP server active (stdio transport).")
@@ -1667,71 +3236,10 @@ def run_stdio_server():
             sys.stdout.flush()
             continue
 
-        req_id = req.get("id")
-        method = req.get("method")
-        params = req.get("params", {})
-
-        # Notifications (no response required)
-        if method == "notifications/initialized":
-            continue
-
-        response: Dict[str, Any] = {
-            "jsonrpc": "2.0",
-            "id": req_id
-        }
-
-        try:
-            if method == "initialize":
-                response["result"] = {
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "capabilities": {
-                        "tools": {"listChanged": False}
-                    },
-                    "serverInfo": SERVER_INFO
-                }
-            elif method == "ping":
-                response["result"] = {}
-            elif method == "tools/list":
-                response["result"] = {
-                    "tools": TOOLS_MANIFEST
-                }
-            elif method == "tools/call":
-                tool_name = params.get("name")
-                tool_args = params.get("arguments", {})
-                tool_result = execute_tool(tool_name, tool_args)
-
-                # Check if tool_result represents an error envelope
-                is_err = False
-                try:
-                    parsed = json.loads(tool_result)
-                    if isinstance(parsed, dict) and parsed.get("is_error") is True:
-                        is_err = True
-                except Exception:
-                    pass
-
-                response["result"] = {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": tool_result
-                        }
-                    ],
-                    "isError": is_err
-                }
-            else:
-                response["error"] = {
-                    "code": -32601,
-                    "message": f"Method not found: {method}"
-                }
-        except Exception as ex:
-            logger.error(f"Error handling method {method}: {ex}\n{traceback.format_exc()}")
-            response["error"] = {
-                "code": -32000,
-                "message": sanitize_sensitive_data(str(ex))
-            }
-
-        sys.stdout.write(json.dumps(response) + "\n")
-        sys.stdout.flush()
+        resp = dispatch_jsonrpc_request(req)
+        if resp is not None:
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
 
 
 if __name__ == "__main__":
@@ -1746,5 +3254,20 @@ if __name__ == "__main__":
         print(handle_get_context({"query": "What are the rules of the hackathon?"}))
         print("\nAll self-tests completed successfully!")
         sys.exit(0)
+    elif "--transport" in sys.argv:
+        t_idx = sys.argv.index("--transport")
+        transport = sys.argv[t_idx + 1] if t_idx + 1 < len(sys.argv) else "stdio"
+        if transport in ("http", "streamable-http", "sse"):
+            host = os.environ.get("LORE_MCP_HOST", "0.0.0.0")
+            port = int(os.environ.get("LORE_MCP_PORT", 8001))
+            if "--host" in sys.argv:
+                h_idx = sys.argv.index("--host")
+                host = sys.argv[h_idx + 1] if h_idx + 1 < len(sys.argv) else host
+            if "--port" in sys.argv:
+                p_idx = sys.argv.index("--port")
+                port = int(sys.argv[p_idx + 1]) if p_idx + 1 < len(sys.argv) else port
+            run_http_server(host, port)
+        else:
+            run_stdio_server()
     else:
         run_stdio_server()

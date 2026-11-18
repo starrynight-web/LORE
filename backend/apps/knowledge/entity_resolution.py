@@ -8,7 +8,9 @@ Resolves canonical entities across siloed documents, rules, and third-party tool
 import re
 import math
 import logging
+import threading
 from typing import List, Dict, Any, Optional, Tuple
+from django.conf import settings
 from django.db.models import Q
 from apps.knowledge.models import (
     CanonicalEntity, KnowledgeItem, DocumentChunk,
@@ -17,6 +19,17 @@ from apps.knowledge.models import (
 from apps.knowledge.ontology import CanonicalEntityType
 
 logger = logging.getLogger(__name__)
+
+
+# GLiNER zero-shot labels mapped to LORE canonical ontology
+GLINER_LABEL_TO_CANONICAL: Dict[str, str] = {
+    "vendor": CanonicalEntityType.VENDOR.value,
+    "software system": CanonicalEntityType.SYSTEM.value,
+    "regulation": CanonicalEntityType.REGULATION.value,
+    "component": CanonicalEntityType.COMPONENT.value,
+    "technology": CanonicalEntityType.SYSTEM.value,
+    "organizational role": CanonicalEntityType.ROLE.value,
+}
 
 
 # Standard regex and dictionary heuristics for zero-shot entity candidates
@@ -61,6 +74,34 @@ class EntityResolutionService:
 
     SIMILARITY_THRESHOLD = 0.92
 
+    _gliner_lock = threading.Lock()
+    _shared_gliner_model = None
+    _gliner_attempted = False
+
+    @classmethod
+    def _get_gliner_model(cls):
+        """Thread-safe lazy loader for local zero-shot GLiNER model."""
+        if cls._shared_gliner_model is not None:
+            return cls._shared_gliner_model
+        with cls._gliner_lock:
+            if cls._shared_gliner_model is not None:
+                return cls._shared_gliner_model
+            if cls._gliner_attempted:
+                return None
+            cls._gliner_attempted = True
+            try:
+                from gliner import GLiNER
+                model_name = getattr(settings, 'GLINER_MODEL_NAME', 'urchade/gliner_small-v2.1')
+                try:
+                    cls._shared_gliner_model = GLiNER.from_pretrained(model_name, local_files_only=True)
+                except Exception:
+                    cls._shared_gliner_model = GLiNER.from_pretrained(model_name, local_files_only=False)
+                logger.info(f"[EntityResolution] Successfully initialized local GLiNER model '{model_name}'")
+                return cls._shared_gliner_model
+            except Exception as exc:
+                logger.info(f"[EntityResolution] GLiNER initialization skipped/unavailable ({exc}), relying on regex taxonomy.")
+                return None
+
     @classmethod
     def extract_mentions(cls, text: str) -> List[Dict[str, Any]]:
         """
@@ -69,6 +110,7 @@ class EntityResolutionService:
         extracted = []
         seen = set()
 
+        # 1. High-confidence regex indicator patterns
         for entity_type, patterns in ENTITY_INDICATOR_PATTERNS.items():
             for pat in patterns:
                 for match in re.finditer(pat, text, re.IGNORECASE):
@@ -84,11 +126,11 @@ class EntityResolutionService:
                             "confidence": 0.95,
                         })
 
-        # General acronym / system identifier extraction heuristic (e.g. POL-SEC-01)
+        # 2. General acronym / system identifier extraction heuristic (e.g. POL-SEC-01)
         general_matches = re.finditer(r"\b([A-Z]{3,}-[A-Z0-9]+(?:\.[0-9]+)?)\b", text)
         for gm in general_matches:
             val = gm.group(1).strip()
-            key = ("system", val.lower())
+            key = (CanonicalEntityType.SYSTEM.value, val.lower())
             if key not in seen:
                 seen.add(key)
                 extracted.append({
@@ -98,6 +140,31 @@ class EntityResolutionService:
                     "end": gm.end(),
                     "confidence": 0.88,
                 })
+
+        # 3. Neural Zero-Shot Entity Extraction via Local GLiNER
+        gliner_model = cls._get_gliner_model()
+        if gliner_model and text and text.strip():
+            try:
+                labels = list(GLINER_LABEL_TO_CANONICAL.keys())
+                predictions = gliner_model.predict_entities(text[:2048], labels, threshold=0.45)
+                for pred in predictions:
+                    ent_text = pred.get("text", "").strip()
+                    raw_label = pred.get("label", "").lower()
+                    if not ent_text or len(ent_text) < 2:
+                        continue
+                    canonical_type = GLINER_LABEL_TO_CANONICAL.get(raw_label, CanonicalEntityType.SYSTEM.value)
+                    key = (canonical_type, ent_text.lower())
+                    if key not in seen:
+                        seen.add(key)
+                        extracted.append({
+                            "name": ent_text,
+                            "entity_type": canonical_type,
+                            "start": pred.get("start", 0),
+                            "end": pred.get("end", len(ent_text)),
+                            "confidence": round(float(pred.get("score", 0.90)), 2),
+                        })
+            except Exception as exc:
+                logger.debug(f"[EntityResolution] GLiNER inference warning: {exc}")
 
         return extracted
 
@@ -153,6 +220,16 @@ class EntityResolutionService:
 
         if alias_match:
             return alias_match, False
+
+        # Attempt local embedding if not provided for semantic matching
+        if embedding is None:
+            try:
+                from apps.retrieval.embeddings import get_embedding_adapter
+                adapter = get_embedding_adapter()
+                if hasattr(adapter, 'embed_text'):
+                    embedding = adapter.embed_text(clean_name)
+            except Exception:
+                embedding = None
 
         # 2. Embedding similarity matching (> 0.92)
         if embedding:

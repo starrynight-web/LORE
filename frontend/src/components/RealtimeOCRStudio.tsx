@@ -227,18 +227,6 @@ export const RealtimeOCRStudio: React.FC<RealtimeOCRStudioProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-[var(--text-muted)] font-semibold">{t('ocr.load_sample')}</span>
             <button
-              onClick={() => loadSample('deed')}
-              className="px-3 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer active:scale-95 shadow-sm"
-              style={{
-                backgroundColor: 'var(--bg-surface-soft)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--text-primary)',
-              }}
-            >
-              <FileText className="w-3.5 h-3.5 text-[var(--warning)] inline mr-1" />
-              <span>{t('ocr.sample_deed')}</span>
-            </button>
-            <button
               onClick={() => loadSample('memo')}
               className="px-3 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer active:scale-95 shadow-sm"
               style={{

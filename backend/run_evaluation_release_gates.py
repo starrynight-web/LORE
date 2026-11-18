@@ -80,6 +80,18 @@ def run_evaluation_pipeline(
     retrieval_service = HybridRetrievalService()
     case_reports: List[SingleCaseEvaluationReport] = []
 
+    # Pre-warm subsystems so first test case does not pay one-off cold-start overhead
+    try:
+        from apps.retrieval.embeddings import get_embedding_adapter
+        get_embedding_adapter().embed_text("warmup")
+    except Exception:
+        pass
+    try:
+        from apps.knowledge.graph_adapters import get_graph_adapter
+        get_graph_adapter("kuzu")
+    except Exception:
+        pass
+
     print("\n--- Running Evaluation Across All Pipeline Stages ---")
 
     for tc in gold_cases:

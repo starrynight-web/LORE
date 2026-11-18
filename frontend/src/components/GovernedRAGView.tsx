@@ -217,13 +217,13 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
   const selectedDocObj = documents.find((d: any) => d.id === selectedDocId);
 
   const sampleQueries = language === 'bn' ? [
-    "উক্ত সাফ কবলা দলিলে সম্পত্তির তফসিল এবং সিএস খতিয়ান নম্বর কত?",
-    "সম্পাদনের পক্ষগণ কারা এবং সাফ কবলা মূল্যের পরিমাণ কত?",
-    "দলিলে কোনো দায়বদ্ধতা বা স্বত্বাধিকারের শর্ত উল্লেখ আছে কি?",
+    "উক্ত নথিতে নীতিগত শর্ত ও সম্মতি সংক্রান্ত বাধ্যবাধকতা কী কী?",
+    "অনুমোদনের দায়িত্বপ্রাপ্ত কর্তৃপক্ষ কারা এবং তাদের নির্ধারিত সীমা কত?",
+    "নথিতে কি কোনো ছাড় বা পরস্পরবিরোধী নির্দেশিকা উল্লেখ আছে?",
     "ক্লাউড স্টোরেজ ও তৃতীয় পক্ষের সেবাদাতা ব্যবহারের আইনি শর্ত কী?"
   ] : [
-    "What is the schedule of property and CS khatian number in the deed?",
-    "Who are the executing parties and what is the consideration amount?",
+    "What are the key policy conditions and compliance requirements?",
+    "Who are the designated authorities and what are their approval thresholds?",
     "Are there any encumbrances, easements, or caveats registered?",
     "What are the compliance requirements for third-party cloud vendors?"
   ];

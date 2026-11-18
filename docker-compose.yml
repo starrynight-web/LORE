@@ -10,25 +10,34 @@ services:
     environment:
       - DEBUG=${DEBUG:-True}
       - SECRET_KEY=${SECRET_KEY:-lore-enterprise-dev-secret-key-2026}
-      - DATABASE_URL=postgres://lore:lore_secret@db:5432/lore_enterprise
+      - DATABASE_URL=${DATABASE_URL:-postgres://lore:lore_secret@postgres:5432/lore_enterprise}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - CELERY_ALWAYS_EAGER=False
-      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - TESSERACT_CMD=/usr/bin/tesseract
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-sentence-transformers}
       - BILLING_PROVIDER=${BILLING_PROVIDER:-local_dev}
       - SEED_DEMO=${SEED_DEMO:-true}
+      - LORE_GRAPH_BACKEND=${LORE_GRAPH_BACKEND:-django_orm}
+      - LORE_VECTOR_BACKEND=${LORE_VECTOR_BACKEND:-qdrant}
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-lore_secret}
     volumes:
       - ./backend:/app
       - backend_media:/app/media
+      - kuzu_data:/app/kuzu_storage
+      - sqlite_data:/app/sqlite_storage
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+        required: false
       qdrant:
         condition: service_healthy
+        required: false
 
   celery_worker:
     build:
@@ -40,37 +49,96 @@ services:
     environment:
       - DEBUG=${DEBUG:-False}
       - SECRET_KEY=${SECRET_KEY:-lore-enterprise-dev-secret-key-2026}
-      - DATABASE_URL=postgres://lore:lore_secret@db:5432/lore_enterprise
+      - DATABASE_URL=${DATABASE_URL:-postgres://lore:lore_secret@postgres:5432/lore_enterprise}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - CELERY_ALWAYS_EAGER=False
-      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
       - TESSERACT_CMD=/usr/bin/tesseract
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-sentence-transformers}
+      - LORE_GRAPH_BACKEND=${LORE_GRAPH_BACKEND:-django_orm}
+      - LORE_VECTOR_BACKEND=${LORE_VECTOR_BACKEND:-qdrant}
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-lore_secret}
     volumes:
       - ./backend:/app
       - backend_media:/app/media
+      - kuzu_data:/app/kuzu_storage
+      - sqlite_data:/app/sqlite_storage
     depends_on:
       - backend
       - redis
-      - db
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lore_enterprise_beat
+    restart: unless-stopped
+    command: celery -A lore_enterprise beat -l info
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY:-lore-enterprise-dev-secret-key-2026}
+      - DATABASE_URL=${DATABASE_URL:-postgres://lore:lore_secret@postgres:5432/lore_enterprise}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_ALWAYS_EAGER=False
+      - LORE_GRAPH_BACKEND=${LORE_GRAPH_BACKEND:-django_orm}
+      - LORE_VECTOR_BACKEND=${LORE_VECTOR_BACKEND:-qdrant}
+    volumes:
+      - ./backend:/app
+      - backend_media:/app/media
+      - kuzu_data:/app/kuzu_storage
+      - sqlite_data:/app/sqlite_storage
+    depends_on:
+      - backend
+      - redis
+
+  mcp_server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lore_enterprise_mcp
+    restart: unless-stopped
+    command: python mcp_server.py --transport http --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY:-lore-enterprise-dev-secret-key-2026}
+      - DATABASE_URL=${DATABASE_URL:-postgres://lore:lore_secret@postgres:5432/lore_enterprise}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - LORE_MCP_HOST=0.0.0.0
+      - LORE_MCP_PORT=8001
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+      - backend_media:/app/media
+      - kuzu_data:/app/kuzu_storage
+      - sqlite_data:/app/sqlite_storage
+    depends_on:
+      - backend
+      - redis
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
     container_name: lore_enterprise_frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
     depends_on:
       - backend
 
-  db:
-    image: postgres:16-alpine
-    container_name: lore_enterprise_db
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: lore_enterprise_postgres
     restart: unless-stopped
     environment:
       - POSTGRES_DB=lore_enterprise
@@ -78,6 +146,7 @@ services:
       - POSTGRES_PASSWORD=lore_secret
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backend/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -127,8 +196,36 @@ services:
     volumes:
       - minio_data:/data
 
+  # Enterprise Profile: Dedicated Clustered Neo4j Graph Database
+  neo4j:
+    image: neo4j:5-community
+    container_name: lore_enterprise_neo4j
+    restart: unless-stopped
+    profiles:
+      - enterprise
+    environment:
+      - NEO4J_AUTH=neo4j/lore_secret
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   qdrant_data:
   backend_media:
   minio_data:
+  neo4j_data:
+  kuzu_data:
+  sqlite_data:

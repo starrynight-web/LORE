@@ -25,6 +25,10 @@ ALLOWED_EXTENSIONS = {
     '.html': 'txt',
     '.htm': 'txt',
     '.json': 'json',
+    '.yaml': 'txt',
+    '.yml': 'txt',
+    '.toml': 'txt',
+    '.eml': 'txt',
 }
 
 class StorageSecurityService:
@@ -111,7 +115,7 @@ class StorageSecurityService:
                 raise ValidationError(f"Invalid legacy Office file '{ext}': Missing binary OLE or PK signature.")
             mime_type = 'application/vnd.ms-powerpoint' if ext == '.ppt' else 'application/vnd.ms-excel'
 
-        elif ext in ('.txt', '.md', '.markdown', '.csv', '.html', '.htm', '.json'):
+        elif ext in ('.txt', '.md', '.markdown', '.csv', '.html', '.htm', '.json', '.yaml', '.yml', '.toml', '.eml'):
             try:
                 header.decode('utf-8')
                 if ext in ('.html', '.htm'):
@@ -120,6 +124,12 @@ class StorageSecurityService:
                     mime_type = 'text/csv'
                 elif ext == '.json':
                     mime_type = 'application/json'
+                elif ext in ('.yaml', '.yml'):
+                    mime_type = 'application/x-yaml'
+                elif ext == '.toml':
+                    mime_type = 'application/toml'
+                elif ext == '.eml':
+                    mime_type = 'message/rfc822'
                 else:
                     mime_type = 'text/plain'
             except UnicodeDecodeError:
@@ -132,6 +142,12 @@ class StorageSecurityService:
                         mime_type = 'text/csv'
                     elif ext == '.json':
                         mime_type = 'application/json'
+                    elif ext in ('.yaml', '.yml'):
+                        mime_type = 'application/x-yaml'
+                    elif ext == '.toml':
+                        mime_type = 'application/toml'
+                    elif ext == '.eml':
+                        mime_type = 'message/rfc822'
                     else:
                         mime_type = 'text/plain'
                 except Exception:

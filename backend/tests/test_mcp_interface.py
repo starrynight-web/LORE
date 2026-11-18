@@ -653,3 +653,200 @@ class TestMCPStdioJsonRpcProtocol:
         assert lines[2]["id"] == 3
         tools = lines[2]["result"]["tools"]
         assert len(tools) >= 15
+
+
+import threading
+import urllib.request
+import urllib.error
+from http.server import ThreadingHTTPServer
+
+
+@pytest.mark.django_db(transaction=True)
+class TestMCPStreamableHttpProtocol:
+    """Verifies Streamable HTTP and SSE transport compliance for ChatGPT Web & remote clients."""
+
+    @pytest.fixture(scope="class")
+    def http_server(self):
+        """Starts an ephemeral ThreadingHTTPServer in a background daemon thread."""
+        server = ThreadingHTTPServer(("127.0.0.1", 0), mcp_server.MCPHttpHandler)
+        host, port = server.server_address
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://{host}:{port}"
+        yield base_url
+        server.shutdown()
+        server.server_close()
+
+    def test_cors_options_preflight(self, http_server):
+        req = urllib.request.Request(f"{http_server}/mcp", method="OPTIONS")
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 204
+            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+            assert "POST" in resp.headers.get("Access-Control-Allow-Methods", "")
+            assert "Mcp-Session-Id" in resp.headers.get("Access-Control-Allow-Headers", "")
+
+    def test_health_and_capabilities_probe(self, http_server):
+        with urllib.request.urlopen(f"{http_server}/health") as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ready"
+            assert data["transport"] == "streamable-http"
+
+        with urllib.request.urlopen(f"{http_server}/mcp") as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["protocolVersion"] == "2024-11-05"
+            assert data["endpoints"]["mcp"] == "/mcp"
+
+    def test_sse_endpoint_stream_probe(self, http_server):
+        req = urllib.request.Request(f"{http_server}/sse", headers={"Accept": "text/event-stream"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            assert "text/event-stream" in resp.headers.get("Content-Type", "")
+            chunk = resp.read().decode("utf-8")
+            assert "event: endpoint" in chunk
+
+    def test_streamable_http_initialize_and_ping(self, http_server):
+        init_payload = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05"}
+        }).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=init_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            assert resp.headers.get("Mcp-Session-Id") is not None
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["id"] == 1
+            assert data["result"]["serverInfo"]["name"] == "lore-enterprise-mcp"
+            assert data["result"]["protocolVersion"] == "2024-11-05"
+
+        ping_payload = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping"}).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=ping_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["id"] == 2
+            assert data["result"] == {}
+
+    def test_streamable_http_notification_accepted(self, http_server):
+        notif_payload = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=notif_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 202
+            assert resp.headers.get("Mcp-Session-Id") is not None
+
+    def test_streamable_http_tools_list_annotations_and_aliases(self, http_server):
+        list_payload = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=list_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            tools = data["result"]["tools"]
+            assert len(tools) >= 30
+
+            tool_map = {t["name"]: t for t in tools}
+            assert "search" in tool_map
+            assert "fetch" in tool_map
+            assert "lore.get_context" in tool_map
+            assert "lore_get_context" in tool_map
+
+            # Annotations verification
+            for t in tools:
+                assert "annotations" in t, f"Tool '{t['name']}' missing annotations"
+                assert "readOnlyHint" in t["annotations"]
+                assert "destructiveHint" in t["annotations"]
+
+            assert tool_map["search"]["annotations"]["readOnlyHint"] is True
+            assert tool_map["fetch"]["annotations"]["readOnlyHint"] is True
+            assert tool_map["lore.get_context"]["annotations"]["readOnlyHint"] is True
+            assert tool_map["lore.log_decision"]["annotations"]["readOnlyHint"] is False
+
+    def test_streamable_http_tools_call_search_and_fetch(self, http_server, mcp_fixture):
+        from django.db import connection
+        ws = mcp_fixture["ws"]
+        doc = mcp_fixture["doc_policy"]
+        connection.close()
+
+        # Call standard search
+        search_payload = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "search",
+                "arguments": {"query": "encryption", "workspace_id": str(ws.id)}
+            }
+        }).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=search_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            content_text = data["result"]["content"][0]["text"]
+            res = json.loads(content_text)
+            assert "results" in res
+
+        # Call standard fetch
+        fetch_payload = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "fetch",
+                "arguments": {"id": str(doc.id), "workspace_id": str(ws.id)}
+            }
+        }).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=fetch_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            content_text = data["result"]["content"][0]["text"]
+            res = json.loads(content_text)
+            assert res["id"] == str(doc.id)
+            assert res["title"] == doc.title
+            assert "lore://document/" in res["url"]
+
+        # Call standard fetch on DocumentChunk directly (verify chunk.text access without AttributeError)
+        chunk = DocumentChunk.objects.filter(document=doc).first()
+        chunk_fetch_payload = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 55,
+            "method": "tools/call",
+            "params": {
+                "name": "fetch",
+                "arguments": {"id": str(chunk.id), "workspace_id": str(ws.id)}
+            }
+        }).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=chunk_fetch_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            content_text = data["result"]["content"][0]["text"]
+            res = json.loads(content_text)
+            assert res["id"] == str(chunk.id)
+            assert "AES-256-GCM" in res["text"]
+            assert "lore://chunk/" in res["url"]
+            assert res["metadata"]["page_number"] == 1
+
+        # Call lore_get_context via underscore alias
+        ctx_payload = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "lore_get_context",
+                "arguments": {"query": "encryption standard", "workspace_id": str(ws.id)}
+            }
+        }).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=ctx_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            content_text = data["result"]["content"][0]["text"]
+            res = json.loads(content_text)
+            assert res["schema"] in ("lore.result/2", "lore.result/1")
+

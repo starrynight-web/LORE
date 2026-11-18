@@ -22,9 +22,13 @@ import {
   FileCheck,
   Activity,
   Key,
-  Paperclip
+  Paperclip,
+  Lock,
+  Copy,
+  Check,
+  X
 } from 'lucide-react';
-import { ChatMessage, Citation } from '@/lib/api';
+import { ChatMessage, Citation, api, ZkAttestationEnvelope } from '@/lib/api';
 
 interface GovernedMessageCardProps {
   message: ChatMessage;
@@ -39,6 +43,35 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
 }) => {
   const [showEvidenceDetails, setShowEvidenceDetails] = useState(false);
   const [showLayersInspector, setShowLayersInspector] = useState(false);
+  const [zkEnvelope, setZkEnvelope] = useState<ZkAttestationEnvelope | null>(
+    (message as any).zk_attestation || null
+  );
+  const [isGeneratingZk, setIsGeneratingZk] = useState(false);
+  const [showZkModal, setShowZkModal] = useState(false);
+  const [zkCopied, setZkCopied] = useState(false);
+
+  const handleExportZkProof = async () => {
+    if (zkEnvelope) {
+      setShowZkModal(true);
+      return;
+    }
+    try {
+      setIsGeneratingZk(true);
+      const wsId = (message as any).workspace_id || (message as any).workspace || 'default-workspace';
+      const envelope = await api.generateZkAttestation({
+        workspace_id: wsId,
+        decision_type: message.decision_type || 'general_inquiry',
+        required_authority_floor: 4,
+        evidence_status: (message.governance_state === 'supported' || message.governance_state === 'qualified') ? 'satisfied' : 'unsatisfied'
+      });
+      setZkEnvelope(envelope);
+      setShowZkModal(true);
+    } catch (err) {
+      console.error('Failed to generate ZK attestation:', err);
+    } finally {
+      setIsGeneratingZk(false);
+    }
+  };
 
   // Helper for Status Badge
   const getStateBadge = (state?: string, directive?: string) => {
@@ -477,6 +510,32 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
               {showLayersInspector ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
           )}
+
+          {/* Export ZK Proof Button / Badge */}
+          {(message.governance_state === 'supported' || message.governance_state === 'qualified' || zkEnvelope) && (
+            <button
+              type="button"
+              onClick={handleExportZkProof}
+              disabled={isGeneratingZk}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition cursor-pointer hover:opacity-90 active:scale-95"
+              style={{
+                backgroundColor: zkEnvelope ? 'var(--accent-light)' : 'transparent',
+                borderColor: zkEnvelope ? 'var(--brand-accent)' : 'var(--border-color)',
+                color: zkEnvelope ? 'var(--brand-accent)' : 'var(--text-primary)',
+              }}
+            >
+              <Key className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+              <span>
+                {isGeneratingZk
+                  ? 'Generating ZK Proof...'
+                  : zkEnvelope
+                  ? zkEnvelope.proof_system.includes('noir')
+                    ? 'ZK-SNARK Verified'
+                    : 'ZKP-Lite Merkle'
+                  : 'Export ZK Proof'}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Citations and Evidence Breakdown */}
@@ -698,6 +757,112 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-[var(--text-secondary)]">Immutable audit ledger recording</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Zero-Knowledge Attestation Modal */}
+        {showZkModal && zkEnvelope && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div 
+              className="w-full max-w-xl rounded-2xl border p-6 space-y-4 shadow-2xl relative"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-primary)'
+              }}
+            >
+              <button 
+                onClick={() => setShowZkModal(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-lg border hover:bg-[var(--accent-light)] transition"
+                style={{ borderColor: 'var(--border-color)' }}
+              >
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              </button>
+
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[var(--accent-light)] text-[var(--brand-accent)]">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold flex items-center gap-2">
+                    <span>Zero-Knowledge Policy & Lineage Attestation</span>
+                    <span 
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border"
+                      style={{
+                        backgroundColor: zkEnvelope.proof_system.includes('noir') ? 'var(--success-bg)' : 'var(--accent-light)',
+                        borderColor: 'var(--border-color)',
+                        color: zkEnvelope.proof_system.includes('noir') ? 'var(--success)' : 'var(--brand-accent)',
+                      }}
+                    >
+                      {zkEnvelope.proof_system.includes('noir') ? 'ZK-SNARK Verified (Zero-Leakage)' : 'ZKP-Lite Merkle Proof'}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Cryptographic attestation for cross-organization compliance & external audits.
+                  </p>
+                </div>
+              </div>
+
+              {/* Zero-Leakage Notice */}
+              <div className="p-3 rounded-xl border bg-[var(--bg-surface-soft)] text-xs space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                <div className="font-bold flex items-center gap-1.5 text-[var(--success)]">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Zero-Leakage Cryptographic Assurance</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                  Proves that the governing rule belongs to the committed workspace state root, has status = stable, satisfies the authority floor, and verifies evidence sufficiency without disclosing confidential policy statements or source paths.
+                </p>
+              </div>
+
+              {/* Public Inputs */}
+              <div className="space-y-2 text-xs">
+                <div className="font-bold text-[var(--text-muted)] uppercase tracking-wider text-[10px]">
+                  Public Inputs (Safe for External Verification)
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                  <div className="p-2 rounded-lg border bg-[var(--bg-surface-soft)]" style={{ borderColor: 'var(--border-color)' }}>
+                    <div className="text-[9px] uppercase text-[var(--text-muted)]">State Root</div>
+                    <div className="truncate font-bold text-[var(--brand-accent)]">{zkEnvelope.workspace_state_root}</div>
+                  </div>
+                  <div className="p-2 rounded-lg border bg-[var(--bg-surface-soft)]" style={{ borderColor: 'var(--border-color)' }}>
+                    <div className="text-[9px] uppercase text-[var(--text-muted)]">Proof System</div>
+                    <div className="font-bold">{zkEnvelope.proof_system}</div>
+                  </div>
+                  <div className="p-2 rounded-lg border bg-[var(--bg-surface-soft)]" style={{ borderColor: 'var(--border-color)' }}>
+                    <div className="text-[9px] uppercase text-[var(--text-muted)]">Decision Type</div>
+                    <div>{zkEnvelope.public_inputs?.decision_type || 'general_inquiry'}</div>
+                  </div>
+                  <div className="p-2 rounded-lg border bg-[var(--bg-surface-soft)]" style={{ borderColor: 'var(--border-color)' }}>
+                    <div className="text-[9px] uppercase text-[var(--text-muted)]">Authority Floor</div>
+                    <div>&gt;= {zkEnvelope.public_inputs?.required_authority_floor || 4}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(zkEnvelope, null, 2));
+                    setZkCopied(true);
+                    setTimeout(() => setZkCopied(false), 2000);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-[var(--accent-light)] transition cursor-pointer"
+                  style={{ borderColor: 'var(--border-color)' }}
+                >
+                  {zkCopied ? <Check className="w-3.5 h-3.5 text-[var(--success)]" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{zkCopied ? 'Copied JSON' : 'Copy Proof Envelope'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowZkModal(false)}
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[var(--brand-accent)] text-white hover:opacity-90 transition cursor-pointer"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>

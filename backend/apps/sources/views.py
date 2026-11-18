@@ -746,6 +746,11 @@ def connector_status_view(request):
     """
     from apps.sources.connectors.registry import EnterpriseConnectorRegistry
     ws_id = request.query_params.get('workspace_id')
+    if not ws_id and request.user.is_authenticated:
+        from apps.workspaces.models import WorkspaceMembership
+        m = WorkspaceMembership.objects.filter(user=request.user).first()
+        if m:
+            ws_id = str(m.workspace_id)
     statuses = EnterpriseConnectorRegistry.get_connectors_status(workspace_id=ws_id)
     return Response({"connectors": statuses, "count": len(statuses)})
 

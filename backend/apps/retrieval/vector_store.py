@@ -143,9 +143,15 @@ class QdrantVectorStore(BaseVectorStore):
             if filter_dict:
                 must_conditions = []
                 for k, v in filter_dict.items():
-                    must_conditions.append(
-                        rest_models.FieldCondition(key=k, match=rest_models.MatchValue(value=v))
-                    )
+                    if isinstance(v, (list, tuple, set)):
+                        v_list = [str(x) for x in v]
+                        must_conditions.append(
+                            rest_models.FieldCondition(key=k, match=rest_models.MatchAny(any=v_list))
+                        )
+                    else:
+                        must_conditions.append(
+                            rest_models.FieldCondition(key=k, match=rest_models.MatchValue(value=v))
+                        )
                 if must_conditions:
                     query_filter = rest_models.Filter(must=must_conditions)
 
@@ -198,9 +204,19 @@ class QdrantVectorStore(BaseVectorStore):
                 if filter_dict:
                     match = True
                     for fk, fv in filter_dict.items():
-                        if str(payload.get(fk, '')) != str(fv):
-                            match = False
-                            break
+                        if isinstance(fv, (list, tuple, set)):
+                            val = payload.get(fk)
+                            if isinstance(val, (list, tuple, set)):
+                                if not any(x in fv for x in val):
+                                    match = False
+                                    break
+                            elif val not in fv and str(val) not in [str(x) for x in fv]:
+                                match = False
+                                break
+                        else:
+                            if str(payload.get(fk, '')) != str(fv):
+                                match = False
+                                break
                     if not match:
                         continue
                 text = str(payload.get('text', '')).lower()
@@ -245,6 +261,21 @@ class QdrantVectorStore(BaseVectorStore):
             )
         except Exception as e:
             logger.warning(f"Error deleting chunks for document {document_id}: {e}")
+
+    def delete_workspace_vectors(self, collection_name: str, workspace_id: str):
+        if not self.client:
+            return
+        self._ensure_collection(collection_name)
+        try:
+            from qdrant_client.http import models as rest_models
+            self.client.delete(
+                collection_name=collection_name,
+                points_selector=rest_models.Filter(
+                    must=[rest_models.FieldCondition(key="workspace_id", match=rest_models.MatchValue(value=str(workspace_id)))]
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Error deleting vectors for workspace {workspace_id}: {e}")
 
     def count_document_chunks(self, collection_name: str, document_id: str) -> int:
         if not self.client:
@@ -376,8 +407,17 @@ class PGVectorStore(BaseVectorStore):
         if filter_dict:
             for k, v in filter_dict.items():
                 if k in ['document_id', 'rule_id', 'workspace_id', 'organization_id']:
-                    sql += f" AND {k} = %s"
-                    params.append(str(v))
+                    if isinstance(v, (list, tuple, set)):
+                        v_list = [str(item) for item in v]
+                        if v_list:
+                            placeholders = ', '.join(['%s'] * len(v_list))
+                            sql += f" AND {k} IN ({placeholders})"
+                            params.extend(v_list)
+                        else:
+                            sql += " AND 1=0"
+                    else:
+                        sql += f" AND {k} = %s"
+                        params.append(str(v))
                 else:
                     extra_filters[k] = v
 
@@ -394,7 +434,26 @@ class PGVectorStore(BaseVectorStore):
                 if extra_filters:
                     match = True
                     for fk, fv in extra_filters.items():
-                        if str(payload.get(fk, '')) != str(fv):
+                        if fk == 'allowed_roles' and isinstance(fv, (list, set, tuple)):
+                            doc_roles = payload.get('allowed_roles') or []
+                            if doc_roles and not any(r in fv for r in doc_roles):
+                                match = False
+                                break
+                        elif fk == 'access_level' and isinstance(fv, (list, set, tuple)):
+                            doc_al = payload.get('access_level')
+                            if doc_al and doc_al not in fv:
+                                match = False
+                                break
+                        elif isinstance(fv, (list, set, tuple)):
+                            val = payload.get(fk)
+                            if isinstance(val, (list, set, tuple)):
+                                if not any(r in fv for r in val):
+                                    match = False
+                                    break
+                            elif val not in fv and str(val) not in [str(x) for x in fv]:
+                                match = False
+                                break
+                        elif str(payload.get(fk, '')) != str(fv):
                             match = False
                             break
                     if not match:
@@ -426,8 +485,17 @@ class PGVectorStore(BaseVectorStore):
         if filter_dict:
             for k, v in filter_dict.items():
                 if k in ['document_id', 'rule_id', 'workspace_id', 'organization_id']:
-                    sql += f" AND {k} = %s"
-                    params.append(str(v))
+                    if isinstance(v, (list, tuple, set)):
+                        v_list = [str(item) for item in v]
+                        if v_list:
+                            placeholders = ', '.join(['%s'] * len(v_list))
+                            sql += f" AND {k} IN ({placeholders})"
+                            params.extend(v_list)
+                        else:
+                            sql += " AND 1=0"
+                    else:
+                        sql += f" AND {k} = %s"
+                        params.append(str(v))
                 else:
                     extra_filters[k] = v
 
@@ -443,7 +511,26 @@ class PGVectorStore(BaseVectorStore):
                 if extra_filters:
                     match = True
                     for fk, fv in extra_filters.items():
-                        if str(payload.get(fk, '')) != str(fv):
+                        if fk == 'allowed_roles' and isinstance(fv, (list, set, tuple)):
+                            doc_roles = payload.get('allowed_roles') or []
+                            if doc_roles and not any(r in fv for r in doc_roles):
+                                match = False
+                                break
+                        elif fk == 'access_level' and isinstance(fv, (list, set, tuple)):
+                            doc_al = payload.get('access_level')
+                            if doc_al and doc_al not in fv:
+                                match = False
+                                break
+                        elif isinstance(fv, (list, set, tuple)):
+                            val = payload.get(fk)
+                            if isinstance(val, (list, set, tuple)):
+                                if not any(r in fv for r in val):
+                                    match = False
+                                    break
+                            elif val not in fv and str(val) not in [str(x) for x in fv]:
+                                match = False
+                                break
+                        elif str(payload.get(fk, '')) != str(fv):
                             match = False
                             break
                     if not match:
@@ -464,20 +551,53 @@ class PGVectorStore(BaseVectorStore):
         scored.sort(key=lambda x: x['score'], reverse=True)
         return scored[:limit]
 
-    def search_hybrid(self, collection_name: str, query_vector: List[float], query_text: str, filter_dict: Optional[Dict[str, Any]] = None, alpha: float = 0.5, limit: int = 10) -> List[Dict[str, Any]]:
+    def search_hybrid(
+        self,
+        collection_name: str,
+        query_vector: List[float],
+        query_text: str,
+        filter_dict: Optional[Dict[str, Any]] = None,
+        alpha: float = 0.5,
+        limit: int = 10,
+        use_rrf: bool = True,
+        rrf_k: int = 60,
+    ) -> List[Dict[str, Any]]:
+        """
+        Hybrid search combining cosine similarity ANN embeddings with lexical search.
+        Supports Reciprocal Rank Fusion (RRF, k=60) or convex alpha blending.
+        """
         dense_hits = self.search(collection_name=collection_name, query_vector=query_vector, filter_dict=filter_dict, limit=limit * 2)
         lexical_hits = self.search_lexical(collection_name=collection_name, query_text=query_text, filter_dict=filter_dict, limit=limit * 2)
 
-        combined: Dict[str, Dict[str, Any]] = {}
-        for d in dense_hits:
-            combined[d['id']] = {'score': alpha * d['score'], 'payload': d['payload']}
-        for l in lexical_hits:
-            if l['id'] in combined:
-                combined[l['id']]['score'] += (1.0 - alpha) * l['score']
-            else:
-                combined[l['id']] = {'score': (1.0 - alpha) * l['score'], 'payload': l['payload']}
+        if use_rrf:
+            # Reciprocal Rank Fusion (RRF, k=60)
+            rrf_scores: Dict[str, Dict[str, Any]] = {}
+            for rank, d in enumerate(dense_hits, start=1):
+                cid = d['id']
+                rrf_score = 1.0 / (rrf_k + rank)
+                rrf_scores[cid] = {'score': rrf_score, 'payload': d['payload']}
 
-        out = [{'id': k, 'score': round(v['score'], 4), 'payload': v['payload']} for k, v in combined.items()]
+            for rank, l in enumerate(lexical_hits, start=1):
+                cid = l['id']
+                rrf_score = 1.0 / (rrf_k + rank)
+                if cid in rrf_scores:
+                    rrf_scores[cid]['score'] += rrf_score
+                else:
+                    rrf_scores[cid] = {'score': rrf_score, 'payload': l['payload']}
+
+            out = [{'id': k, 'score': round(v['score'], 6), 'payload': v['payload']} for k, v in rrf_scores.items()]
+        else:
+            combined: Dict[str, Dict[str, Any]] = {}
+            for d in dense_hits:
+                combined[d['id']] = {'score': alpha * d['score'], 'payload': d['payload']}
+            for l in lexical_hits:
+                if l['id'] in combined:
+                    combined[l['id']]['score'] += (1.0 - alpha) * l['score']
+                else:
+                    combined[l['id']] = {'score': (1.0 - alpha) * l['score'], 'payload': l['payload']}
+
+            out = [{'id': k, 'score': round(v['score'], 4), 'payload': v['payload']} for k, v in combined.items()]
+
         out.sort(key=lambda x: x['score'], reverse=True)
         return out[:limit]
 
@@ -488,6 +608,14 @@ class PGVectorStore(BaseVectorStore):
             cursor.execute("""
                 DELETE FROM lore_pgvector_storage WHERE collection_name = %s AND document_id = %s;
             """, [collection_name, str(document_id)])
+
+    def delete_workspace_vectors(self, collection_name: str, workspace_id: str):
+        from django.db import connection
+        self._ensure_table()
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM lore_pgvector_storage WHERE workspace_id = %s;
+            """, [str(workspace_id)])
 
     def count_document_chunks(self, collection_name: str, document_id: str) -> int:
         from django.db import connection
@@ -511,15 +639,26 @@ class PGVectorStore(BaseVectorStore):
             return {str(r[0]) for r in rows if r[0]}
 
 
+# Class Aliases for Enterprise Storage Parity
+PgVectorLexicalAdapter = PGVectorStore
+SqliteVecFtsAdapter = BaseVectorStore
+VectorLexicalStoreAdapter = BaseVectorStore
+
+
 _VECTOR_STORE_REGISTRY: Dict[str, BaseVectorStore] = {}
 
 
 def get_vector_store(backend: Optional[str] = None, vector_dim: int = 384) -> BaseVectorStore:
     """
     Factory to retrieve configured Vector Store.
-    Supported backends: 'qdrant' (default), 'pgvector', 'postgres'.
+    Supported backends: 'qdrant' (default), 'pgvector', 'postgres', 'sqlite_vec'.
+    Respects LORE_VECTOR_BACKEND and VECTOR_STORE_BACKEND environment settings.
     """
-    chosen = (backend or getattr(settings, 'VECTOR_STORE_BACKEND', 'qdrant')).lower()
+    chosen = (
+        backend
+        or getattr(settings, 'LORE_VECTOR_BACKEND', None)
+        or getattr(settings, 'VECTOR_STORE_BACKEND', 'qdrant')
+    ).lower()
     if chosen in _VECTOR_STORE_REGISTRY:
         return _VECTOR_STORE_REGISTRY[chosen]
 

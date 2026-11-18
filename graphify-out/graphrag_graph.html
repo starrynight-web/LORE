@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphify - graphify-out/graphrag_graph.html</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+        integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"
+        crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #0f0f1a; --panel: #1a1a2e; --border: #2a2a4e; --input-border: #3a3a5e;
+    --text: #e0e0e0; --text-2: #aaa; --text-3: #ccc; --muted: #555; --count: #666;
+    --neighbor-border: #333; --node-label: #ffffff;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --panel: #f8f9fa; --border: #d9dee5; --input-border: #c3cad4;
+    --text: #222222; --text-2: #666666; --text-3: #333333; --muted: #888888; --count: #777777;
+    --neighbor-border: #ccc; --node-label: #222222;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #graph { flex: 1; }
+  #sidebar { width: 280px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  #search-wrap { padding: 12px; border-bottom: 1px solid var(--border); }
+  #search { width: 100%; background: var(--bg); border: 1px solid var(--input-border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  #search:focus { border-color: #4E79A7; }
+  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid var(--border); display: none; }
+  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: var(--border); }
+  #info-panel { padding: 14px; border-bottom: 1px solid var(--border); min-height: 140px; }
+  #info-panel h3 { font-size: 13px; color: var(--text-2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #info-content { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+  #info-content .field { margin-bottom: 5px; }
+  #info-content .field b { color: var(--text); }
+  #info-content .empty { color: var(--muted); font-style: italic; }
+  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid var(--neighbor-border); }
+  .neighbor-link:hover { background: var(--border); }
+  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+  #legend-wrap h3 { font-size: 13px; color: var(--text-2); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
+  .legend-item:hover { background: var(--border); padding-left: 4px; }
+  .legend-item.dimmed { opacity: 0.35; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { color: var(--count); font-size: 11px; }
+  #stats { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+  #legend-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; }
+  #legend-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--text-2); user-select: none; }
+  #legend-controls label:hover { color: var(--text); }
+  .legend-cb, #select-all-cb { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid var(--input-border); border-radius: 3px; background: var(--bg); cursor: pointer; position: relative; flex-shrink: 0; }
+  .legend-cb:checked, #select-all-cb:checked { background: #4E79A7; border-color: #4E79A7; }
+  .legend-cb:checked::after, #select-all-cb:checked::after { content: ''; position: absolute; left: 3.5px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  #select-all-cb:indeterminate { background: #4E79A7; border-color: #4E79A7; }
+  #select-all-cb:indeterminate::after { content: ''; position: absolute; left: 2px; top: 5px; width: 8px; height: 2px; background: #fff; border: none; transform: none; }
+  #theme-wrap { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  #theme-wrap button { flex: 1; background: var(--bg); color: var(--text-2); border: 1px solid var(--input-border); border-radius: 4px; padding: 3px 0; font-size: 11px; cursor: pointer; }
+  #theme-wrap button:hover { color: var(--text); }
+  #theme-wrap button[aria-pressed="true"] { background: #4E79A7; border-color: #4E79A7; color: #fff; }
+</style>
+<script id="graphify-theme-init">
+// Apply the saved theme before first paint (#3894). No saved choice keeps the
+// historical dark look; "system" follows prefers-color-scheme.
+(function () {
+  var pref = null;
+  try { pref = localStorage.getItem('graphify-theme'); } catch (e) {}
+  var t = pref === 'light' ? 'light'
+    : pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light'
+    : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+</head>
+<body>
+<div id="graph"></div>
+<div id="sidebar">
+  <div id="theme-wrap" role="group" aria-label="Theme">
+    <button type="button" data-theme-choice="light">Light</button>
+    <button type="button" data-theme-choice="dark">Dark</button>
+    <button type="button" data-theme-choice="system">System</button>
+  </div>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="info-panel">
+    <h3>Node Info</h3>
+    <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
+  </div>
+  <div id="legend-wrap">
+    <h3>Communities</h3>
+    <div id="legend-controls">
+      <label><input type="checkbox" id="select-all-cb" checked onchange="toggleAllCommunities(!this.checked)">Select All</label>
+    </div>
+    <div id="legend"></div>
+  </div>
+  <div id="stats">84 nodes &middot; 92 edges &middot; 6 communities</div>
+</div>
+<script>
+const RAW_NODES = [{"id": "comm-root-l1", "label": "Level-1 Enterprise Root Community", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Level-1 Enterprise Root Community", "community": 0, "community_name": "Level-1 Enterprise Sovereign Governance Root", "source_file": "", "file_type": "", "degree": 5}, {"id": "comm-sec-l0", "label": "RAPTOR: Data Security & Cryptography", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "RAPTOR: Data Security & Cryptography", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 3}, {"id": "comm-ven-l0", "label": "RAPTOR: Vendor Assessment & Security", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 30.0, "font": {"size": 12, "color": "#ffffff"}, "title": "RAPTOR: Vendor Assessment & Security", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 6}, {"id": "comm-exp-l0", "label": "RAPTOR: Travel & Expense Policy", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "RAPTOR: Travel & Expense Policy", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 9}, {"id": "comm-pro-l0", "label": "RAPTOR: Procurement Authority Matrix", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 33.3, "font": {"size": 12, "color": "#ffffff"}, "title": "RAPTOR: Procurement Authority Matrix", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 7}, {"id": "comm-iam-l0", "label": "RAPTOR: Identity & Access Control", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "RAPTOR: Identity & Access Control", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 5}, {"id": "ent-soc2", "label": "SOC 2 Type II", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "SOC 2 Type II", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 0}, {"id": "ent-iso27001", "label": "ISO/IEC 27001", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "ISO/IEC 27001", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 2}, {"id": "ent-gdpr", "label": "EU GDPR", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "EU GDPR", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 0}, {"id": "ent-aws-kms", "label": "AWS KMS", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "AWS KMS", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 2}, {"id": "ent-cloudbox", "label": "CloudBox Inc.", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "CloudBox Inc.", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 4}, {"id": "ent-vanta", "label": "Vanta Audit", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Vanta Audit", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 0}, {"id": "ent-atlas", "label": "Atlas Software", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Atlas Software", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 5}, {"id": "ent-servicenow", "label": "ServiceNow ITSM", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "ServiceNow ITSM", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 0}, {"id": "ent-dpo", "label": "Data Protection Officer", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Data Protection Officer", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 0}, {"id": "ent-ciso", "label": "Chief Information Security Officer", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Chief Information Security Officer", "community": 0, "community_name": "Level-1 Enterprise Sovereign Governance Root", "source_file": "", "file_type": "", "degree": 0}, {"id": "ent-vp-finance", "label": "VP of Finance", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "VP of Finance", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 5}, {"id": "ent-prod-db", "label": "Production Database", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 10.0, "font": {"size": 0, "color": "#ffffff"}, "title": "Production Database", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 0}, {"id": "ent-audit-log", "label": "Immutable Audit Vault", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Immutable Audit Vault", "community": 0, "community_name": "Level-1 Enterprise Sovereign Governance Root", "source_file": "", "file_type": "", "degree": 1}, {"id": "doc-a0ebac53-6da8-4afa-a2ae-dade3b702acc", "label": "DOC-001: DOC-001 \u2014 Travel_Expense_Pol", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-001: DOC-001 \u2014 Travel_Expense_Pol", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-b687e58c-61c6-4b0c-b646-7a6623d962c4", "label": "DOC-002: DOC-002 \u2014 Travel_Expense_Pol", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-002: DOC-002 \u2014 Travel_Expense_Pol", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 4}, {"id": "doc-bbdd16db-7b8d-49f4-b20f-9ebf557676c1", "label": "DOC-003: DOC-003 \u2014 Procurement_Author", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-003: DOC-003 \u2014 Procurement_Author", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 4}, {"id": "doc-97ce89f1-16a0-42da-99ae-31268a6fa53c", "label": "DOC-004: DOC-004 \u2014 Emergency_Procurem", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 30.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-004: DOC-004 \u2014 Emergency_Procurem", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 6}, {"id": "doc-b088d764-1c27-48c5-9dc3-606c7b755832", "label": "DOC-005: DOC-005 \u2014 Annual_Leave_Polic", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-005: DOC-005 \u2014 Annual_Leave_Polic", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-d23e085e-ef55-4cd8-bbaa-6795612f9857", "label": "DOC-006: DOC-006 \u2014 Employee_Code_of_C", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-006: DOC-006 \u2014 Employee_Code_of_C", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-bbb97061-2b37-463e-8601-eff7b9049f12", "label": "DOC-007: DOC-007 \u2014 Information_Securi", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-007: DOC-007 \u2014 Information_Securi", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 5}, {"id": "doc-9c487c2b-53c6-4b8a-9622-d18dbb58731f", "label": "DOC-008: DOC-008 \u2014 Records_Retention_", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-008: DOC-008 \u2014 Records_Retention_", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 4}, {"id": "doc-dd81feba-ab07-4e45-a467-31e337389fc5", "label": "DOC-009: DOC-009 \u2014 Vendor_Contract_At", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-009: DOC-009 \u2014 Vendor_Contract_At", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-e39fc9f7-16a1-478e-bae7-57a6c87f28a1", "label": "DOC-010: DOC-010 \u2014 Atlas_Invoice_2026", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-010: DOC-010 \u2014 Atlas_Invoice_2026", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 5}, {"id": "doc-09a2f5cc-28b2-416a-8ef6-b745fed89c14", "label": "DOC-011: DOC-011 \u2014 Travel_Team_Intern", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-011: DOC-011 \u2014 Travel_Team_Intern", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 2}, {"id": "doc-05ffce02-acee-49b8-8639-23d34dfec6ad", "label": "DOC-012: DOC-012 \u2014 Supplier_Quotes_Q3", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-012: DOC-012 \u2014 Supplier_Quotes_Q3", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-0e09d3d1-490d-40c1-ac71-12b923933863", "label": "DOC-014: DOC-014 \u2014 Incomplete_Expense", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-014: DOC-014 \u2014 Incomplete_Expense", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 2}, {"id": "doc-3aee6f5e-3f2e-4c05-a561-5a160f253599", "label": "DOC-015: DOC-015 \u2014 Travel_Policy_Amen", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-015: DOC-015 \u2014 Travel_Policy_Amen", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-3424b3d4-4df8-4ed3-ba17-57d207f0d3d9", "label": "DOC-016: DOC-016_Archived_Travel_Poli", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-016: DOC-016_Archived_Travel_Poli", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 5}, {"id": "doc-16330c6f-7583-4ce0-ac56-b3a262df2765", "label": "DOC-017: DOC-017_Workspace_Access_Req", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-017: DOC-017_Workspace_Access_Req", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-392cfb5c-db3e-4711-bb3b-8ec20ae15f7d", "label": "DOC-018: DOC-018_Capital_Purchase_Dec", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-018: DOC-018_Capital_Purchase_Dec", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 4}, {"id": "doc-edf714c8-f6f6-4b20-b283-4467777b4bd3", "label": "DOC-019: DOC-019_Procurement_Review_M", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-019: DOC-019_Procurement_Review_M", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 5}, {"id": "doc-16cb8e08-0375-455a-a159-c99f7b66a9b0", "label": "DOC-020: DOC-020_Master_Document_Regi", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-020: DOC-020_Master_Document_Regi", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-7ba4e728-e3de-464b-9ef4-5ffa9c67ac63", "label": "DOC-021: DOC-021 \u2014 Travel & Expense P", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.7, "font": {"size": 12, "color": "#ffffff"}, "title": "DOC-021: DOC-021 \u2014 Travel & Expense P", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 2}, {"id": "doc-3c604e8d-1842-489f-bcad-4000b89534fa", "label": "POL-SEC-041: Cloud Security Poli", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 23.3, "font": {"size": 12, "color": "#ffffff"}, "title": "POL-SEC-041: Cloud Security Poli", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 4}, {"id": "doc-66454c21-8d4c-497e-91cc-9dd132c84298", "label": "Engineering Wiki Entry \u2014 CloudBo", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Engineering Wiki Entry \u2014 CloudBo", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-123f6e69-4713-4308-a620-b42e1f48cf55", "label": "ASM-CLB-002: CloudBox Vendor Ass", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "ASM-CLB-002: CloudBox Vendor Ass", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 3}, {"id": "doc-4c34ce5d-de3c-4873-b682-66da45eb053a", "label": "Procurement Note \u2014 CloudBox Ente", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 26.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Procurement Note \u2014 CloudBox Ente", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 5}, {"id": "doc-eef428e3-88aa-42bc-bc16-04e6a118694b", "label": "Executed Vendor Agreement \u2014 Clou", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Executed Vendor Agreement \u2014 Clou", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 3}, {"id": "chk-b71680aa-2b86-48f2-8cb4-78801555e643", "label": "DOC-001 \u00a7General", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-001 \u00a7General", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-febd3816-884c-41be-8acc-3cbb7cb16a58", "label": "DOC-002 \u00a7General", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-002 \u00a7General", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-ca4bb732-b1b0-4c59-8abf-6e936218663a", "label": "DOC-003 \u00a7Sheet: Authority M", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-003 \u00a7Sheet: Authority M", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-7542f924-3be5-4e88-8136-348c29c86634", "label": "DOC-004 \u00a7General", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-004 \u00a7General", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-ab017ff6-0e6d-4c14-87fc-875fd12a22b9", "label": "DOC-005 \u00a7General", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-005 \u00a7General", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-f0dfcda5-7321-4fed-8547-3bc50f66a4ca", "label": "DOC-006 \u00a7General", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-006 \u00a7General", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-eaa83f00-46ed-43cf-936d-1016247b2247", "label": "DOC-007 \u00a7General", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-007 \u00a7General", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-b158ee1a-7cd3-49b2-aa41-ef7a934a5dad", "label": "DOC-008 \u00a7Sheet: Retention S", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-008 \u00a7Sheet: Retention S", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-5cb34cd3-c77b-4517-ba35-4dbf100caf24", "label": "DOC-009 \u00a7General", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-009 \u00a7General", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-bd6cb136-156c-4ce7-ae25-b1049aa4e174", "label": "DOC-010 \u00a7General", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-010 \u00a7General", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-ed80e794-5c2d-4590-86bf-089a4e88403a", "label": "DOC-011 \u00a7General", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-011 \u00a7General", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-85fcd186-aa99-4299-9b3f-c8b5e5ddbf91", "label": "DOC-012 \u00a7Sheet: Q3 Supplier", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-012 \u00a7Sheet: Q3 Supplier", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-993a3d16-449f-4676-be4b-bd5c45e09310", "label": "DOC-014 \u00a7General", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-014 \u00a7General", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-06649201-827f-4729-8d8b-cb1c6463047f", "label": "DOC-015 \u00a7General", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-015 \u00a7General", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-99cf292e-1143-4cd9-a225-815b5bd7cd3c", "label": "DOC-016 \u00a7General", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-016 \u00a7General", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-ce2a2f8a-ddbe-4c4b-894b-a5535e188a06", "label": "DOC-017 \u00a7General", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-017 \u00a7General", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-74e5099d-bec0-4d8e-bde5-91914f8e9114", "label": "DOC-018 \u00a7General", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-018 \u00a7General", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-c95af4fe-e23a-4aca-8331-288f2cc3540a", "label": "DOC-019 \u00a7General", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-019 \u00a7General", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-656f57d9-beab-40c3-bd96-63bfdc855ebf", "label": "DOC-020 \u00a7Sheet: Document Re", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-020 \u00a7Sheet: Document Re", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-c820ed5e-6c8f-4593-a563-ac62c6aedbf1", "label": "Northstar Digital \u2014 Clou", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Northstar Digital \u2014 Clou", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-4379db97-3ccf-4842-ab62-56663ab25a53", "label": "Engineering Wiki: CloudB", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Engineering Wiki: CloudB", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-93c86eb3-83dc-48d7-b8c9-2774f668cfa3", "label": "Vendor Security Assessme", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Vendor Security Assessme", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-11ce5f21-e01d-4dd5-a82b-07984a486506", "label": "General", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "General", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-752aabb6-20f3-4efc-bdc2-78c90dd959c9", "label": "Master Services Agreemen", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Master Services Agreemen", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-bb9cac19-22d8-40fd-a745-aec3ab3447c9", "label": "DOC-001 \u00a71. Purpose and Sco", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-001 \u00a71. Purpose and Sco", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-a64d94aa-ae11-442b-9a75-a07447623b61", "label": "DOC-002 \u00a71. Purpose and Sco", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-002 \u00a71. Purpose and Sco", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-9370c557-eb90-4b03-8cbd-465f6b8d6d9c", "label": "DOC-004 \u00a71. Purpose", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-004 \u00a71. Purpose", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-8d83b0b4-3076-46d1-821c-41cd01981f3d", "label": "DOC-005 \u00a71. Purpose and Sco", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-005 \u00a71. Purpose and Sco", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-014540f1-9786-42ab-9a90-f453cb01a4d6", "label": "DOC-006 \u00a71. Purpose and Sco", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-006 \u00a71. Purpose and Sco", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-b4e4a590-a162-4091-bad0-9b927122b535", "label": "DOC-007 \u00a71. Purpose and Sco", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-007 \u00a71. Purpose and Sco", "community": 1, "community_name": "Domain: Data Security & Cryptographic Standards", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-87d79a78-8d9c-4139-ad57-0729e84c3f8a", "label": "DOC-008 \u00a7Sheet: Retention S", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-008 \u00a7Sheet: Retention S", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-b1ceaaef-2fbc-4550-bf53-64fd569399eb", "label": "DOC-009 \u00a71. Parties and Pur", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-009 \u00a71. Parties and Pur", "community": 2, "community_name": "Domain: Third-Party Vendor Risk & CloudBox Assessment", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-6e8379e4-1910-4f4c-9398-5c7e8ee14370", "label": "DOC-010 \u00a7Contract term: 1 J", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-010 \u00a7Contract term: 1 J", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-0835a664-9689-43a2-be9d-4ae74ca4f944", "label": "DOC-012 \u00a7Sheet: Document Me", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-012 \u00a7Sheet: Document Me", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-78fd0fd3-f562-433e-bac8-b63902977480", "label": "DOC-015 \u00a71. Purpose", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-015 \u00a71. Purpose", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-3203dbf6-374e-4ccc-8fcc-24958c85552c", "label": "DOC-016 \u00a71. Purpose and Sco", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-016 \u00a71. Purpose and Sco", "community": 3, "community_name": "Domain: Travel & Corporate Expense Compliance", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-4c6ae09f-bcb6-43b0-b324-ee685867b5da", "label": "DOC-017 \u00a7Access request sum", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-017 \u00a7Access request sum", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-0d917b83-08ec-42f5-8054-0585182c4020", "label": "DOC-018 \u00a71. Executive summa", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-018 \u00a71. Executive summa", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-0bfb54fa-eb8d-43db-b613-437302817199", "label": "DOC-019 \u00a7Vendor quote", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-019 \u00a7Vendor quote", "community": 4, "community_name": "Domain: Capital Procurement & Authority Thresholds", "source_file": "", "file_type": "", "degree": 1}, {"id": "chk-5fed6ff5-ff32-4d93-92df-c221473f40c4", "label": "DOC-020 \u00a7Sheet: Document Re", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.3, "font": {"size": 0, "color": "#ffffff"}, "title": "DOC-020 \u00a7Sheet: Document Re", "community": 5, "community_name": "Domain: Identity, Access Control & IT Operations", "source_file": "", "file_type": "", "degree": 1}];
+const RAW_EDGES = [{"from": "comm-root-l1", "to": "comm-sec-l0", "label": "GOVERNED_BY", "title": "GOVERNED_BY [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "comm-root-l1", "to": "comm-ven-l0", "label": "GOVERNED_BY", "title": "GOVERNED_BY [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "comm-root-l1", "to": "comm-exp-l0", "label": "GOVERNED_BY", "title": "GOVERNED_BY [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "comm-root-l1", "to": "comm-pro-l0", "label": "GOVERNED_BY", "title": "GOVERNED_BY [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "comm-root-l1", "to": "comm-iam-l0", "label": "GOVERNED_BY", "title": "GOVERNED_BY [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "comm-sec-l0", "to": "doc-bbb97061-2b37-463e-8601-eff7b9049f12", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-sec-l0", "to": "doc-3c604e8d-1842-489f-bcad-4000b89534fa", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-ven-l0", "to": "doc-dd81feba-ab07-4e45-a467-31e337389fc5", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-ven-l0", "to": "doc-66454c21-8d4c-497e-91cc-9dd132c84298", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-ven-l0", "to": "doc-123f6e69-4713-4308-a620-b42e1f48cf55", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-ven-l0", "to": "doc-4c34ce5d-de3c-4873-b682-66da45eb053a", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-ven-l0", "to": "doc-eef428e3-88aa-42bc-bc16-04e6a118694b", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-a0ebac53-6da8-4afa-a2ae-dade3b702acc", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-b687e58c-61c6-4b0c-b646-7a6623d962c4", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-b088d764-1c27-48c5-9dc3-606c7b755832", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-09a2f5cc-28b2-416a-8ef6-b745fed89c14", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-0e09d3d1-490d-40c1-ac71-12b923933863", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-3aee6f5e-3f2e-4c05-a561-5a160f253599", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-3424b3d4-4df8-4ed3-ba17-57d207f0d3d9", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-exp-l0", "to": "doc-7ba4e728-e3de-464b-9ef4-5ffa9c67ac63", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-pro-l0", "to": "doc-bbdd16db-7b8d-49f4-b20f-9ebf557676c1", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-pro-l0", "to": "doc-97ce89f1-16a0-42da-99ae-31268a6fa53c", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-pro-l0", "to": "doc-e39fc9f7-16a1-478e-bae7-57a6c87f28a1", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-pro-l0", "to": "doc-05ffce02-acee-49b8-8639-23d34dfec6ad", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-pro-l0", "to": "doc-392cfb5c-db3e-4711-bb3b-8ec20ae15f7d", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-pro-l0", "to": "doc-edf714c8-f6f6-4b20-b283-4467777b4bd3", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-iam-l0", "to": "doc-d23e085e-ef55-4cd8-bbaa-6795612f9857", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-iam-l0", "to": "doc-9c487c2b-53c6-4b8a-9622-d18dbb58731f", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-iam-l0", "to": "doc-16330c6f-7583-4ce0-ac56-b3a262df2765", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "comm-iam-l0", "to": "doc-16cb8e08-0375-455a-a159-c99f7b66a9b0", "label": "MEMBER_OF", "title": "MEMBER_OF [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "ent-iso27001", "to": "doc-bbb97061-2b37-463e-8601-eff7b9049f12", "label": "GOVERNED_BY", "title": "GOVERNED_BY [0.95]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.95}, {"from": "ent-iso27001", "to": "doc-3c604e8d-1842-489f-bcad-4000b89534fa", "label": "GOVERNED_BY", "title": "GOVERNED_BY [0.95]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.95}, {"from": "ent-aws-kms", "to": "doc-bbb97061-2b37-463e-8601-eff7b9049f12", "label": "APPLIES_TO", "title": "APPLIES_TO [0.94]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.94}, {"from": "ent-aws-kms", "to": "doc-3c604e8d-1842-489f-bcad-4000b89534fa", "label": "APPLIES_TO", "title": "APPLIES_TO [0.94]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.94}, {"from": "ent-cloudbox", "to": "doc-66454c21-8d4c-497e-91cc-9dd132c84298", "label": "APPLIES_TO", "title": "APPLIES_TO [0.99]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.99}, {"from": "ent-cloudbox", "to": "doc-123f6e69-4713-4308-a620-b42e1f48cf55", "label": "APPLIES_TO", "title": "APPLIES_TO [0.99]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.99}, {"from": "ent-cloudbox", "to": "doc-4c34ce5d-de3c-4873-b682-66da45eb053a", "label": "APPLIES_TO", "title": "APPLIES_TO [0.99]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.99}, {"from": "ent-cloudbox", "to": "doc-eef428e3-88aa-42bc-bc16-04e6a118694b", "label": "APPLIES_TO", "title": "APPLIES_TO [0.99]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.99}, {"from": "ent-atlas", "to": "doc-bbdd16db-7b8d-49f4-b20f-9ebf557676c1", "label": "APPLIES_TO", "title": "APPLIES_TO [0.95]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.95}, {"from": "ent-atlas", "to": "doc-97ce89f1-16a0-42da-99ae-31268a6fa53c", "label": "APPLIES_TO", "title": "APPLIES_TO [0.95]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.95}, {"from": "ent-atlas", "to": "doc-e39fc9f7-16a1-478e-bae7-57a6c87f28a1", "label": "APPLIES_TO", "title": "APPLIES_TO [0.95]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.95}, {"from": "ent-atlas", "to": "doc-edf714c8-f6f6-4b20-b283-4467777b4bd3", "label": "APPLIES_TO", "title": "APPLIES_TO [0.95]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.95}, {"from": "ent-atlas", "to": "doc-4c34ce5d-de3c-4873-b682-66da45eb053a", "label": "APPLIES_TO", "title": "APPLIES_TO [0.95]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.95}, {"from": "ent-vp-finance", "to": "doc-bbdd16db-7b8d-49f4-b20f-9ebf557676c1", "label": "REQUIRES", "title": "REQUIRES [0.97]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.97}, {"from": "ent-vp-finance", "to": "doc-97ce89f1-16a0-42da-99ae-31268a6fa53c", "label": "REQUIRES", "title": "REQUIRES [0.97]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.97}, {"from": "ent-vp-finance", "to": "doc-e39fc9f7-16a1-478e-bae7-57a6c87f28a1", "label": "REQUIRES", "title": "REQUIRES [0.97]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.97}, {"from": "ent-vp-finance", "to": "doc-edf714c8-f6f6-4b20-b283-4467777b4bd3", "label": "REQUIRES", "title": "REQUIRES [0.97]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.97}, {"from": "ent-vp-finance", "to": "doc-4c34ce5d-de3c-4873-b682-66da45eb053a", "label": "REQUIRES", "title": "REQUIRES [0.97]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.97}, {"from": "ent-audit-log", "to": "doc-9c487c2b-53c6-4b8a-9622-d18dbb58731f", "label": "CONSTRAINS", "title": "CONSTRAINS [0.96]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.96}, {"from": "doc-a0ebac53-6da8-4afa-a2ae-dade3b702acc", "to": "chk-b71680aa-2b86-48f2-8cb4-78801555e643", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-a0ebac53-6da8-4afa-a2ae-dade3b702acc", "to": "chk-bb9cac19-22d8-40fd-a745-aec3ab3447c9", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-b687e58c-61c6-4b0c-b646-7a6623d962c4", "to": "chk-febd3816-884c-41be-8acc-3cbb7cb16a58", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-b687e58c-61c6-4b0c-b646-7a6623d962c4", "to": "chk-a64d94aa-ae11-442b-9a75-a07447623b61", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-b687e58c-61c6-4b0c-b646-7a6623d962c4", "to": "doc-3424b3d4-4df8-4ed3-ba17-57d207f0d3d9", "label": "SUPERSEDES", "title": "SUPERSEDES [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-bbdd16db-7b8d-49f4-b20f-9ebf557676c1", "to": "chk-ca4bb732-b1b0-4c59-8abf-6e936218663a", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-97ce89f1-16a0-42da-99ae-31268a6fa53c", "to": "chk-7542f924-3be5-4e88-8136-348c29c86634", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-97ce89f1-16a0-42da-99ae-31268a6fa53c", "to": "chk-9370c557-eb90-4b03-8cbd-465f6b8d6d9c", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-97ce89f1-16a0-42da-99ae-31268a6fa53c", "to": "doc-392cfb5c-db3e-4711-bb3b-8ec20ae15f7d", "label": "CONFLICTS_WITH", "title": "CONFLICTS_WITH [0.98]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 0.98}, {"from": "doc-b088d764-1c27-48c5-9dc3-606c7b755832", "to": "chk-ab017ff6-0e6d-4c14-87fc-875fd12a22b9", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-b088d764-1c27-48c5-9dc3-606c7b755832", "to": "chk-8d83b0b4-3076-46d1-821c-41cd01981f3d", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-d23e085e-ef55-4cd8-bbaa-6795612f9857", "to": "chk-f0dfcda5-7321-4fed-8547-3bc50f66a4ca", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-d23e085e-ef55-4cd8-bbaa-6795612f9857", "to": "chk-014540f1-9786-42ab-9a90-f453cb01a4d6", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-bbb97061-2b37-463e-8601-eff7b9049f12", "to": "chk-eaa83f00-46ed-43cf-936d-1016247b2247", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-bbb97061-2b37-463e-8601-eff7b9049f12", "to": "chk-b4e4a590-a162-4091-bad0-9b927122b535", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-9c487c2b-53c6-4b8a-9622-d18dbb58731f", "to": "chk-b158ee1a-7cd3-49b2-aa41-ef7a934a5dad", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-9c487c2b-53c6-4b8a-9622-d18dbb58731f", "to": "chk-87d79a78-8d9c-4139-ad57-0729e84c3f8a", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-dd81feba-ab07-4e45-a467-31e337389fc5", "to": "chk-5cb34cd3-c77b-4517-ba35-4dbf100caf24", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-dd81feba-ab07-4e45-a467-31e337389fc5", "to": "chk-b1ceaaef-2fbc-4550-bf53-64fd569399eb", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-e39fc9f7-16a1-478e-bae7-57a6c87f28a1", "to": "chk-bd6cb136-156c-4ce7-ae25-b1049aa4e174", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-e39fc9f7-16a1-478e-bae7-57a6c87f28a1", "to": "chk-6e8379e4-1910-4f4c-9398-5c7e8ee14370", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-09a2f5cc-28b2-416a-8ef6-b745fed89c14", "to": "chk-ed80e794-5c2d-4590-86bf-089a4e88403a", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-05ffce02-acee-49b8-8639-23d34dfec6ad", "to": "chk-85fcd186-aa99-4299-9b3f-c8b5e5ddbf91", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-05ffce02-acee-49b8-8639-23d34dfec6ad", "to": "chk-0835a664-9689-43a2-be9d-4ae74ca4f944", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-0e09d3d1-490d-40c1-ac71-12b923933863", "to": "chk-993a3d16-449f-4676-be4b-bd5c45e09310", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-3aee6f5e-3f2e-4c05-a561-5a160f253599", "to": "chk-06649201-827f-4729-8d8b-cb1c6463047f", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-3aee6f5e-3f2e-4c05-a561-5a160f253599", "to": "chk-78fd0fd3-f562-433e-bac8-b63902977480", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-3424b3d4-4df8-4ed3-ba17-57d207f0d3d9", "to": "chk-99cf292e-1143-4cd9-a225-815b5bd7cd3c", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-3424b3d4-4df8-4ed3-ba17-57d207f0d3d9", "to": "chk-3203dbf6-374e-4ccc-8fcc-24958c85552c", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-3424b3d4-4df8-4ed3-ba17-57d207f0d3d9", "to": "doc-7ba4e728-e3de-464b-9ef4-5ffa9c67ac63", "label": "SUPERSEDES", "title": "SUPERSEDES [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-16330c6f-7583-4ce0-ac56-b3a262df2765", "to": "chk-ce2a2f8a-ddbe-4c4b-894b-a5535e188a06", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-16330c6f-7583-4ce0-ac56-b3a262df2765", "to": "chk-4c6ae09f-bcb6-43b0-b324-ee685867b5da", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-392cfb5c-db3e-4711-bb3b-8ec20ae15f7d", "to": "chk-74e5099d-bec0-4d8e-bde5-91914f8e9114", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-392cfb5c-db3e-4711-bb3b-8ec20ae15f7d", "to": "chk-0d917b83-08ec-42f5-8054-0585182c4020", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-edf714c8-f6f6-4b20-b283-4467777b4bd3", "to": "chk-c95af4fe-e23a-4aca-8331-288f2cc3540a", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-edf714c8-f6f6-4b20-b283-4467777b4bd3", "to": "chk-0bfb54fa-eb8d-43db-b613-437302817199", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-16cb8e08-0375-455a-a159-c99f7b66a9b0", "to": "chk-656f57d9-beab-40c3-bd96-63bfdc855ebf", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-16cb8e08-0375-455a-a159-c99f7b66a9b0", "to": "chk-5fed6ff5-ff32-4d93-92df-c221473f40c4", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-3c604e8d-1842-489f-bcad-4000b89534fa", "to": "chk-c820ed5e-6c8f-4593-a563-ac62c6aedbf1", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-66454c21-8d4c-497e-91cc-9dd132c84298", "to": "chk-4379db97-3ccf-4842-ab62-56663ab25a53", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-123f6e69-4713-4308-a620-b42e1f48cf55", "to": "chk-93c86eb3-83dc-48d7-b8c9-2774f668cfa3", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-4c34ce5d-de3c-4873-b682-66da45eb053a", "to": "chk-11ce5f21-e01d-4dd5-a82b-07984a486506", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}, {"from": "doc-eef428e3-88aa-42bc-bc16-04e6a118694b", "to": "chk-752aabb6-20f3-4efc-bdc2-78c90dd959c9", "label": "PART_OF", "title": "PART_OF [1.0]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": 1.0}];
+const LEGEND = [{"cid": 0, "color": "#4E79A7", "label": "Level-1 Enterprise Sovereign Governance Root", "count": 3}, {"cid": 1, "color": "#F28E2B", "label": "Domain: Data Security &amp; Cryptographic Standards", "count": 11}, {"cid": 2, "color": "#E15759", "label": "Domain: Third-Party Vendor Risk &amp; CloudBox Assessment", "count": 14}, {"cid": 3, "color": "#76B7B2", "label": "Domain: Travel &amp; Corporate Expense Compliance", "count": 21}, {"cid": 4, "color": "#59A14F", "label": "Domain: Capital Procurement &amp; Authority Thresholds", "count": 20}, {"cid": 5, "color": "#EDC948", "label": "Domain: Identity, Access Control &amp; IT Operations", "count": 15}];
+
+// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Build vis datasets
+const nodesDS = new vis.DataSet(RAW_NODES.map((n, i) => ({
+  id: n.id, label: n.label, color: n.color, size: n.size,
+  font: n.font, title: n.title,
+  // Fermat/golden-angle spiral seed positions (#3699): spreading nodes out
+  // before physics runs keeps avoidOverlap from computing near-zero-distance
+  // repulsion that blows the BarnesHut recursion into a stack overflow on large
+  // graphs. `i` is the map index — physics still settles small graphs identically.
+  x: 30 * Math.sqrt(i) * Math.cos(i * 2.4),
+  y: 30 * Math.sqrt(i) * Math.sin(i * 2.4),
+  community: n.community, community_name: n.community_name,
+  source_file: n.source_file, file_type: n.file_type, degree: n.degree,
+  member_count: n.member_count,
+})));
+
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  label: '',
+  title: e.title,
+  dashes: e.dashes,
+  width: e.width,
+  color: e.color,
+  arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+})));
+
+const container = document.getElementById('graph');
+const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -60,
+      centralGravity: 0.005,
+      springLength: 120,
+      springConstant: 0.08,
+      damping: 0.4,
+      avoidOverlap: 0.8,
+    },
+    stabilization: { iterations: 200, fit: true },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 100,
+    hideEdgesOnDrag: true,
+    navigationButtons: false,
+    keyboard: false,
+  },
+  nodes: { shape: 'dot', borderWidth: 1.5 },
+  edges: { smooth: { type: 'continuous', roundness: 0.2 }, selectionWidth: 3 },
+});
+
+// Theme toggle (#3894): Light / Dark / System, persisted in localStorage.
+const THEME_KEY = 'graphify-theme';
+const themeMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+let themeLabelColor = '#ffffff';  // matches the per-node font color set in Python
+function themePref() {
+  let p = null;
+  try { p = localStorage.getItem(THEME_KEY); } catch (e) {}
+  return (p === 'light' || p === 'dark' || p === 'system') ? p : null;
+}
+function applyTheme(pref) {
+  const t = pref === 'light' ? 'light' : (pref === 'system' && themeMQ && themeMQ.matches) ? 'light' : 'dark';
+  const root = document.documentElement;
+  if (!root) return;
+  root.setAttribute('data-theme', t);
+  document.querySelectorAll('[data-theme-choice]').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.themeChoice === (pref || 'dark')));
+  });
+  const labelColor = getComputedStyle(root).getPropertyValue('--node-label').trim();
+  if (labelColor && labelColor !== themeLabelColor) {
+    themeLabelColor = labelColor;
+    nodesDS.update(nodesDS.get().map(n => ({ id: n.id, font: Object.assign({}, n.font, { color: labelColor }) })));
+  }
+}
+document.querySelectorAll('[data-theme-choice]').forEach(b => {
+  b.addEventListener('click', () => {
+    const pref = b.dataset.themeChoice;
+    try { localStorage.setItem(THEME_KEY, pref); } catch (e) {}
+    applyTheme(pref);
+  });
+});
+if (themeMQ) {
+  const onSchemeChange = () => { if (themePref() === 'system') applyTheme('system'); };
+  if (themeMQ.addEventListener) themeMQ.addEventListener('change', onSchemeChange);
+  else if (themeMQ.addListener) themeMQ.addListener(onSchemeChange);
+}
+applyTheme(themePref());
+
+network.once('stabilizationIterationsDone', () => {
+  network.setOptions({ physics: { enabled: false } });
+});
+
+function showInfo(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const neighborIds = network.getConnectedNodes(nodeId);
+  const neighborItems = neighborIds.map(nid => {
+    const nb = nodesDS.get(nid);
+    const color = nb ? nb.color.background : '#555';
+    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" data-nid="${esc(nid)}">${esc(nb ? nb.label : nid)}</span>`;
+  }).join('');
+  const isMetaNode = !n.file_type && !n.source_file;
+  let html = `<div class="field"><b>${esc(n.label)}</b></div>`;
+  if (!isMetaNode) {
+    html += `<div class="field">Type: ${esc(n.file_type || 'unknown')}</div>`;
+  }
+  html += `<div class="field">Community: ${esc(n.community_name || '')}</div>`;
+  if (!isMetaNode) {
+    html += `<div class="field">Source: ${esc(n.source_file || '-')}</div>`;
+  } else if (n.member_count !== undefined && n.member_count !== null) {
+    html += `<div class="field">Members: ${esc(n.member_count)}</div>`;
+  }
+  html += `<div class="field">Degree: ${n.degree}</div>`;
+  if (neighborIds.length) {
+    html += `<div class="field" style="margin-top:8px;color:var(--text-2);font-size:11px">Neighbors (${neighborIds.length})</div><div id="neighbors-list">${neighborItems}</div>`;
+  }
+  document.getElementById('info-content').innerHTML = html;
+}
+
+function focusNode(nodeId) {
+  network.focus(nodeId, { scale: 1.4, animation: true });
+  network.selectNodes([nodeId]);
+  showInfo(nodeId);
+}
+
+// Neighbor links use a data attribute + one delegated listener rather than an
+// inline onclick. A node id/label sourced from a document or a scraped URL
+// (graphify add) can contain a double-quote; dropping the stringified id
+// unescaped into a quoted onclick both broke every link and allowed a hostile
+// source to inject an event handler into the local report (stored XSS, #1838).
+// esc() on data-nid keeps the value inside the attribute; the listener reads it
+// back verbatim. Bound to document so it survives the innerHTML rebuild that
+// recreates #neighbors-list on each showInfo().
+document.addEventListener('click', e => {
+  const el = e.target.closest('.neighbor-link');
+  if (el && el.dataset.nid !== undefined) focusNode(el.dataset.nid);
+});
+
+// Sidebar tooltips reuse vis-network's .vis-tooltip style and 100ms tooltipDelay.
+// Names get one only when CSS ellipsis truncates them (the full text is still in
+// the DOM); counts always get one, to say what the number is. Text is set with
+// textContent only (labels are untrusted). Delegated on document so rows rebuilt
+// later (search results, showInfo()) are covered.
+const sidebarTip = document.createElement('div');
+sidebarTip.className = 'vis-tooltip';
+sidebarTip.style.cssText = 'white-space: normal; max-width: 360px; overflow-wrap: break-word;';
+document.body.appendChild(sidebarTip);
+let sidebarTipTimer = null;
+let sidebarTipEl = null;    // element whose text the tooltip shows
+let sidebarTipZone = null;  // element the pointer must leave to hide it
+function hideSidebarTip() {
+  clearTimeout(sidebarTipTimer);
+  sidebarTip.style.visibility = 'hidden';
+  sidebarTip.textContent = '';
+  sidebarTipEl = sidebarTipZone = null;
+}
+document.addEventListener('mouseover', e => {
+  const zone = e.target.closest && e.target.closest('.legend-count, .legend-item, .search-item, .neighbor-link');
+  // Anywhere on a legend row except its count (dot, checkbox, gaps, padding)
+  // stands for the row's name, so moving within the row never re-triggers it.
+  const el = zone && zone.classList.contains('legend-item') ? zone.querySelector('.legend-label') : zone;
+  if (!el || el === sidebarTipEl) return;
+  hideSidebarTip();
+  const isCount = el.classList.contains('legend-count');
+  if (!isCount && el.scrollWidth <= el.clientWidth) return;
+  const text = isCount ? `${el.textContent} ${el.textContent === '1' ? 'node' : 'nodes'}` : el.textContent;
+  sidebarTipEl = el;
+  sidebarTipZone = zone;
+  const x = e.clientX, y = e.clientY;
+  sidebarTipTimer = setTimeout(() => {
+    sidebarTip.textContent = text;
+    sidebarTip.style.left = sidebarTip.style.top = '0px';  // measure at full max-width
+    sidebarTip.style.visibility = 'visible';
+    const w = sidebarTip.offsetWidth, h = sidebarTip.offsetHeight;
+    sidebarTip.style.left = Math.max(4, Math.min(x + 12, window.innerWidth - w - 4)) + 'px';
+    sidebarTip.style.top = (y + 16 + h > window.innerHeight ? Math.max(4, y - h - 8) : y + 16) + 'px';
+  }, 100);
+});
+document.addEventListener('mouseout', e => {
+  if (sidebarTipZone && !sidebarTipZone.contains(e.relatedTarget)) hideSidebarTip();
+});
+// A click rebuilds or hides the row (showInfo(), search pick) without a mouseout.
+document.addEventListener('mousedown', hideSidebarTip);
+
+// Track hovered node — hover detection is more reliable than click params
+let hoveredNodeId = null;
+network.on('hoverNode', params => {
+  hoveredNodeId = params.node;
+  container.style.cursor = 'pointer';
+});
+network.on('blurNode', () => {
+  hoveredNodeId = null;
+  container.style.cursor = 'default';
+});
+container.addEventListener('click', () => {
+  if (hoveredNodeId !== null) {
+    showInfo(hoveredNodeId);
+    network.selectNodes([hoveredNodeId]);
+  }
+});
+network.on('click', params => {
+  if (params.nodes.length > 0) {
+    showInfo(params.nodes[0]);
+  } else if (hoveredNodeId === null) {
+    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
+  }
+});
+
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.style.display = 'none'; return; }
+  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.style.display = 'block';
+  matches.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'search-item';
+    el.textContent = n.label;
+    el.style.borderLeft = `3px solid ${n.color.background}`;
+    el.style.paddingLeft = '8px';
+    el.onclick = () => {
+      network.focus(n.id, { scale: 1.5, animation: true });
+      network.selectNodes([n.id]);
+      showInfo(n.id);
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    };
+    searchResults.appendChild(el);
+  });
+});
+document.addEventListener('click', e => {
+  if (!searchResults.contains(e.target) && e.target !== searchInput)
+    searchResults.style.display = 'none';
+});
+
+const hiddenCommunities = new Set();
+
+const selectAllCb = document.getElementById('select-all-cb');
+
+function updateSelectAllState() {
+  const total = LEGEND.length;
+  const hidden = hiddenCommunities.size;
+  selectAllCb.checked = hidden === 0;
+  selectAllCb.indeterminate = hidden > 0 && hidden < total;
+}
+
+function toggleAllCommunities(hide) {
+  document.querySelectorAll('.legend-item').forEach(item => {
+    hide ? item.classList.add('dimmed') : item.classList.remove('dimmed');
+  });
+  document.querySelectorAll('.legend-cb').forEach(cb => {
+    cb.checked = !hide;
+  });
+  LEGEND.forEach(c => {
+    if (hide) hiddenCommunities.add(c.cid); else hiddenCommunities.delete(c.cid);
+  });
+  const updates = RAW_NODES.map(n => ({ id: n.id, hidden: hide }));
+  nodesDS.update(updates);
+  updateSelectAllState();
+}
+
+const legendEl = document.getElementById('legend');
+LEGEND.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'legend-cb';
+  cb.checked = true;
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (cb.checked) {
+      hiddenCommunities.delete(c.cid);
+      item.classList.remove('dimmed');
+    } else {
+      hiddenCommunities.add(c.cid);
+      item.classList.add('dimmed');
+    }
+    const updates = RAW_NODES
+      .filter(n => n.community === c.cid)
+      .map(n => ({ id: n.id, hidden: !cb.checked }));
+    nodesDS.update(updates);
+    updateSelectAllState();
+  });
+  item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
+    <span class="legend-label">${c.label}</span>
+    <span class="legend-count">${c.count}</span>`;
+  item.prepend(cb);
+  item.onclick = (e) => {
+    if (e.target === cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  };
+  legendEl.appendChild(item);
+});
+</script>
+<script>
+// Render hyperedges as shaded regions
+const hyperedges = [];
+// afterDrawing passes ctx already transformed to network coordinate space.
+// Draw node positions raw — no manual pan/zoom/DPR math needed.
+
+// Andrew's monotone chain. Returns the hull in counter-clockwise order, which
+// is what the perimeter must be traced in. Collinear and duplicate points
+// collapse to the extremes, so degenerate member sets render as a segment
+// rather than a zero-area crossed path.
+function convexHull(pts) {
+    const p = pts.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    if (p.length < 3) return p;
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const build = seq => {
+        const out = [];
+        for (const q of seq) {
+            while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop();
+            out.push(q);
+        }
+        out.pop();
+        return out;
+    };
+    const hull = build(p).concat(build(p.slice().reverse()));
+    return hull.length >= 3 ? hull : p;
+}
+network.on('afterDrawing', function(ctx) {
+    hyperedges.forEach(h => {
+        // Legend toggles only set `hidden` on nodes; getPositions() still
+        // returns them, so skip hidden members or their hull lingers.
+        const positions = h.nodes
+            .filter(nid => { const n = nodesDS.get(nid); return n && n.hidden !== true; })
+            .map(nid => network.getPositions([nid])[nid])
+            .filter(p => p !== undefined);
+        if (positions.length < 2) return;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#6366f1';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Centroid and expanded hull in network coordinates.
+        // The perimeter must follow hull order, not h.nodes order: tracing the
+        // raw member order self-intersects whenever the layout does not happen
+        // to place members in angular order, filling as crossed wedges.
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const hull = convexHull(positions);
+        const expanded = hull.map(p => ({
+            x: cx + (p.x - cx) * 1.15,
+            y: cy + (p.y - cy) * 1.15
+        }));
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        // Label
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.label, cx, cy - 5);
+        ctx.restore();
+    });
+});
+</script>
+</body>
+</html>

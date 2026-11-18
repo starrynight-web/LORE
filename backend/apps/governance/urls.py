@@ -7,7 +7,8 @@ from .views import (
     evaluations_view, evaluation_detail_view, evaluation_categories_view,
     evaluation_failures_view, evaluation_compare_view, evaluation_baseline_view,
     evaluation_promote_view, evaluation_rollback_view,
-    compliance_packs_list_view, compliance_packs_apply_view
+    compliance_packs_list_view, compliance_packs_apply_view,
+    zk_attest_view, zk_verify_view
 )
 
 router = DefaultRouter()
@@ -17,6 +18,8 @@ router.register(r'exceptions', ScopedExceptionViewSet, basename='exception')
 router.register(r'requirements', EvidenceRequirementViewSet, basename='requirement')
 
 urlpatterns = [
+    path('zk-attest/', zk_attest_view, name='governance-zk-attest'),
+    path('zk-verify/', zk_verify_view, name='governance-zk-verify'),
     path('review-queue/batch/', ReviewQueueViewSet.as_view({'post': 'batch'}), name='review-queue-batch'),
     path('compliance-packs/', compliance_packs_list_view, name='compliance-packs-list'),
     path('compliance-packs/apply/', compliance_packs_apply_view, name='compliance-packs-apply'),

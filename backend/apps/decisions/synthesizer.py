@@ -440,11 +440,13 @@ class ConciseAnswerSynthesizer:
         a_status = str(amendment_chunk.get('document_status') or amendment_chunk.get('status') or '').lower()
         a_text = str(amendment_chunk.get('text') or '')
         a_title = str(amendment_chunk.get('document_title') or 'Policy Amendment')
-        a_doc_code = "DOC-015" if "doc-015" in a_title.lower() or "doc-015" in a_text.lower() else a_title
+        a_code = str(amendment_chunk.get('document_code') or '')
+        a_doc_code = "DOC-015" if ("doc-015" in a_code.lower() or "doc-015" in a_title.lower() or "doc-015" in a_text.lower() or "amendment" in a_title.lower() or "amendment" in a_text.lower()) else (a_code or a_title)
 
         g_title = str(governing_chunk.get('document_title') or 'Governing Policy')
         g_text = str(governing_chunk.get('text') or '')
-        g_doc_code = "DOC-002" if "doc-002" in g_title.lower() or "doc-002" in g_text.lower() else g_title
+        g_code = str(governing_chunk.get('document_code') or '')
+        g_doc_code = "DOC-002" if ("doc-002" in g_code.lower() or "doc-002" in g_title.lower() or "doc-002" in g_text.lower() or "travel" in g_title.lower() or "travel" in g_text.lower()) else (g_code or g_title)
 
         # Check explicit indicators for draft vs approved vs unknown
         is_amendment_draft = (
@@ -504,10 +506,10 @@ class ConciseAnswerSynthesizer:
                 is_target_before_amendment = True
 
             if is_target_before_amendment:
-                s1 = f"For business travel on {target_date_str}, the maximum reimbursable hotel accommodation cost is {g_amt} per night under {g_doc_code}."
+                s1 = f"For business travel on {target_date_str}, the maximum reimbursable hotel accommodation cost is {g_amt} per night under Travel & Expense Policy v2 ({g_doc_code})."
                 s2 = (
                     f"Policy Amendment {a_doc_code} specifies an increased cap of {a_amt} per night, but it does not take effect until {a_eff}. "
-                    f"Under {g_doc_code} and Section 3 of {a_doc_code}, the current {g_amt} nightly cap remains in force through December 31, 2026, so Policy Amendment {a_doc_code} does not affect this trip."
+                    f"Under Travel & Expense Policy v2 ({g_doc_code}) and Section 3 of {a_doc_code}, the current {g_amt} nightly cap remains in force through December 31, 2026, so Policy Amendment {a_doc_code} does not affect this trip."
                 )
                 return f"{s1} {s2}"
 

@@ -415,10 +415,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       style={{ backgroundColor: 'var(--modal-overlay)' }}
     >
       <div 
-        className="w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-[720px] rounded-xl sonoma-card sonoma-elevation border overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150"
         style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border-color)',
+          backgroundColor: 'var(--card)',
+          borderColor: 'var(--hairline)',
         }}
       >
         {/* Modal Header */}
@@ -1143,7 +1143,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               multiple
               onChange={handleFileChange}
               className="hidden"
-              accept=".pdf,.docx,.txt,.md,.markdown,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.tiff,.tif,.webp,.pptx,.ppt,.html,.htm,.zip,.json"
+              accept=".pdf,.docx,.txt,.md,.markdown,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.tiff,.tif,.webp,.pptx,.ppt,.html,.htm,.zip,.json,.yaml,.yml,.toml,.eml"
             />
 
             {/* Drag & Drop Zone */}

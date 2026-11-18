@@ -541,6 +541,70 @@ Retrieves standardized procedural steps for engineering skills (`ui-ux-pro`, `se
 
 ---
 
+### 3.13 `lore.attest_compliance`
+
+Evaluates policy compliance for a proposed action or inquiry and generates an opt-in verifiable zero-knowledge proof (ZKP) attestation (`zkp_lite_merkle` or `noir_zk_snark`).
+
+#### Parameters
+- `workspace_id` (string, required): Active tenant workspace UUID.
+- `decision_type` (string, optional, default: `"general_inquiry"`): Classified governance decision category.
+- `rule_id` (string, optional): Specific `status == "stable"` rule UUID to bind into the proof.
+- `required_authority_floor` (integer, optional, default: `4`): Minimum required authority level (Rank 1–7).
+- `evidence_status` (string, optional, default: `"satisfied"`): Evidence sufficiency status (`"satisfied"`, `"supported"`).
+- `user_role` (string, optional, default: `"member"`): Requester role checked against allowed roles.
+- `backend` (string, optional, default: `"auto"`): Proving backend (`"auto"`, `"noir"`, `"zkp_lite_merkle"`).
+
+#### Response (`lore.result/1`)
+```json
+{
+  "schema": "lore.result/1",
+  "decision_type": "regulatory_compliance",
+  "state": "supported",
+  "directive": "proceed_and_cite",
+  "evidence_status": "satisfied",
+  "zk_attestation": {
+    "proof_system": "zkp_lite_merkle",
+    "workspace_state_root": "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0",
+    "public_inputs": {
+      "decision_type": "regulatory_compliance",
+      "required_authority_floor": 4,
+      "evidence_status_code": 1,
+      "evaluation_timestamp": 1731888000,
+      "requester_role_commitment": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+      "policy_commitment_hash": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a"
+    },
+    "proof_b64": "eyJwb2xpY3lfaW52YXJpYW50cyI6IHRydWV9...",
+    "verified": true,
+    "generated_at": "2026-11-17T23:30:00Z"
+  },
+  "verified": true,
+  "bundle_hash": "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0"
+}
+```
+
+---
+
+### 3.14 `lore.verify_zk_proof`
+
+Cryptographically verifies an external `ZKAttestationEnvelope` offline without database access or disclosing underlying rules.
+
+#### Parameters
+- `attestation_envelope` (object, required): Full ZK attestation envelope JSON containing `proof_system`, `workspace_state_root`, `public_inputs`, and `proof_b64`.
+
+#### Response (`lore.result/1`)
+```json
+{
+  "schema": "lore.result/1",
+  "verified": true,
+  "proof_system": "zkp_lite_merkle",
+  "workspace_state_root": "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0",
+  "public_inputs": { ... },
+  "message": "Cryptographic zero-knowledge proof verified successfully."
+}
+```
+
+---
+
 ## 4. Error Handling & Structured Envelope (`lore.error/1`)
 
 When input validation fails, a resource is missing, or an unexpected exception occurs, the server responds with a structured, sanitized error envelope:
@@ -578,5 +642,7 @@ Legacy client applications calling underscore tool names remain fully supported:
 | `lore_search` | `lore.search` | Supported alias | Maintained |
 | `lore_get_document` | `lore.get_document` | Supported alias | Maintained |
 | `lore_ocr_extract` | `lore.ocr_extract` | Supported alias | Maintained |
+| `lore_attest_compliance` | `lore.attest_compliance` | Supported alias | Maintained |
+| `lore_verify_zk_proof` | `lore.verify_zk_proof` | Supported alias | Maintained |
 
 All clients are encouraged to migrate to dot-notation names (`lore.get_context`, `lore.search`, `lore.check_compliance`) to align with MCP standard naming conventions.

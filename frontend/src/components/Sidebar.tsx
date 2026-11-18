@@ -17,10 +17,26 @@ import {
   Mail,
   Network,
   Globe,
-  X,
-  PanelLeftClose
+  ChevronRight,
+  LucideIcon
 } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Organization, Workspace } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+
+interface NavItemDef {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  tileHue: string;
+  badge?: string | number;
+  isWarning?: boolean;
+}
+
+interface NavGroupDef {
+  title: string;
+  items: NavItemDef[];
+}
 
 interface SidebarProps {
   activeTab: string;
@@ -29,6 +45,12 @@ interface SidebarProps {
   activeJobsCount?: number;
   isOpen?: boolean;
   onClose?: () => void;
+  currentOrg?: Organization | null;
+  currentWorkspace?: Workspace | null;
+  workspaces?: Workspace[];
+  onSelectWorkspace?: (ws: Workspace) => void;
+  onOpenCommandPalette?: () => void;
+  onOpenWorkspaceSwitcher?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,146 +59,237 @@ export const Sidebar: React.FC<SidebarProps> = ({
   reviewCount = 0,
   activeJobsCount = 0,
   isOpen = true,
-  onClose
+  onClose,
+  currentOrg,
+  currentWorkspace,
+  workspaces = [],
+  onSelectWorkspace,
+  onOpenCommandPalette,
+  onOpenWorkspaceSwitcher
 }) => {
   const { t } = useI18n();
 
-  const navItems = [
-    { id: 'overview', label: t('nav.workspace_overview'), icon: Layers },
-    { id: 'knowledge_grid', label: 'Knowledge Grid & RAPTOR', icon: Network, badge: 'v2.0', highlight: true },
-    { id: 'ocr', label: t('nav.live_ocr'), icon: Scan, badge: 'Live', isLive: true },
-    { id: 'documents', label: t('nav.all_documents'), icon: FileText },
-    { id: 'connectors', label: 'Enterprise Connectors', icon: Globe, badge: '5 Sources' },
-    { id: 'email_connect', label: 'Email Connectors', icon: Mail, badge: 'Gmail' },
-    { id: 'activity', label: t('nav.ingestion_activity'), icon: Cpu, badge: activeJobsCount > 0 ? activeJobsCount : undefined },
-    { id: 'rag', label: t('nav.governed_rag'), icon: Search, highlight: true },
-    { id: 'governance_layers', label: '9 Governance Layers', icon: Shield, badge: '9/9' },
-    { id: 'review', label: t('nav.review_queue'), icon: AlertTriangle, badge: reviewCount > 0 ? reviewCount : undefined, isWarning: true },
-    { id: 'audit', label: t('nav.audit_ledger'), icon: ShieldCheck },
-    { id: 'api_connect', label: 'AI Connect (Groq)', icon: Zap, badge: 'gpt-oss-120B' },
-    { id: 'mcp_server', label: 'MCP Server Hub', icon: Server, badge: 'Active' },
-    { id: 'settings', label: t('nav.settings'), icon: Building2 },
+  // Exactly SIX Tile Hues reused across groups
+  const TILE = {
+    blue: '#007AFF',
+    indigo: '#5E5CE6',
+    purple: '#AF52DE',
+    green: '#34C759',
+    orange: '#FF9500',
+    gray: '#8E8E93',
+  };
+
+  const navGroups: NavGroupDef[] = [
+    {
+      title: 'WORKSPACE',
+      items: [
+        { id: 'overview', label: t('nav.workspace_overview') || 'Overview', icon: Layers, tileHue: TILE.blue },
+        { id: 'rag', label: t('nav.governed_rag') || 'Governed Search & RAG', icon: Search, tileHue: TILE.blue },
+      ]
+    },
+    {
+      title: 'KNOWLEDGE',
+      items: [
+        { id: 'knowledge_grid', label: 'Knowledge Grid & RAPTOR v2.0', icon: Network, tileHue: TILE.purple, badge: 'v2.0' },
+        { id: 'documents', label: t('nav.all_documents') || 'All Documents', icon: FileText, tileHue: TILE.indigo },
+        { id: 'ocr', label: t('nav.live_ocr') || 'Live OCR Studio (Live)', icon: Scan, tileHue: TILE.green, badge: 'Live' },
+      ]
+    },
+    {
+      title: 'SOURCES',
+      items: [
+        { id: 'connectors', label: 'Enterprise Connectors (5)', icon: Globe, tileHue: TILE.orange, badge: '5' },
+        { id: 'email_connect', label: 'Email Connectors (Gmail)', icon: Mail, tileHue: TILE.orange, badge: 'Gmail' },
+        { id: 'activity', label: t('nav.ingestion_activity') || 'Ingestion Activity', icon: Cpu, tileHue: TILE.gray, badge: activeJobsCount > 0 ? activeJobsCount : undefined },
+      ]
+    },
+    {
+      title: 'GOVERNANCE',
+      items: [
+        { id: 'governance_layers', label: '9 Governance Layers 9/9', icon: Shield, tileHue: TILE.purple, badge: '9/9' },
+        { id: 'review', label: t('nav.review_queue') || 'Review Queue', icon: AlertTriangle, tileHue: TILE.orange, badge: reviewCount > 0 ? reviewCount : undefined, isWarning: true },
+        { id: 'audit', label: t('nav.audit_ledger') || 'Audit Ledger', icon: ShieldCheck, tileHue: TILE.gray },
+      ]
+    },
+    {
+      title: 'PLATFORM',
+      items: [
+        { id: 'api_connect', label: 'AI Connect (Groq)', icon: Zap, tileHue: TILE.blue, badge: 'Groq' },
+        { id: 'mcp_server', label: 'MCP Server Hub', icon: Server, tileHue: TILE.indigo, badge: 'Active' },
+        { id: 'settings', label: t('nav.settings') || 'Organization Settings', icon: Building2, tileHue: TILE.gray },
+      ]
+    }
   ];
+
+  const orgName = currentOrg?.name || currentWorkspace?.organization_name || 'Northstar Enterprise';
+  const wsName = currentWorkspace?.name || 'Default Workspace';
+  const roleName = currentWorkspace?.role || currentOrg?.role || 'admin';
 
   return (
     <aside 
-      className="w-64 border-r flex flex-col h-screen select-none transition-colors duration-200 z-10"
+      className="w-[264px] min-w-[264px] max-w-[264px] flex flex-col h-screen select-none border-r z-20 shrink-0 transition-colors duration-200"
       style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderColor: 'var(--border-color)',
+        background: 'var(--sidebar-gradient)',
+        borderColor: 'var(--hairline)',
       }}
     >
-      {/* Brand Header */}
-      <div 
-        className="h-16 flex items-center justify-between px-4 sm:px-5 border-b gap-2.5"
-        style={{ borderColor: 'var(--border-color)' }}
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <img 
-            src="/logo.png" 
-            alt="LORE Logo" 
-            className="w-9 h-9 rounded-xl object-contain shadow-sm border p-0.5 shrink-0"
-            style={{ 
-              backgroundColor: 'var(--bg-surface-soft)',
-              borderColor: 'var(--border-color)' 
-            }}
-          />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold tracking-wide text-base text-[var(--text-primary)] truncate">
-                {t('app.name')}
-              </span>
-              <span 
-                className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0"
-                style={{
-                  backgroundColor: 'var(--accent-light)',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--brand-accent)',
-                }}
-              >
-                Enterprise
-              </span>
+      {/* 1 · TENANT CARD (Sonoma's Apple-Account-card analog) */}
+      <div className="p-3 pb-2 shrink-0">
+        <button
+          onClick={onOpenWorkspaceSwitcher}
+          className="w-full text-left p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all hover:bg-white/40 dark:hover:bg-white/10 active:scale-[0.98]"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.45)',
+            borderColor: 'rgba(255, 255, 255, 0.60)',
+          }}
+          title="Click to switch workspace"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            {/* Org Glyph */}
+            <div 
+              className="w-8 h-8 rounded-lg bg-[#007AFF] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs"
+            >
+              {orgName.charAt(0).toUpperCase()}
             </div>
-            <p className="text-[11px] text-[var(--text-muted)] truncate">{t('app.tagline')}</p>
+            <div className="min-w-0 pr-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[13px] font-bold text-[var(--text-primary)] truncate leading-tight">
+                  {orgName}
+                </span>
+              </div>
+              <div className="text-[12px] text-[#6E6E73] truncate leading-tight mt-0.5">
+                {wsName}
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[9px] font-semibold uppercase px-1 py-0.2 rounded bg-black/5 dark:bg-white/10 text-[var(--text-primary)]">
+                  {roleName}
+                </span>
+                <span className="text-[9px] font-bold tracking-wider px-1 py-0.2 rounded bg-[#007AFF]/12 text-[#007AFF]">
+                  ENTERPRISE
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-
-        {onClose && (
-          <button
-            id="lore-close-sidebar-btn"
-            onClick={onClose}
-            className="p-1.5 rounded-lg border text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-soft)] transition cursor-pointer shrink-0"
-            style={{ borderColor: 'var(--border-color)' }}
-            title="Close menu"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
+          <ChevronRight className="w-3.5 h-3.5 text-[#86868B] shrink-0" />
+        </button>
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-        <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-          {t('nav.knowledge_workspace')}
-        </div>
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer text-left"
-              style={{
-                backgroundColor: isActive ? 'var(--accent-light)' : 'transparent',
-                color: isActive ? 'var(--brand-accent)' : 'var(--text-secondary)',
-                border: isActive ? '1px solid var(--border-color)' : '1px solid transparent',
-              }}
-            >
-              <div className="flex items-center gap-2.5">
-                <Icon 
-                  className="w-4 h-4 transition-colors" 
-                  style={{
-                    color: isActive ? 'var(--brand-accent)' : item.highlight ? 'var(--accent-parrot)' : 'var(--text-muted)',
-                  }}
-                />
-                <span className="truncate">{item.label}</span>
-              </div>
-              {item.badge !== undefined && (
-                <span 
-                  className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: item.isWarning ? 'var(--warning-bg)' : 'var(--accent-light)',
-                    color: item.isWarning ? 'var(--warning)' : 'var(--brand-accent)',
-                    border: '1px solid var(--border-color)',
-                  }}
-                >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Anti-Hallucination Governance Footer */}
-      <div 
-        className="p-4 border-t"
-        style={{ borderColor: 'var(--border-color)' }}
-      >
-        <div 
-          className="p-3 rounded-xl border"
+      {/* 2 · SEARCH 28px (Opens ⌘K palette) */}
+      <div className="px-3 pb-3 shrink-0">
+        <button
+          onClick={onOpenCommandPalette}
+          className="w-full h-7 px-2.5 rounded-lg border flex items-center justify-between text-xs text-[#6E6E73] cursor-pointer transition-colors hover:bg-white/70 dark:hover:bg-white/20"
           style={{
-            backgroundColor: 'var(--bg-surface-soft)',
-            borderColor: 'var(--border-color)',
+            backgroundColor: 'rgba(255, 255, 255, 0.55)',
+            borderColor: 'rgba(255, 255, 255, 0.70)',
           }}
         >
-          <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--brand-accent)] mb-1">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{t('nav.anti_hallucination')}</span>
+          <div className="flex items-center gap-2">
+            <Search className="w-3.5 h-3.5 text-[#86868B]" />
+            <span className="text-[12px]">Search & Commands...</span>
           </div>
-          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-            {t('nav.anti_hallucination_desc')}
+          <kbd className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-white/60 dark:bg-white/20 border border-black/5 text-[#86868B]">
+            ⌘K
+          </kbd>
+        </button>
+      </div>
+
+      {/* 3 · FIVE NAVIGATION GROUPS (20px group gaps, 30px rows, 24px solid tiles) */}
+      <nav className="flex-1 px-3 overflow-y-auto space-y-5 py-1">
+        {navGroups.map((group) => (
+          <div key={group.title} className="space-y-0.5">
+            {/* Overline Label at 55% opacity */}
+            <div className="px-2 pb-1.5 text-[11px] font-semibold tracking-wider uppercase text-[#86868B]/70 select-none">
+              {group.title}
+            </div>
+
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    if (typeof window !== 'undefined' && window.innerWidth < 768 && onClose) {
+                      onClose();
+                    }
+                  }}
+                  className="w-full h-[30px] relative flex items-center justify-between px-2 rounded-lg text-left cursor-pointer transition-colors select-none"
+                  style={{
+                    color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)'
+                  }}
+                >
+                  {/* Active sliding pill via shared layoutId */}
+                  {isActive && (
+                    <motion.div
+                      layoutId="sidebar-active-pill"
+                      className="absolute inset-0 rounded-lg shadow-xs pointer-events-none"
+                      style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.75)',
+                        border: '1px solid rgba(255, 255, 255, 0.90)',
+                      }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                    />
+                  )}
+
+                  {/* Row content */}
+                  <div className="relative z-10 flex items-center gap-2 min-w-0 pr-1">
+                    {/* 24px Solid Tile (14px white Lucide glyph) */}
+                    <div 
+                      className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 shadow-2xs"
+                      style={{ backgroundColor: item.tileHue }}
+                    >
+                      <Icon className="w-3.5 h-3.5 text-white stroke-[2.2]" />
+                    </div>
+                    {/* 13/500 label */}
+                    <span 
+                      className="text-[13px] truncate"
+                      style={{ fontWeight: isActive ? 600 : 500 }}
+                    >
+                      {item.label}
+                    </span>
+                  </div>
+
+                  {/* 10px mono badge */}
+                  {item.badge !== undefined && (
+                    <span 
+                      className="relative z-10 text-[10px] font-mono font-medium px-1.5 py-0.2 rounded-md shrink-0 tabular-nums"
+                      style={{
+                        backgroundColor: item.isWarning 
+                          ? 'var(--orange-tint)' 
+                          : 'rgba(0, 0, 0, 0.06)',
+                        color: item.isWarning 
+                          ? 'var(--orange-text)' 
+                          : 'var(--text-secondary)',
+                      }}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+
+      {/* 4 · FOOTER: "Anti-Hallucination Active · 9/9 layers" Translucent Card */}
+      <div className="p-3 shrink-0">
+        <div 
+          className="p-2.5 rounded-xl border transition-colors select-none"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.55)',
+            borderColor: 'rgba(255, 255, 255, 0.70)',
+          }}
+        >
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#007AFF] mb-0.5">
+            <Sparkles className="w-3 h-3" />
+            <span>Anti-Hallucination Active</span>
+          </div>
+          <p className="text-[10px] text-[#6E6E73] leading-tight">
+            9/9 layers operational · Fail-closed evidence gate.
           </p>
         </div>
       </div>

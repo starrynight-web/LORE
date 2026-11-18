@@ -96,6 +96,17 @@ Below is the authoritative configuration matrix. System checks validate these va
 | `QDRANT_PORT` | Port number | `6333` | Qdrant vector store port. |
 | `ALLOW_HASH_PROJECTION_FALLBACK` | `True`, `False` | `False` | **Must be False** in production. Prohibits silent low-quality hash embeddings. |
 
+### 3.4 Multi-Database Enterprise Storage & Graph Configuration
+| Variable | Allowed Values | Default | Description |
+| :--- | :--- | :---: | :--- |
+| `LORE_GRAPH_BACKEND` | `django_orm`, `kuzu`, `neo4j` | `django_orm` | Semantic graph storage backend. `kuzu` provides single-tenant embedded graph; `neo4j` enables enterprise clustered Cypher execution. |
+| `NEO4J_URI` | Bolt URI (`bolt://...`, `neo4j://...`) | `bolt://localhost:7687` | Connection string for Neo4j cluster with APOC procedures. |
+| `NEO4J_USER` | String | `neo4j` | Authentication user for Neo4j database. |
+| `NEO4J_PASSWORD` | String | `""` | Authentication password for Neo4j database. |
+| `LORE_VECTOR_BACKEND` | `qdrant`, `pgvector`, `postgres` | `qdrant` | Vector similarity & lexical store backend. `pgvector` enables native PostgreSQL vector ANN with RRF and RLS. |
+| `DATABASE_URL` | PostgreSQL or SQLite connection URI | `postgres://lore:lore_secret@postgres:5432/lore_enterprise` | Relational system of record and transactional join key store. |
+| `KUZU_DB_PATH` | File path | `BASE_DIR/kuzu_storage` | Local directory for embedded KùzuDB storage. |
+
 ---
 
 ## 4. Offline / Airgapped Deployment Runbook

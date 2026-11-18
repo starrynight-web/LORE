@@ -22,6 +22,7 @@ requests>=2.31.0
 pytest>=8.0.0
 pytest-django>=4.8.0
 sentence-transformers>=3.0.0
+gliner>=0.2.13
 stripe>=10.0.0
 boto3>=1.30.0
 gunicorn>=22.0.0

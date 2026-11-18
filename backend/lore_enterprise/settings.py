@@ -197,6 +197,8 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.environ.get('CELERY_WORKER_PREFETCH_M
 # Ingestion Batch & Workload Queue Separation
 INGESTION_MAX_BATCH_FILES = int(os.environ.get('INGESTION_MAX_BATCH_FILES', '100'))
 DATA_UPLOAD_MAX_NUMBER_FILES = max(INGESTION_MAX_BATCH_FILES + 25, int(os.environ.get('DATA_UPLOAD_MAX_NUMBER_FILES', '128')))
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('DATA_UPLOAD_MAX_MEMORY_SIZE', str(100 * 1024 * 1024)))  # 100 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('FILE_UPLOAD_MAX_MEMORY_SIZE', str(50 * 1024 * 1024)))   # 50 MB
 INGESTION_VISUAL_QUEUE = os.environ.get('INGESTION_VISUAL_QUEUE', 'ingestion_visual')
 INGESTION_LIGHTWEIGHT_QUEUE = os.environ.get('INGESTION_LIGHTWEIGHT_QUEUE', 'ingestion_light')
 # Conservative visual worker concurrency default (1) for 16 GB RAM CPU-only deployment;
@@ -251,8 +253,8 @@ MASTER_SYSTEM_PROMPT_PATH = os.environ.get('MASTER_SYSTEM_PROMPT_PATH', str(BASE
 ALLOW_HASH_PROJECTION_FALLBACK = os.environ.get('ALLOW_HASH_PROJECTION_FALLBACK', 'False').lower() in ('true', '1', 'yes')
 
 # Reranking & Retrieval Optimization Configuration (Phase 4)
-# Default is 'heuristic' (ContextReranker) - neural is strictly opt-in
-RERANKER_BACKEND = os.environ.get('RERANKER_BACKEND', 'heuristic').lower()
+# Default is 'neural' (BAAI/bge-reranker-v2-m3) with resilient heuristic fallback
+RERANKER_BACKEND = os.environ.get('RERANKER_BACKEND', 'neural').lower()
 if RERANKER_BACKEND not in ('heuristic', 'neural'):
     raise ImproperlyConfigured(f"Invalid RERANKER_BACKEND '{RERANKER_BACKEND}'. Must be 'heuristic' or 'neural'.")
 
@@ -261,6 +263,7 @@ if RERANKER_FALLBACK not in ('heuristic', 'fail'):
     raise ImproperlyConfigured(f"Invalid RERANKER_FALLBACK '{RERANKER_FALLBACK}'. Must be 'heuristic' or 'fail'.")
 
 RERANKER_MODEL = os.environ.get('RERANKER_MODEL', 'BAAI/bge-reranker-v2-m3')
+RERANKER_MODEL_NAME = os.environ.get('RERANKER_MODEL_NAME', RERANKER_MODEL)
 RERANKER_MODEL_REVISION = os.environ.get('RERANKER_MODEL_REVISION', 'main')
 RERANKER_DEVICE = os.environ.get('RERANKER_DEVICE', 'auto')
 RERANKER_BATCH_SIZE = int(os.environ.get('RERANKER_BATCH_SIZE', '16'))
@@ -308,4 +311,18 @@ FORM_MIN_RESOLUTION_HEIGHT = max(40, int(os.environ.get('FORM_MIN_RESOLUTION_HEI
 FORM_PRESERVE_CROP_IMAGE = os.environ.get('FORM_PRESERVE_CROP_IMAGE', 'True').lower() in ('true', '1', 'yes')
 FORM_CROP_OUTPUT_DIR = os.environ.get('FORM_CROP_OUTPUT_DIR', '')
 FORM_MAX_EMBEDDED_CROP_BYTES = max(16384, int(os.environ.get('FORM_MAX_EMBEDDED_CROP_BYTES', '262144')))
+
+# Multi-Database Enterprise Storage & Graph Configuration
+LORE_GRAPH_BACKEND = os.environ.get('LORE_GRAPH_BACKEND', os.environ.get('GRAPH_STORE_BACKEND', 'django_orm')).lower()
+GRAPH_STORE_BACKEND = LORE_GRAPH_BACKEND
+
+LORE_VECTOR_BACKEND = os.environ.get('LORE_VECTOR_BACKEND', os.environ.get('VECTOR_STORE_BACKEND', 'qdrant')).lower()
+VECTOR_STORE_BACKEND = LORE_VECTOR_BACKEND
+
+NEO4J_URI = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
+NEO4J_USER = os.environ.get('NEO4J_USER', 'neo4j')
+NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', '')
+
+KUZU_DB_PATH = os.environ.get('KUZU_DB_PATH', str(BASE_DIR / 'kuzu_storage'))
+
 

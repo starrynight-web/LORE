@@ -1,0 +1,8 @@
+[package]
+name = "lore_policy_attestation"
+type = "bin"
+authors = ["LORE Applied Cryptography"]
+compiler_version = ">=0.30.0"
+
+[dependencies]
+

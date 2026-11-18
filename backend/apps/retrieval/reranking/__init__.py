@@ -16,7 +16,7 @@ from .base import (
 from .heuristic import HeuristicReranker
 from .neural import NeuralCrossEncoderReranker
 from .shadow import ShadowRerankerEvaluator
-from .factory import RerankerFactory, ResilientFallbackReranker
+from .factory import RerankerFactory, ResilientFallbackReranker, get_reranker
 
 __all__ = [
     'BaseReranker',
@@ -32,4 +32,5 @@ __all__ = [
     'ShadowRerankerEvaluator',
     'RerankerFactory',
     'ResilientFallbackReranker',
+    'get_reranker',
 ]

@@ -515,6 +515,95 @@ class TextExtractor:
             'bounding_boxes': [],
         }]
 
+
+class EmlFileExtractor:
+    """Extracts RFC 2822 email (.eml) files into clean, structured Markdown."""
+    @staticmethod
+    def extract(file_path_or_bytes) -> List[Dict[str, Any]]:
+        import email
+        from email import policy
+
+        if isinstance(file_path_or_bytes, (bytes, bytearray)):
+            msg = email.message_from_bytes(file_path_or_bytes, policy=policy.default)
+        else:
+            with open(file_path_or_bytes, 'rb') as f:
+                msg = email.message_from_binary_file(f, policy=policy.default)
+
+        # Extract headers
+        subject = str(msg.get('Subject', 'No Subject'))
+        from_hdr = str(msg.get('From', 'Unknown Sender'))
+        to_hdr = str(msg.get('To', 'Unknown Recipient'))
+        date_hdr = str(msg.get('Date', ''))
+        cc_hdr = str(msg.get('Cc', ''))
+
+        headers_lines = [
+            f"# Email: {subject}",
+            f"**From:** {from_hdr}",
+            f"**To:** {to_hdr}",
+        ]
+        if cc_hdr:
+            headers_lines.append(f"**Cc:** {cc_hdr}")
+        if date_hdr:
+            headers_lines.append(f"**Date:** {date_hdr}")
+        headers_lines.append("---")
+
+        # Extract body
+        body_text = ""
+        attachments = []
+
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_disposition = str(part.get("Content-Disposition", ""))
+                filename = part.get_filename()
+                if filename:
+                    attachments.append(filename)
+                elif "attachment" not in content_disposition:
+                    ctype = part.get_content_type()
+                    if ctype == "text/plain" and not body_text:
+                        try:
+                            body_text = part.get_content()
+                        except Exception:
+                            payload = part.get_payload(decode=True)
+                            body_text = payload.decode('utf-8', errors='replace') if payload else ""
+                    elif ctype == "text/html" and not body_text:
+                        try:
+                            html_content = part.get_content()
+                        except Exception:
+                            payload = part.get_payload(decode=True)
+                            html_content = payload.decode('utf-8', errors='replace') if payload else ""
+                        if html_content:
+                            try:
+                                from bs4 import BeautifulSoup
+                                body_text = BeautifulSoup(html_content, 'html.parser').get_text(separator='\n')
+                            except Exception:
+                                import re
+                                body_text = re.sub(r'<[^>]+>', ' ', html_content)
+        else:
+            try:
+                body_text = msg.get_content()
+            except Exception:
+                payload = msg.get_payload(decode=True)
+                body_text = payload.decode('utf-8', errors='replace') if payload else ""
+
+        if attachments:
+            body_text += f"\n\n**Attachments ({len(attachments)}):** " + ", ".join(attachments)
+
+        full_text = "\n".join(headers_lines) + "\n\n" + (body_text or "").strip()
+
+        return [{
+            'page_number': 1,
+            'text': full_text.strip(),
+            'confidence': 1.0,
+            'words_count': len(full_text.split()),
+            'width': 612.0,
+            'height': 792.0,
+            'extraction_type': 'eml_rfc822_extract',
+            'engine': 'python_email_default',
+            'engine_version': '1.0',
+            'is_repaired': False,
+            'bounding_boxes': [],
+        }]
+
 MAX_PAGES_PER_CHUNK: int = 15
 
 
@@ -589,14 +678,16 @@ class UnifiedDocumentExtractor:
             return PresentationExtractor.extract(file_path_or_bytes)
         elif ext in ('.html', '.htm'):
             return HTMLExtractor.extract(file_path_or_bytes)
+        elif ext == '.eml':
+            return EmlFileExtractor.extract(file_path_or_bytes)
         else:
             return TextExtractor.extract(file_path_or_bytes)
 
 
 VISUAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'}
-LIGHTWEIGHT_EXTENSIONS = {'.docx', '.xlsx', '.xls', '.csv', '.pptx', '.ppt', '.txt', '.md', '.html', '.htm', '.json'}
+LIGHTWEIGHT_EXTENSIONS = {'.docx', '.xlsx', '.xls', '.csv', '.pptx', '.ppt', '.txt', '.md', '.markdown', '.html', '.htm', '.json', '.yaml', '.yml', '.toml', '.eml'}
 VISUAL_DOC_TYPES = {'pdf', 'image'}
-LIGHTWEIGHT_DOC_TYPES = {'docx', 'spreadsheet', 'presentation', 'txt', 'other'}
+LIGHTWEIGHT_DOC_TYPES = {'docx', 'spreadsheet', 'presentation', 'txt', 'json', 'other'}
 
 
 def classify_ingestion_workload(

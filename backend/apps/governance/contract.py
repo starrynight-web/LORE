@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import uuid
+import hashlib
 import logging
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,7 @@ class GovernanceRequest:
     llm_model: Optional[str] = None
     execution_mode: Optional[str] = None
     synthesis_mode: Optional[str] = None
+    zk_attestation: bool = False
 
     def __post_init__(self):
         if not self.organization and hasattr(self.workspace, 'organization'):
@@ -330,6 +332,24 @@ def validate_canonical_envelope(data: Dict[str, Any]) -> Dict[str, Any]:
     elif GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value not in data["reason_codes"]:
         data["reason_codes"].append(GovernanceReasonCode.CONTRACT_VALIDATION_PASSED.value)
 
+    # Opt-in ZKP attestation layer & deterministic bundle hash preservation
+    if "zk_attestation" not in data:
+        data["zk_attestation"] = None
+    elif data["zk_attestation"] is not None:
+        if not isinstance(data["zk_attestation"], dict):
+            raise ContractValidationError("zk_attestation must be a dictionary or None.")
+        for req_key in ("proof_system", "workspace_state_root", "public_inputs", "proof_b64"):
+            if req_key not in data["zk_attestation"]:
+                raise ContractValidationError(f"zk_attestation missing required key '{req_key}'.")
+
+    if "bundle_hash" not in data or not data["bundle_hash"]:
+        import hashlib
+        dec_id = str(data.get("decision_id", ""))
+        st = str(data.get("state", ""))
+        dir_val = str(data.get("directive", ""))
+        tok = str(data.get("token_count", 0))
+        data["bundle_hash"] = hashlib.sha256(f"{dec_id}:{st}:{dir_val}:{tok}".encode("utf-8")).hexdigest()
+
     return data
 
 
@@ -377,6 +397,8 @@ def fail_closed_envelope(
         "decision_id": did,
         "trace_id": tid,
         "token_count": 0,
+        "bundle_hash": hashlib.sha256(f"{did}:insufficient:ask_user:0".encode("utf-8")).hexdigest(),
+        "zk_attestation": None,
         "error_category": error_category,
         "anti_hallucination_active": True,
         "layers_breakdown": {

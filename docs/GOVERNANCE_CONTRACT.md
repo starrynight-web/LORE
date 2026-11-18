@@ -150,3 +150,65 @@ Evidence requirements in L3 (`EvidenceSufficiencyLayer`) use explicit, typed sta
 All boundaries (DRF views, Celery workers, MCP tools, and test harnesses) invoke:
 1. `apps.governance.contract.validate_canonical_envelope(envelope)` before returning responses.
 2. In case of unexpected runtime or schema exceptions, `fail_closed_envelope()` guarantees an invariant-preserving fallback with `error_category` and an auditable trace ID.
+
+---
+
+## 7. Selective Zero-Knowledge Proof (ZKP) Attestation Layer
+
+LORE Enterprise provides an opt-in Selective Zero-Knowledge Proof (ZKP) attestation subsystem (`apps.governance.zkp`), upgrading LORE's baseline `ZKP-lite` (SHA-256 `bundle_hash` & Merkle provenance) into mathematically verifiable zero-knowledge policy and lineage attestations for cross-organization compliance checks and external audit exports.
+
+### 7.1 Cryptographic Separation of Concerns
+
+1. **Workspace Policy Merkle State Commitment (`workspace_state_root`)**:
+   - Built over all `status == "stable"` rules in the workspace.
+   - Non-stable rules (`draft`, `quarantine`, `superseded`, `stale`) are strictly excluded.
+   - Leaf preimage:
+     $$\text{Leaf} = \text{SHA256}(\text{rule\_id} \parallel \text{content\_hash} \parallel \text{authority\_rank} \parallel \text{status} \parallel \text{effective\_from} \parallel \text{effective\_to} \parallel \text{allowed\_roles\_hash})$$
+   - Padded with deterministic empty leaf hashes to powers of two.
+
+2. **Private Witness Isolation**:
+   - `PrivateWitness` holds verbatim rule statements, confidential source paths, unhashed roles, and Merkle sibling routes.
+   - **Critical Security Invariant**: The private witness NEVER leaves the prover boundary and is never serialized into public envelopes or API responses.
+
+3. **Public Inputs**:
+   - Verifiable commitments including `workspace_state_root`, `decision_type`, `evaluation_timestamp`, `required_authority_floor`, `evidence_status_code`, and `requester_role_commitment` (salted hash).
+   - Zero proprietary statements, contract clauses, or confidential file paths are disclosed.
+
+4. **Dual Proving Architectures & Honest Labeling**:
+   - **`noir` / `noir_zk_snark`**: Full zero-knowledge SNARK circuit compiled and verified via Noir (`nargo` / Barretenberg) when available.
+   - **`zkp_lite_merkle`**: Pure-Python / Rust fallback verifying deterministic Merkle inclusion, temporal validity windows, authority floors, and role authorizations without external toolchain dependencies.
+   - Honest labeling ensures `proof_system` accurately identifies the underlying cryptographic proof mechanism.
+
+### 7.2 Integration with Canonical Envelopes (`lore.result/1` & `lore.result/2`)
+
+The attestation envelope is attached via the optional nullable `zk_attestation` property:
+
+```json
+{
+  "schema": "lore.result/1",
+  "state": "supported",
+  "directive": "proceed_and_cite",
+  "bundle_hash": "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0",
+  "zk_attestation": {
+    "proof_system": "zkp_lite_merkle",
+    "workspace_state_root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "public_inputs": {
+      "decision_type": "regulatory_compliance",
+      "required_authority_floor": 4,
+      "evidence_status_code": 1,
+      "evaluation_timestamp": 1731888000,
+      "requester_role_commitment": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+      "policy_commitment_hash": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a"
+    },
+    "proof_b64": "eyJwb2xpY3lfaW52YXJpYW50cyI6IHRydWV9...",
+    "verified": true,
+    "generated_at": "2026-11-17T23:30:00Z"
+  }
+}
+```
+
+### 7.3 Hot-Path Latency Invariant
+
+To ensure sub-second retrieval performance across everyday IDE workflows:
+- Default queries (`lore.get_context`, `lore.check_compliance`) evaluate with `zk_attestation=False` (returning `zk_attestation: null`).
+- Proving occurs strictly on-demand when `zk_attestation=True` or via dedicated endpoints (`lore.attest_compliance`, `POST /api/governance/zk-attest/`).

@@ -40,9 +40,27 @@ CANONICAL_NODE_TYPES: Set[str] = {
     "rule",
     "skill",
     "component",
+    "technology",
+    "source",
     "version",
     "exception",
     "decision",
+    "domainsummary",
+    "domain_summary",
+}
+
+CANONICAL_RELATIONSHIP_TYPES: Set[str] = {
+    "APPLIES_TO",
+    "CONSTRAINS",
+    "DEPENDS_ON",
+    "SUPERSEDES",
+    "CONFLICTS_WITH",
+    "GOVERNED_BY",
+    "FROM",
+    "OVERRIDES",
+    "REQUIRES",
+    "SUMMARIZES",
+    "MENTIONS_ENTITY",
 }
 
 
@@ -226,6 +244,39 @@ class GraphStoreInterface(ABC):
             "duration_ms": round((time.time() - t0) * 1000, 2),
         }
 
+    def adaptive_neighborhood_expansion(
+        self,
+        seed_nodes: List[Dict[str, str]],
+        workspace_id: str,
+        organization_id: str,
+        max_hops: int = 2,
+        max_nodes: int = 25,
+        permitted_types: Optional[List[str]] = None,
+        as_of: Optional[Any] = None,
+        timeout_ms: float = 100.0,
+    ) -> Dict[str, Any]:
+        """
+        Adaptive 1–4 hop neighborhood expansion base implementation across all graph adapters.
+        Delegates to bounded BFS traversal (self.traverse) and guarantees a unified output schema.
+        """
+        trav = self.traverse(
+            seed_nodes=seed_nodes,
+            workspace_id=workspace_id,
+            organization_id=organization_id,
+            max_depth=max_hops,
+            max_nodes=max_nodes,
+            permitted_types=permitted_types,
+            as_of=as_of,
+            timeout_ms=timeout_ms,
+        )
+        if "nodes" not in trav:
+            trav["nodes"] = [
+                {"node_id": d["node_id"], "node_type": d["node_type"], "depth": d["depth"]}
+                for d in trav.get("discovered_nodes", [])
+            ]
+        trav["hops"] = max_hops
+        return trav
+
 
 class DjangoORMGraphStore(GraphStoreInterface):
     """
@@ -268,8 +319,16 @@ class DjangoORMGraphStore(GraphStoreInterface):
             lookup["source_document_id"] = source_id
         elif st == "chunk":
             lookup["source_chunk_id"] = source_id
-        elif st == "item":
-            lookup["source_item_id"] = source_id
+        elif st in ("item", "rule", "skill", "exception", "fact"):
+            from apps.knowledge.models import KnowledgeItem, CanonicalEntity
+            if KnowledgeItem.objects.filter(id=source_id, workspace_id=workspace_id).exists():
+                lookup["source_item_id"] = source_id
+            elif CanonicalEntity.objects.filter(id=source_id, workspace_id=workspace_id).exists():
+                lookup["source_canonical_entity_id"] = source_id
+            elif st == "item":
+                lookup["source_item_id"] = source_id
+            else:
+                lookup["source_item_id"] = source_id
         elif st in CANONICAL_NODE_TYPES:
             lookup["source_canonical_entity_id"] = source_id
 
@@ -278,8 +337,16 @@ class DjangoORMGraphStore(GraphStoreInterface):
             lookup["target_document_id"] = target_id
         elif tt == "chunk":
             lookup["target_chunk_id"] = target_id
-        elif tt == "item":
-            lookup["target_item_id"] = target_id
+        elif tt in ("item", "rule", "skill", "exception", "fact"):
+            from apps.knowledge.models import KnowledgeItem, CanonicalEntity
+            if KnowledgeItem.objects.filter(id=target_id, workspace_id=workspace_id).exists():
+                lookup["target_item_id"] = target_id
+            elif CanonicalEntity.objects.filter(id=target_id, workspace_id=workspace_id).exists():
+                lookup["target_canonical_entity_id"] = target_id
+            elif tt == "item":
+                lookup["target_item_id"] = target_id
+            else:
+                lookup["target_item_id"] = target_id
         elif tt in CANONICAL_NODE_TYPES:
             lookup["target_canonical_entity_id"] = target_id
 
@@ -326,7 +393,8 @@ class DjangoORMGraphStore(GraphStoreInterface):
         elif rel.source_chunk_id:
             src_type, src_id = "chunk", str(rel.source_chunk_id)
         elif rel.source_item_id:
-            src_type, src_id = "item", str(rel.source_item_id)
+            src_type = override_source_type or "item"
+            src_id = str(rel.source_item_id)
         elif getattr(rel, "source_canonical_entity_id", None):
             src_type = override_source_type or "canonical_entity"
             src_id = str(rel.source_canonical_entity_id)
@@ -338,7 +406,8 @@ class DjangoORMGraphStore(GraphStoreInterface):
         elif rel.target_chunk_id:
             tgt_type, tgt_id = "chunk", str(rel.target_chunk_id)
         elif rel.target_item_id:
-            tgt_type, tgt_id = "item", str(rel.target_item_id)
+            tgt_type = override_target_type or "item"
+            tgt_id = str(rel.target_item_id)
         elif getattr(rel, "target_canonical_entity_id", None):
             tgt_type = override_target_type or "canonical_entity"
             tgt_id = str(rel.target_canonical_entity_id)
@@ -386,8 +455,8 @@ class DjangoORMGraphStore(GraphStoreInterface):
             q &= Q(source_document_id=node_id)
         elif nt == "chunk":
             q &= Q(source_chunk_id=node_id)
-        elif nt == "item":
-            q &= Q(source_item_id=node_id)
+        elif nt in ("item", "rule", "skill", "exception", "fact"):
+            q &= (Q(source_item_id=node_id) | Q(source_canonical_entity_id=node_id))
         elif nt in CANONICAL_NODE_TYPES:
             q &= Q(source_canonical_entity_id=node_id)
         else:
@@ -426,8 +495,8 @@ class DjangoORMGraphStore(GraphStoreInterface):
             q &= Q(target_document_id=node_id)
         elif nt == "chunk":
             q &= Q(target_chunk_id=node_id)
-        elif nt == "item":
-            q &= Q(target_item_id=node_id)
+        elif nt in ("item", "rule", "skill", "exception", "fact"):
+            q &= (Q(target_item_id=node_id) | Q(target_canonical_entity_id=node_id))
         elif nt in CANONICAL_NODE_TYPES:
             q &= Q(target_canonical_entity_id=node_id)
         else:
@@ -921,6 +990,81 @@ class Neo4jGraphStore(GraphStoreInterface):
             limit=limit,
         )
 
+    def adaptive_neighborhood_expansion(
+        self,
+        seed_nodes: List[Dict[str, str]],
+        workspace_id: str,
+        organization_id: str,
+        max_hops: int = 2,
+        max_nodes: int = 25,
+        permitted_types: Optional[List[str]] = None,
+        as_of: Optional[Any] = None,
+        timeout_ms: float = 100.0,
+    ) -> Dict[str, Any]:
+        """
+        Adaptive 1–4 hop neighborhood expansion using parameterized Cypher when Neo4j is available,
+        falling back seamlessly to deterministic BFS traversal.
+        """
+        if self._driver:
+            try:
+                t0 = time.time()
+                clamped_hops = max(1, min(max_hops, 4))
+                seed_ids = [str(s.get("id", "")) for s in seed_nodes if s.get("id")]
+                if not seed_ids:
+                    return {"status": "empty_seeds", "nodes": [], "discovered_nodes": [], "hops": 0}
+
+                cypher = f"""
+                MATCH path = (s:Node)-[r:RELATIONSHIP*1..{clamped_hops}]-(t:Node)
+                WHERE s.id IN $seed_ids
+                  AND s.workspace_id = $workspace_id AND s.organization_id = $organization_id
+                  AND t.workspace_id = $workspace_id AND t.organization_id = $organization_id
+                  AND ALL(rel IN relationships(path) WHERE 
+                      rel.workspace_id = $workspace_id 
+                      AND rel.organization_id = $organization_id 
+                      AND rel.approval_status = 'approved'
+                  )
+                RETURN distinct t.id as node_id, t.node_type as node_type, length(path) as depth
+                LIMIT $max_nodes
+                """
+                with self._driver.session() as session:
+                    res = session.run(
+                        cypher,
+                        seed_ids=seed_ids,
+                        workspace_id=workspace_id,
+                        organization_id=organization_id,
+                        max_nodes=max_nodes,
+                    )
+                    nodes = [{"node_id": r["node_id"], "node_type": r["node_type"], "depth": r["depth"]} for r in res]
+                    return {
+                        "status": "completed",
+                        "nodes": nodes,
+                        "discovered_nodes": nodes,
+                        "discovered_nodes_count": len(nodes),
+                        "hops": clamped_hops,
+                        "duration_ms": round((time.time() - t0) * 1000, 2),
+                    }
+            except Exception as e:
+                logger.warning(f"Neo4j adaptive expansion fallback: {e}")
+
+        # Fallback to standard bounded BFS traversal via GraphStoreInterface
+        return super().adaptive_neighborhood_expansion(
+            seed_nodes=seed_nodes,
+            workspace_id=workspace_id,
+            organization_id=organization_id,
+            max_hops=max_hops,
+            max_nodes=max_nodes,
+            permitted_types=permitted_types,
+            as_of=as_of,
+            timeout_ms=timeout_ms,
+        )
+
+
+# Class Aliases for Enterprise Parity Specifications
+Neo4jGraphAdapter = Neo4jGraphStore
+KuzuGraphAdapter = KuzuGraphStore
+DjangoORMGraphAdapter = DjangoORMGraphStore
+GraphStoreAdapter = GraphStoreInterface
+
 
 _GRAPH_STORE_REGISTRY: Dict[str, GraphStoreInterface] = {}
 
@@ -929,8 +1073,13 @@ def get_graph_store(backend: Optional[str] = None) -> GraphStoreInterface:
     """
     Factory function to retrieve the configured graph store backend.
     Supported backends: 'django_orm' (default), 'kuzu', 'neo4j'.
+    Respects LORE_GRAPH_BACKEND and GRAPH_STORE_BACKEND environment settings.
     """
-    chosen = (backend or getattr(settings, "GRAPH_STORE_BACKEND", "django_orm")).lower()
+    chosen = (
+        backend
+        or getattr(settings, "LORE_GRAPH_BACKEND", None)
+        or getattr(settings, "GRAPH_STORE_BACKEND", "django_orm")
+    ).lower()
     if chosen in _GRAPH_STORE_REGISTRY:
         return _GRAPH_STORE_REGISTRY[chosen]
 

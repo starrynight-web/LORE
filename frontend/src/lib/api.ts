@@ -395,6 +395,8 @@ export interface GovernanceLayerDef {
   capabilities?: string[];
   catalog?: Record<string, any>;
   precedence_ladder?: Array<{ state: string; directive: string; precedence: number }>;
+  active_exceptions_count?: number;
+  configured_rules_count?: number;
 }
 
 export interface GovernanceLayersStatus {
@@ -479,6 +481,8 @@ export interface ChatMessage {
   client_message_id?: string;
   governance_state?: string;
   governance_directive?: string;
+  decision_type?: string;
+  zk_attestation?: ZkAttestationEnvelope | null;
   trace_id?: string;
   citations?: Citation[];
   revalidated_citations?: Citation[];
@@ -601,6 +605,29 @@ class ApiClient {
     const query = orgId ? `?organization_id=${orgId}` : '';
     const res = await this.request<any>(`/workspaces/workspaces/${query}`);
     return Array.isArray(res) ? res : res.results || [];
+  }
+
+  async createWorkspace(data: { organization: string; name: string; slug?: string; description?: string }): Promise<Workspace> {
+    return this.request<Workspace>('/workspaces/workspaces/', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async purgeWorkspaceDatabase(workspaceId: string): Promise<{
+    status: string;
+    message: string;
+    deleted_documents_count: number;
+    deleted_entities_count: number;
+  }> {
+    return this.request<{
+      status: string;
+      message: string;
+      deleted_documents_count: number;
+      deleted_entities_count: number;
+    }>(`/workspaces/workspaces/${workspaceId}/purge-data/`, {
+      method: 'POST'
+    });
   }
 
   async getCollections(workspaceId?: string) {
@@ -987,6 +1014,25 @@ class ApiClient {
   async getGraphOverview(workspaceId?: string): Promise<GraphOverviewData> {
     const qs = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
     return this.request<GraphOverviewData>(`/knowledge/graph-overview/${qs}`);
+  }
+
+  async getNodeLineage(nodeId: string, workspaceId?: string): Promise<NodeLineageData> {
+    const qs = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+    return this.request<NodeLineageData>(`/knowledge/node/${encodeURIComponent(nodeId)}/lineage/${qs}`);
+  }
+
+  async generateZkAttestation(payload: ZkAttestPayload): Promise<ZkAttestationEnvelope> {
+    return this.request<ZkAttestationEnvelope>('/governance/zk-attest/', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async verifyZkAttestation(envelope: ZkAttestationEnvelope): Promise<ZkVerifyResponse> {
+    return this.request<ZkVerifyResponse>('/governance/zk-verify/', {
+      method: 'POST',
+      body: JSON.stringify({ attestation_envelope: envelope })
+    });
   }
 
   async approveDocument(id: string) {
@@ -1406,10 +1452,116 @@ export interface CanonicalEntitySummary {
   properties?: Record<string, any>;
 }
 
+export interface GraphVisualNode {
+  id: string;
+  label: string;
+  type: string;
+  authority?: number;
+  status?: string;
+  severity?: string;
+  phase?: string;
+  statement?: string;
+  level?: number;
+  token_count?: number;
+}
+
+export interface GraphVisualEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation_type?: string;
+  relationship_type?: string;
+  relation?: string;
+  confidence?: number;
+  provenance?: string;
+  status?: string;
+}
+
+export interface RaptorHierarchyData {
+  root?: DomainSummaryCommunity;
+  communities: DomainSummaryCommunity[];
+  total_communities: number;
+  token_bound_ceiling: number;
+  all_within_bound: boolean;
+}
+
+export interface NodeLineageData {
+  status: string;
+  node_id: string;
+  node: {
+    id: string;
+    label: string;
+    code?: string;
+    node_type: string;
+    authority_level: number;
+    status: string;
+    component?: string;
+    statement?: string;
+    confidence?: number;
+    aliases?: string[];
+    created_at?: string;
+  };
+  from_source?: {
+    document_id: string;
+    title: string;
+    document_code?: string;
+    version_number?: number;
+    authority_level?: number;
+    governance_status?: string;
+    effective_date?: string | null;
+    expiration_date?: string | null;
+    file_hash?: string;
+  };
+  supersedes_timeline: Array<{
+    id?: string;
+    relation_type?: string;
+    source_id?: string;
+    target_id?: string;
+    version?: string;
+    note?: string;
+  }>;
+  conflicts: Array<{
+    conflict_id?: string;
+    claim_a?: string;
+    claim_b?: string;
+    resolution_status?: string;
+    resolution_notes?: string;
+    created_at?: string;
+  }>;
+  overrides: Array<{
+    exception_id?: string;
+    scope_type?: string;
+    scope_value?: string;
+    justification?: string;
+    approved_by?: string;
+    window_start?: string | null;
+    window_end?: string | null;
+    status?: string;
+  }>;
+  governed_by: Array<{
+    decision_id?: string;
+    query?: string;
+    state?: string;
+    directive?: string;
+    created_at?: string;
+    relation_type?: string;
+  }>;
+  upstream_nodes: Array<{
+    source_id: string;
+    relationship: Record<string, any>;
+  }>;
+  downstream_nodes: Array<{
+    target_id: string;
+    relationship: Record<string, any>;
+  }>;
+  traversal_depth: number;
+}
+
 export interface GraphOverviewData {
   status?: string;
   workspace_id: string;
   workspace_name?: string;
+  raptor_hierarchy?: RaptorHierarchyData;
   domain_summaries?: DomainSummaryCommunity[];
   communities?: DomainSummaryCommunity[];
   domain_summaries_count?: number;
@@ -1418,6 +1570,7 @@ export interface GraphOverviewData {
   entities_by_type?: Record<string, number>;
   edge_metrics?: Record<string, number>;
   edge_types?: Record<string, number>;
+  edge_counts?: Record<string, number>;
   total_edges?: number;
   active_rules_count?: number;
   relationships_count?: number;
@@ -1430,6 +1583,12 @@ export interface GraphOverviewData {
     provenance: string;
     approval_status: string;
   }>;
+  nodes?: GraphVisualNode[];
+  edges?: GraphVisualEdge[];
+  subgraph?: {
+    nodes: GraphVisualNode[];
+    edges: GraphVisualEdge[];
+  };
 }
 
 export interface ConflictRecordItem {
@@ -1450,6 +1609,33 @@ export interface ConflictRecordItem {
   updated_at: string;
 }
 
+export interface ZkAttestationEnvelope {
+  proof_system: string;
+  workspace_state_root: string;
+  public_inputs: Record<string, any>;
+  proof_b64: string;
+  verified: boolean;
+  generated_at: string;
+}
+
+export interface ZkAttestPayload {
+  workspace_id: string;
+  decision_type?: string;
+  rule_id?: string;
+  required_authority_floor?: number;
+  evidence_status?: string;
+  user_role?: string;
+  backend?: string;
+}
+
+export interface ZkVerifyResponse {
+  verified: boolean;
+  proof_system: string;
+  workspace_state_root: string;
+  public_inputs: Record<string, any>;
+  message: string;
+}
+
 export const api = new ApiClient();
 
 // Explicit bindings to guarantee prototype availability across Turbopack HMR sessions
@@ -1467,4 +1653,7 @@ api.getConnectorsStatus = api.getConnectorsStatus.bind(api);
 api.triggerConnectorSync = api.triggerConnectorSync.bind(api);
 api.submitWebScraper = api.submitWebScraper.bind(api);
 api.getGraphOverview = api.getGraphOverview.bind(api);
+api.getNodeLineage = api.getNodeLineage.bind(api);
+api.generateZkAttestation = api.generateZkAttestation.bind(api);
+api.verifyZkAttestation = api.verifyZkAttestation.bind(api);
 

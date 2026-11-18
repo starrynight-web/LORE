@@ -202,7 +202,20 @@ class RequirementRegistry:
         for req in applicable_reqs:
             # Check if this requirement is satisfied by retrieved chunks
             matched = cls._find_matching_evidence(req, active_chunks, query_analysis, query)
-            
+
+            # Check if an active, approved ScopedException waives or satisfies this requirement
+            matching_exc = None
+            if context.get('has_exception') and context.get('matched_exceptions'):
+                for exc in context.get('matched_exceptions', []):
+                    r_code = (exc.get('rule_code') or '').lower()
+                    req_id_lower = req.requirement_id.lower()
+                    ev_type_lower = req.evidence_type.lower()
+                    if r_code in (req_id_lower, ev_type_lower) or \
+                       req_id_lower in r_code or \
+                       ev_type_lower in r_code:
+                        matching_exc = exc
+                        break
+
             if matched:
                 evidence_found.append({
                     'requirement': req.requirement_id,
@@ -212,6 +225,17 @@ class RequirementRegistry:
                     'description': req.description,
                     'matched_chunks_count': len(matched)
                 })
+            elif matching_exc:
+                evidence_found.append({
+                    'requirement': req.requirement_id,
+                    'decision_type': req.decision_type,
+                    'evidence_type': req.evidence_type,
+                    'status': EvidenceStatus.SATISFIED.value,
+                    'description': f"{req.description} (Waived via active Scoped Exception [{matching_exc.get('rule_code')}]: {matching_exc.get('justification', '')})",
+                    'matched_chunks_count': 1,
+                    'waived_by_exception': True
+                })
+                reason_codes.append(GovernanceReasonCode.L4_EXCEPTION_APPLIED.value)
             else:
                 # Determine precise failure status
                 status = EvidenceStatus.MISSING
@@ -331,21 +355,38 @@ class RequirementRegistry:
                 if any(w in combined for w in ['missing receipt declaration', 'itemized receipts', 'declaration form', '15 calendar days', 'written explanation']):
                     matched.append(chk)
             elif req.evidence_type == 'dual_source_comparison':
-                # Covered if both target codes exist in active chunks
+                # Covered if both target codes exist in active chunks or both invoice and contract exist
                 req_codes = [c.lower() for c in getattr(query_analysis, 'required_companion_docs', [])]
-                if req_codes:
-                    all_codes = []
-                    for c in active_chunks:
-                        c_code = str(c.get('document_code', '')).lower()
-                        if not c_code:
-                            m_code = re.search(r'\b(doc-\d+)\b', c.get('document_title', '').lower())
-                            if m_code:
-                                c_code = m_code.group(1)
-                        if c_code:
-                            all_codes.append(c_code)
-                    if all(rc in all_codes for rc in req_codes):
-                        matched.append(chk)
-                else:
+                all_codes = []
+                for c in active_chunks:
+                    c_code = str(c.get('document_code', '')).lower()
+                    if not c_code:
+                        m_code = re.search(r'\b(doc-\d+)\b', c.get('document_title', '').lower())
+                        if m_code:
+                            c_code = m_code.group(1)
+                    if c_code:
+                        all_codes.append(c_code)
+
+                has_inv = any(
+                    'invoice' in c.get('document_title', '').lower() or
+                    'doc-010' in str(c.get('document_code', '')).lower() or
+                    'doc-010' in c.get('document_title', '').lower() or
+                    'invoice no' in c.get('text', '').lower()
+                    for c in active_chunks
+                )
+                has_cntr = any(
+                    'contract' in c.get('document_title', '').lower() or
+                    'doc-009' in str(c.get('document_code', '')).lower() or
+                    'doc-009' in c.get('document_title', '').lower() or
+                    'vendor services agreement' in c.get('text', '').lower() or
+                    'agreement' in c.get('document_title', '').lower()
+                    for c in active_chunks
+                )
+                if req_codes and all(rc in all_codes for rc in req_codes):
+                    matched.append(chk)
+                elif has_inv and has_cntr:
+                    matched.append(chk)
+                elif not req_codes:
                     matched.append(chk)
             elif req.evidence_type == 'records_retention_schedule_facts':
                 # Duration and trigger

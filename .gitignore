@@ -35,6 +35,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.sqlite3
+graphify-out/cache/
 backend/media/
 backend/staticfiles/
 backend/qdrant_storage/

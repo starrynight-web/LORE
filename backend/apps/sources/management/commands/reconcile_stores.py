@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand
 from apps.sources.reconciliation import StoreReconciliationService
 
 class Command(BaseCommand):
-    help = "Reconciles consistency between PostgreSQL (canonical truth) and Qdrant (derived vector index)."
+    help = "Reconciles consistency between PostgreSQL (canonical truth) and active Vector Store (Qdrant or pgvector)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -22,7 +22,7 @@ class Command(BaseCommand):
             '--collection',
             type=str,
             default='lore_chunks',
-            help='Qdrant collection name to reconcile.',
+            help='Vector store collection name to reconcile.',
         )
         parser.add_argument(
             '--json',
@@ -53,20 +53,24 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f"Reconciliation Complete: {summary['total_documents_checked']} documents checked. "
-            f"Healthy: {summary['healthy_documents']}."
+            f"Healthy: {summary['healthy_documents']}. "
+            f"Active Vector: {summary.get('vector_backend', 'N/A')}, Active Graph: {summary.get('graph_backend', 'N/A')}."
         ))
 
         if summary['mismatches']:
             self.stdout.write(self.style.WARNING(f"\nDiscrepancies Found ({len(summary['mismatches'])}):"))
             for m in summary['mismatches']:
                 status = "REPAIRED" if m.get('fixed') else "UNRESOLVED"
+                reason_str = f" ({m['reason']})" if m.get('reason') else ""
                 self.stdout.write(
                     f" - Doc {m['document_id']} ('{m['title']}'): PG Chunks={m['postgres_chunk_count']}, "
-                    f"Qdrant Vectors={m['qdrant_vector_count']} -> [{status}]"
+                    f"Vectors={m.get('vector_chunk_count', m.get('qdrant_vector_count', 0))} "
+                    f"({summary.get('vector_backend', 'VectorStore')}) -> [{status}]{reason_str}"
                 )
 
         if summary['orphans']:
-            self.stdout.write(self.style.WARNING(f"\nOrphaned Vectors Found in Qdrant ({len(summary['orphans'])}):"))
+            v_name = summary.get('vector_backend', 'VectorStore')
+            self.stdout.write(self.style.WARNING(f"\nOrphaned Vectors Found in {v_name} ({len(summary['orphans'])}):"))
             for o in summary['orphans']:
                 status = "PURGED" if o.get('fixed') else "UNRESOLVED"
                 self.stdout.write(f" - Orphan Doc {o['document_id']}: {o['reason']} -> [{status}]")

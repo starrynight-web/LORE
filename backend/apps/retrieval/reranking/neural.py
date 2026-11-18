@@ -149,15 +149,31 @@ class NeuralCrossEncoderReranker(BaseReranker):
             dev = "cuda" if torch.cuda.is_available() else "cpu"
         self._active_device = dev
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            self._model_name_or_path,
-            revision=self._model_revision,
-            use_fast=True
-        )
-        model = AutoModelForSequenceClassification.from_pretrained(
-            self._model_name_or_path,
-            revision=self._model_revision
-        )
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                self._model_name_or_path,
+                revision=self._model_revision,
+                use_fast=True,
+                local_files_only=True
+            )
+            model = AutoModelForSequenceClassification.from_pretrained(
+                self._model_name_or_path,
+                revision=self._model_revision,
+                local_files_only=True
+            )
+        except Exception as e_local:
+            logger.info(f"[NeuralReranker] Local cache loading failed ({e_local}), attempting online download...")
+            tokenizer = AutoTokenizer.from_pretrained(
+                self._model_name_or_path,
+                revision=self._model_revision,
+                use_fast=True,
+                local_files_only=False
+            )
+            model = AutoModelForSequenceClassification.from_pretrained(
+                self._model_name_or_path,
+                revision=self._model_revision,
+                local_files_only=False
+            )
         model.to(torch.device(dev))
         model.eval()
 

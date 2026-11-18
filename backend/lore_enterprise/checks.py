@@ -141,22 +141,39 @@ def check_execution_and_embedding_configuration(app_configs, **kwargs):
     # 5. Dimension Consistency Check between Embedder and Vector Store
     try:
         from apps.retrieval.embeddings import get_embedding_adapter
-        from apps.retrieval.vector_store import QdrantVectorStore
+        from apps.retrieval.vector_store import get_vector_store
 
         embedder = get_embedding_adapter()
-        vstore = QdrantVectorStore()
+        vstore = get_vector_store()
+        vdim = getattr(vstore, 'vector_dim', 384)
 
-        if embedder.dimension != vstore.vector_dim:
+        if embedder.dimension != vdim:
             errors.append(
                 Error(
                     f"Incompatible embedding dimensions: Embedding adapter produces {embedder.dimension}-dim vectors, "
-                    f"but Qdrant vector store is configured for {vstore.vector_dim}-dim vectors.",
-                    hint="Ensure EMBEDDING_MODEL_NAME dimension matches Qdrant collection vector_dim (default 384 for all-MiniLM-L6-v2).",
+                    f"but active vector store ({vstore.__class__.__name__}) is configured for {vdim}-dim vectors.",
+                    hint="Ensure EMBEDDING_MODEL_NAME dimension matches vector store collection vector_dim (default 384 for all-MiniLM-L6-v2).",
                     id="lore.vector.E020"
                 )
             )
     except Exception as ex:
-        # Don't fail check if DB or Qdrant initialization is deferred during build
+        # Don't fail check if DB or vector store initialization is deferred during build
+        pass
+
+    # 6. Multi-Database Backend Configuration & Consistency Check
+    try:
+        from apps.knowledge.graph_adapters import get_graph_store
+        gstore = get_graph_store()
+        graph_backend = getattr(settings, 'LORE_GRAPH_BACKEND', 'django_orm').lower()
+        if graph_backend == 'neo4j' and not getattr(settings, 'NEO4J_URI', ''):
+            errors.append(
+                Warning(
+                    "LORE_GRAPH_BACKEND is set to 'neo4j' but NEO4J_URI is empty.",
+                    hint="Set NEO4J_URI (e.g. bolt://localhost:7687) to connect to Neo4j cluster.",
+                    id="lore.graph.W030"
+                )
+            )
+    except Exception:
         pass
 
     return errors

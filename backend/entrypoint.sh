@@ -8,7 +8,7 @@ import psycopg2
 from urllib.parse import urlparse
 
 db_url = os.environ.get('DATABASE_URL', '')
-if db_url:
+if db_url and not db_url.startswith('sqlite'):
     u = urlparse(db_url)
     for i in range(30):
         try:
@@ -24,9 +24,15 @@ if db_url:
             sys.exit(0)
         except Exception as e:
             time.sleep(1)
-print('Database timeout')
-sys.exit(1)
+    print('Database timeout')
+    sys.exit(1)
 " || true
+
+# If a custom command was passed (e.g. celery worker or celery beat), execute it directly
+if [ "$#" -gt 0 ]; then
+    echo "Executing custom command: $@"
+    exec "$@"
+fi
 
 echo "Applying database migrations..."
 python manage.py migrate --noinput

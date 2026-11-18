@@ -115,4 +115,22 @@ The LORE Enterprise platform satisfies all specified reliability, security bound
 - **Controlled Restore Drill Verified**: YES
 - **Empirical Automated Tests Pass Rate**: **100.0% (53 / 53 passed)**
 
-**Final Sign-off Status**: **ACCEPTED FOR PRODUCTION DEPLOYMENT**
+---
+
+## 6. LORE Enterprise v2.0 Knowledge Grid & Multi-Database Storage Acceptance
+
+**Addendum Verification Date:** 2026-11-17  
+**Architecture Specification:** docs/enterprise/fix/knowledge.md, GOVERNANCE_CONTRACT.md  
+**Test Suite:** `backend/tests/test_multi_db_graphrag_deployment.py` + `backend/tests/test_enterprise_knowledge_grid.py` + `backend/tests/test_bounded_governed_graphrag.py` + `backend/tests/test_multi_hop_retrieval.py`
+
+| Capability | Specification | Acceptance Criteria | Verified Result | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **Dual-Mode Storage Parity** | `KùzuDB` + `sqlite-vec` ⇄ `Neo4j` + `pgvector` | Zero external DB needed for local airgap; dynamic switch via `LORE_GRAPH_BACKEND` & `LORE_VECTOR_BACKEND` | `Neo4jGraphAdapter` & `PgVectorLexicalAdapter` verified; RRF (k=60) & Stage 0 RBAC verified | **PASS** |
+| **Transactional Join Key** | `rule_id` cross-store sync | Synchronized writes across Graph, Vector, and Relational stores | Verified zero-drift via `reconcile_stores` command & `StoreReconciliationService` | **PASS** |
+| **RAPTOR Hierarchy Engine** | `DomainSummary` (Level-1 & Level-0) | Ceiling invariant: `≤ 800 tokens` per community | Verified 100% within token budget ceiling (`test_raptor_hierarchical_summaries_budget_cap`) | **PASS** |
+| **Interactive Graph Visualizer** | Next.js / Tailwind Canvas | Interactive SVG topology, hop-depth selector (1–4), edge toggles, and Node Inspector Drawer | Rendered in `KnowledgeGridView.tsx` & linked in `OverviewView.tsx` with live health metrics | **PASS** |
+| **Node Lineage API** | `/api/knowledge/node/<id>/lineage/` | Full upstream/downstream provenance: `from_source`, `supersedes_timeline`, `conflicts`, `overrides`, `governed_by` | Contract test `test_node_lineage_api_contract` passed 100% | **PASS** |
+| **Multi-DB Docker Compose** | Profiles (`default` vs `--profile enterprise`) | Default starts lightweight single-node; enterprise profile adds `pgvector:pg16` and `neo4j:5-community` | Verified syntax, volumes, healthchecks, and `backend/init_db.sql` schema provisioner | **PASS** |
+
+**Final Production Sign-off Status**: **ACCEPTED & LOCKED FOR ENTERPRISE PRODUCTION DEPLOYMENT**
+

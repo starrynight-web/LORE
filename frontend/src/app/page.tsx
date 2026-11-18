@@ -17,6 +17,9 @@ import { OrganizationSettingsView } from '@/components/OrganizationSettingsView'
 import { EmailConnectorView } from '@/components/EmailConnectorView';
 import { KnowledgeGridView } from '@/components/KnowledgeGridView';
 import { EnterpriseConnectorsView } from '@/components/EnterpriseConnectorsView';
+import { CommandPalette } from '@/components/CommandPalette';
+import { WorkspaceSwitcherSheet } from '@/components/WorkspaceSwitcherSheet';
+import { StatusBar } from '@/components/StatusBar';
 import { 
   api, 
   Workspace, 
@@ -44,13 +47,23 @@ export default function Home() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadIntakeMode, setUploadIntakeMode] = useState<'files' | 'zip' | 'scraper'>('files');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<SourceDocument | null>(null);
   const [ragScopedDocId, setRagScopedDocId] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [lastSyncedDate, setLastSyncedDate] = useState<Date | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  useEffect(() => {
+    setLastSyncedDate(new Date());
+  }, []);
 
   // Authenticate and load initial data
   const loadWorkspaceData = async (wsId: string) => {
+    setIsSyncing(true);
     try {
       const [docs, cList, jList, rList, aList] = await Promise.all([
         api.getDocuments(wsId),
@@ -64,8 +77,11 @@ export default function Home() {
       setJobs(jList);
       setReviewDocs(rList);
       setAuditEvents(aList);
+      setLastSyncedDate(new Date());
     } catch (err) {
       console.error("Error loading workspace data:", err);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -113,9 +129,7 @@ export default function Home() {
         const meData = await api.me();
         await handleAuthSuccess(meData, false);
       } catch (err) {
-        // Clear any invalid or expired tokens
         api.clearToken();
-        // Automatic Guest Mode: Login as demo admin to enable full workspace access with zero friction
         try {
           const guestRes = await api.login('admin@northstar.demo', 'Northstar2026!');
           await handleAuthSuccess(guestRes, true);
@@ -132,7 +146,7 @@ export default function Home() {
     checkSession();
   }, []);
 
-  // Poll for background ingestion updates if jobs are in-progress
+  // Poll for background ingestion updates if jobs are in-progress (2.5s job polling preserved)
   useEffect(() => {
     if (!currentWorkspace) return;
     const interval = setInterval(() => {
@@ -140,10 +154,36 @@ export default function Home() {
       if (hasActive) {
         api.getJobs(currentWorkspace.id).then(setJobs).catch(() => {});
         api.getDocuments(currentWorkspace.id).then(setDocuments).catch(() => {});
+        setLastSyncedDate(new Date());
       }
     }, 2500);
     return () => clearInterval(interval);
   }, [currentWorkspace, jobs]);
+
+  // Global Keyboard Shortcuts (⌘K for Command Palette, ⌘U for Ingest Sheet, Esc to close)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (cmdOrCtrl && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      } else if (cmdOrCtrl && (e.key === 'u' || e.key === 'U')) {
+        e.preventDefault();
+        setUploadIntakeMode('files');
+        setIsUploadModalOpen(true);
+      } else if (e.key === 'Escape') {
+        if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
+        if (isWorkspaceSwitcherOpen) setIsWorkspaceSwitcherOpen(false);
+        if (isUploadModalOpen) setIsUploadModalOpen(false);
+        if (selectedDocument) setSelectedDocument(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCommandPaletteOpen, isWorkspaceSwitcherOpen, isUploadModalOpen, selectedDocument]);
 
   const handleRefreshCurrentWorkspace = () => {
     if (currentWorkspace) {
@@ -156,17 +196,22 @@ export default function Home() {
     setActiveTab('activity');
   };
 
+  const handleOpenUploadWithMode = (mode: 'files' | 'zip' | 'scraper' = 'files') => {
+    setUploadIntakeMode(mode);
+    setIsUploadModalOpen(true);
+  };
+
   const activeJobsCount = jobs.filter(j => j.status !== 'ready' && j.status !== 'failed').length;
 
   return (
     <div 
-      className="flex h-screen overflow-hidden transition-colors duration-200"
+      className="flex h-screen overflow-hidden transition-colors duration-200 select-none"
       style={{
-        backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'var(--canvas)',
         color: 'var(--text-primary)',
       }}
     >
-      {/* Sidebar */}
+      {/* 1 · macOS Sonoma 264px Gradient Sidebar */}
       {isSidebarOpen && (
         <Sidebar
           activeTab={activeTab}
@@ -180,11 +225,21 @@ export default function Home() {
           activeJobsCount={activeJobsCount}
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
+          currentOrg={currentOrg}
+          currentWorkspace={currentWorkspace}
+          workspaces={workspaces}
+          onSelectWorkspace={(ws) => {
+            setCurrentWorkspace(ws);
+            loadWorkspaceData(ws.id);
+          }}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+          onOpenWorkspaceSwitcher={() => setIsWorkspaceSwitcherOpen(true)}
         />
       )}
 
-      {/* Main Workspace Frame */}
+      {/* 2 · Main Workspace Frame */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* 52px Sonoma Frosted Toolbar */}
         <Header
           currentUser={currentUser}
           currentOrg={currentOrg}
@@ -195,19 +250,21 @@ export default function Home() {
             setCurrentWorkspace(ws);
             loadWorkspaceData(ws.id);
           }}
-          onOpenUpload={() => setIsUploadModalOpen(true)}
-          onSearchClick={() => setActiveTab('rag')}
+          onOpenUpload={handleOpenUploadWithMode}
+          onSearchClick={() => setIsCommandPaletteOpen(true)}
           onLogout={handleLogout}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           isSidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          onNavigateTab={setActiveTab}
+          onOpenWorkspaceSwitcher={() => setIsWorkspaceSwitcherOpen(true)}
         />
 
-        {/* Viewport */}
+        {/* 3 · Plain White Canvas Content Viewport */}
         <main 
           className="flex-1 overflow-y-auto p-6 md:p-8 transition-colors duration-200"
           style={{
-            backgroundColor: 'var(--bg-primary)',
+            backgroundColor: 'var(--canvas)',
           }}
         >
           {isLoading ? (
@@ -215,11 +272,11 @@ export default function Home() {
               <div 
                 className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
                 style={{
-                  borderColor: 'var(--brand-accent)',
+                  borderColor: 'var(--accent)',
                   borderTopColor: 'transparent',
                 }}
               />
-              <div className="text-xs font-semibold text-[var(--text-secondary)]">Connecting to LORE Enterprise Grid...</div>
+              <div className="text-xs font-semibold text-[#6E6E73]">Connecting to LORE Enterprise Grid...</div>
             </div>
           ) : (
             <>
@@ -227,8 +284,11 @@ export default function Home() {
                 <OverviewView
                   documents={documents}
                   jobs={jobs}
-                  onOpenUpload={() => setIsUploadModalOpen(true)}
+                  onOpenUpload={handleOpenUploadWithMode}
                   onNavigate={setActiveTab}
+                  currentWorkspace={currentWorkspace}
+                  currentOrg={currentOrg}
+                  onRefresh={handleRefreshCurrentWorkspace}
                 />
               )}
 
@@ -267,7 +327,7 @@ export default function Home() {
               {activeTab === 'connectors' && (
                 <EnterpriseConnectorsView
                   workspaceId={currentWorkspace?.id}
-                  onOpenWebScraperModal={() => setIsUploadModalOpen(true)}
+                  onOpenWebScraperModal={() => handleOpenUploadWithMode('scraper')}
                 />
               )}
 
@@ -315,6 +375,7 @@ export default function Home() {
               {(activeTab === 'settings' || activeTab === 'api_connect' || activeTab === 'mcp_server' || activeTab === 'governance_layers') && (
                 <OrganizationSettingsView
                   currentOrg={currentOrg}
+                  currentWorkspace={currentWorkspace}
                   userRole={currentOrg?.role}
                   onRefreshOrg={handleRefreshCurrentWorkspace}
                   initialSection={activeTab === 'api_connect' ? 'api' : activeTab === 'mcp_server' ? 'mcp' : activeTab === 'governance_layers' ? 'layers' : 'all'}
@@ -323,9 +384,55 @@ export default function Home() {
             </>
           )}
         </main>
+
+        {/* 4 · 24px Sonoma Status Bar */}
+        <StatusBar
+          isSyncing={isSyncing}
+          lastSynced={lastSyncedDate}
+          layersCount={9}
+          totalLayers={9}
+        />
       </div>
 
-      {/* Auth Modal (shown when requested or switching profiles) */}
+      {/* 5 · ⌘K Command Palette (560px centered sheet) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        workspaces={workspaces}
+        currentWorkspace={currentWorkspace}
+        documents={documents}
+        onSelectWorkspace={(ws) => {
+          setCurrentWorkspace(ws);
+          loadWorkspaceData(ws.id);
+        }}
+        onNavigate={(tab) => setActiveTab(tab)}
+        onOpenUpload={() => handleOpenUploadWithMode('files')}
+      />
+
+      {/* 6 · Workspace Switcher Sheet */}
+      <WorkspaceSwitcherSheet
+        isOpen={isWorkspaceSwitcherOpen}
+        onClose={() => setIsWorkspaceSwitcherOpen(false)}
+        workspaces={workspaces}
+        currentWorkspace={currentWorkspace}
+        currentOrg={currentOrg}
+        onSelectWorkspace={(ws) => {
+          setCurrentWorkspace(ws);
+          loadWorkspaceData(ws.id);
+        }}
+        onWorkspaceCreated={async (newWs) => {
+          try {
+            const wsList = await api.getWorkspaces();
+            setWorkspaces(wsList);
+            setCurrentWorkspace(newWs);
+            await loadWorkspaceData(newWs.id);
+          } catch (err) {
+            console.error('Failed to reload workspaces after creation:', err);
+          }
+        }}
+      />
+
+      {/* 7 · Auth Modal */}
       {isAuthModalOpen && (
         <AuthModal
           onSuccess={(data) => {
@@ -336,7 +443,7 @@ export default function Home() {
         />
       )}
 
-      {/* Upload Modal */}
+      {/* 8 · Ingest Sheet / Upload Modal (⌘U, 720px drawer) */}
       {currentWorkspace && (
         <UploadModal
           isOpen={isUploadModalOpen}
@@ -347,7 +454,7 @@ export default function Home() {
         />
       )}
 
-      {/* Document Detail & OCR Inspector Modal */}
+      {/* 9 · Document Detail Modal */}
       <DocumentDetailModal
         document={selectedDocument}
         onClose={() => setSelectedDocument(null)}

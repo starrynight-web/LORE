@@ -146,9 +146,9 @@ const translations: Record<Language, Record<string, string>> = {
     'rag.verification_state': 'Governance State',
     'rag.source_authority': 'Source Authority',
     'rag.sample_questions': 'Recommended Inquiries:',
-    'rag.sample_1': 'What is the schedule of property and CS khatian number in the deed?',
-    'rag.sample_2': 'Who are the executing parties and what is the consideration amount?',
-    'rag.sample_3': 'Are there any encumbrances, easements, or caveats registered?',
+    'rag.sample_1': 'What are the key policy conditions and compliance requirements?',
+    'rag.sample_2': 'Who are the designated authorities and what are their approval thresholds?',
+    'rag.sample_3': 'Are there any encumbrances, exceptions, or caveats registered?',
 
     // Review Queue
     'review.title': 'Review Queue & Evidence Verification',
@@ -334,9 +334,9 @@ const translations: Record<Language, Record<string, string>> = {
     'rag.verification_state': 'যাচাইকরণ অবস্থা',
     'rag.source_authority': 'উৎস কর্তৃত্ব স্তর',
     'rag.sample_questions': 'প্রস্তাবিত প্রশ্নাবলী:',
-    'rag.sample_1': 'উক্ত দলিলে সম্পত্তির তফসিল এবং সিএস খতিয়ান নম্বর কত?',
-    'rag.sample_2': 'সম্পাদনের পক্ষগণ কারা এবং সাফ কবলা মূল্যের পরিমাণ কত?',
-    'rag.sample_3': 'দলিলে কোনো দায়বদ্ধতা বা স্বত্বাধিকারের শর্ত উল্লেখ আছে কি?',
+    'rag.sample_1': 'উক্ত নথিতে নীতিগত শর্ত ও সম্মতি সংক্রান্ত বাধ্যবাধকতা কী কী?',
+    'rag.sample_2': 'অনুমোদনের দায়িত্বপ্রাপ্ত কর্তৃপক্ষ কারা এবং তাদের নির্ধারিত সীমা কত?',
+    'rag.sample_3': 'নথিতে কি কোনো ছাড় বা পরস্পরবিরোধী নির্দেশিকা উল্লেখ আছে?',
 
     // Review Queue
     'review.title': 'পর্যালোচনার তালিকা ও তথ্য যাচাই',
