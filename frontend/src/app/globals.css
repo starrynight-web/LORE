@@ -347,3 +347,30 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Print optimization for /docs PDF Export */
+@media print {
+  header, nav, button, .no-print {
+    display: none !important;
+  }
+  body, .bg-slate-950, .bg-slate-900 {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  * {
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  .max-w-6xl, .max-w-7xl {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  section, .rounded-3xl, .rounded-2xl {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 2rem !important;
+  }
+}

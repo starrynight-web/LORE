@@ -14,7 +14,8 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 import { ConversationSummary } from '@/lib/api';
 
@@ -29,6 +30,7 @@ interface ConversationHistoryPanelProps {
   onNewConversation: () => void;
   onRenameConversation: (id: string, newTitle: string) => Promise<void>;
   onDeleteConversation: (id: string) => Promise<void>;
+  onExportConversation?: (id: string, e: React.MouseEvent) => void;
   isOpen: boolean;
   onToggleOpen: () => void;
   isMobile?: boolean;
@@ -45,6 +47,7 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
   onNewConversation,
   onRenameConversation,
   onDeleteConversation,
+  onExportConversation,
   isOpen,
   onToggleOpen,
   isMobile = false
@@ -288,8 +291,21 @@ export const ConversationHistoryPanel: React.FC<ConversationHistoryPanelProps> =
                       {conv.title}
                     </span>
 
-                    {/* Action buttons (Rename, Delete) */}
+                    {/* Action buttons (Export, Rename, Delete) */}
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                      {onExportConversation && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onExportConversation(conv.id, e);
+                          }}
+                          className="p-1 rounded hover:bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--brand-accent)] transition"
+                          title="Export full conversation"
+                        >
+                          <Download className="w-3 h-3" />
+                        </button>
+                      )}
+
                       <button
                         onClick={(e) => startRename(conv, e)}
                         className="p-1 rounded hover:bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition"

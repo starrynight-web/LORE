@@ -144,11 +144,51 @@ class StructuredEvidencePackage:
             "metadata": self.metadata
         }
 
-    def format_for_llm(self) -> str:
-        """Formats the structured evidence package into clean, untrusted context XML."""
-        blocks = [item.to_xml_tag(i) for i, item in enumerate(self.items, 1)]
+    def format_for_llm(self, max_tokens: int = 800) -> str:
+        """
+        Formats the structured evidence package into clean, untrusted context XML.
+        Respects max_tokens budget (<=800 for MCP/governance, <=2400 in generative chat mode).
+        Prioritizes governing items first, then packs highest retrieval_score items without duplicate passages.
+        """
+        if not self.items:
+            target_info = f' target_date="{self.target_date}"' if self.target_date else ""
+            return f'<untrusted_evidence_data{target_info}>\n</untrusted_evidence_data>'
+
+        # Deduplicate and sort items: governing items first, then by retrieval score descending
+        seen_passages: Set[str] = set()
+        prioritized: List[EvidenceItem] = []
+
+        # 1. Governing items
+        for it in self.governing_items:
+            clean_p = " ".join(it.passage.split())[:120].lower()
+            if clean_p not in seen_passages:
+                seen_passages.add(clean_p)
+                prioritized.append(it)
+
+        # 2. Other items sorted by retrieval_score descending
+        remaining = [it for it in self.items if it not in prioritized]
+        remaining.sort(key=lambda x: getattr(x, 'retrieval_score', 0.0), reverse=True)
+        for it in remaining:
+            clean_p = " ".join(it.passage.split())[:120].lower()
+            if clean_p not in seen_passages:
+                seen_passages.add(clean_p)
+                prioritized.append(it)
+
+        # Pack items within max_tokens budget
+        packed_blocks: List[str] = []
+        accumulated_tokens = 0
         target_info = f' target_date="{self.target_date}"' if self.target_date else ""
-        return f'<untrusted_evidence_data{target_info}>\n' + "\n\n".join(blocks) + "\n</untrusted_evidence_data>"
+
+        for i, item in enumerate(prioritized, 1):
+            tag = item.to_xml_tag(i)
+            # Estimate token count (standard heuristic: words * 1.3 or len(tag) // 4)
+            est_tokens = max(1, len(tag.split()))
+            if packed_blocks and (accumulated_tokens + est_tokens > max_tokens):
+                break
+            packed_blocks.append(tag)
+            accumulated_tokens += est_tokens
+
+        return f'<untrusted_evidence_data{target_info}>\n' + "\n\n".join(packed_blocks) + "\n</untrusted_evidence_data>"
 
     @classmethod
     def from_chunks(

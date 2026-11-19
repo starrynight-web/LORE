@@ -32,6 +32,7 @@ class GuestModeAuthentication(BaseAuthentication):
             guest_user = User.objects.first()
 
         if guest_user:
+            request.is_guest_mode = True
             return (guest_user, None)
 
         return None

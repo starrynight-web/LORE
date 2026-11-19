@@ -31,7 +31,10 @@ import {
   Edit3,
   RotateCcw,
   X,
-  Paperclip
+  Paperclip,
+  Download,
+  Copy,
+  FileCode
 } from 'lucide-react';
 import { 
   GovernedResult, 
@@ -73,6 +76,77 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitleText, setEditingTitleText] = useState('');
+
+  // Export Conversation State
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportNotification, setExportNotification] = useState<string | null>(null);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    if (isExportMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isExportMenuOpen]);
+
+  const handleExport = async (format: 'json' | 'markdown' = 'json', download: boolean = true, targetConvId?: string) => {
+    const convId = targetConvId || activeConversationId;
+    if (!convId) return;
+
+    setIsExporting(true);
+    setIsExportMenuOpen(false);
+    try {
+      const data = await api.exportConversation(convId, format, false);
+      const targetConv = conversations.find(c => c.id === convId) || activeConversation;
+      const slugTitle = (targetConv?.title || 'conversation')
+        .replace(/[^a-zA-Z0-9_\-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 30) || 'conversation';
+      const ext = format === 'markdown' ? 'md' : 'json';
+      const filename = `${slugTitle}_${convId.slice(0, 8)}.${ext}`;
+      const content = format === 'markdown' ? (data.markdown || data) : JSON.stringify(data, null, 2);
+
+      if (download) {
+        const mimeType = format === 'markdown' ? 'text/markdown;charset=utf-8' : 'application/json;charset=utf-8';
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setExportNotification(
+          language === 'bn'
+            ? `${format.toUpperCase()} ফরম্যাটে সফলভাবে এক্সপোর্ট সম্পন্ন হয়েছে!`
+            : `Exported ${format.toUpperCase()} conversation audit report!`
+        );
+      } else {
+        await navigator.clipboard.writeText(content);
+        setExportNotification(
+          language === 'bn'
+            ? `${format.toUpperCase()} অডিট ডাটা ক্লিপবোর্ডে কপি করা হয়েছে!`
+            : `Copied full ${format.toUpperCase()} conversation audit to clipboard!`
+        );
+      }
+      setTimeout(() => setExportNotification(null), 4000);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      setError(err.message || 'Failed to export conversation.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -546,6 +620,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
             onNewConversation={handleNewConversation}
             onRenameConversation={handleRenameConversation}
             onDeleteConversation={handleDeleteConversation}
+            onExportConversation={(id) => handleExport('json', true, id)}
             isOpen={isHistoryOpen}
             onToggleOpen={() => setIsHistoryOpen(!isHistoryOpen)}
             isMobile={false}
@@ -564,6 +639,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
           onNewConversation={handleNewConversation}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
+          onExportConversation={(id) => handleExport('json', true, id)}
           isOpen={isMobileHistoryOpen}
           onToggleOpen={() => setIsMobileHistoryOpen(!isMobileHistoryOpen)}
           isMobile={true}
@@ -642,6 +718,100 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              {activeConversation && activeConversation.messages.length > 0 && (
+                <div className="relative" ref={exportDropdownRef}>
+                  <button
+                    id="lore-export-conversation-btn"
+                    onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                    disabled={isExporting}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+                    style={{
+                      backgroundColor: isExportMenuOpen ? 'var(--accent-light)' : 'var(--bg-surface-soft)',
+                      borderColor: isExportMenuOpen ? 'var(--brand-accent)' : 'var(--border-color)',
+                      color: isExportMenuOpen ? 'var(--brand-accent)' : 'var(--text-primary)',
+                    }}
+                    title="Export full conversation audit (Questions, Answers, Layers, Sources, Latency)"
+                  >
+                    <Download className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                    <span>{isExporting ? 'Exporting...' : 'Export'}</span>
+                    <ChevronDown className={`w-3 h-3 text-[var(--text-muted)] transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isExportMenuOpen && (
+                    <div 
+                      className="absolute right-0 top-full mt-2 w-72 sm:w-80 rounded-2xl border p-2 shadow-xl z-30 space-y-1 animate-in fade-in zoom-in-95 duration-150"
+                      style={{
+                        backgroundColor: 'var(--bg-surface)',
+                        borderColor: 'var(--border-color)',
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      <div className="px-3 py-2 border-b text-left" style={{ borderColor: 'var(--border-color)' }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand-accent)] flex items-center gap-1.5">
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Full Conversation Export</span>
+                        </div>
+                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5 leading-tight">
+                          Includes questions, answers, 8 governance layers, cited sources & proof, and latency timings.
+                        </p>
+                      </div>
+
+                      <div className="p-1 space-y-1">
+                        <button
+                          onClick={() => handleExport('json', true)}
+                          className="w-full flex items-center justify-between p-2 rounded-xl text-xs hover:bg-[var(--accent-light)] transition text-left cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <FileCode className="w-4 h-4 text-[var(--brand-accent)]" />
+                            <div>
+                              <div className="font-bold text-[var(--text-primary)]">Download JSON</div>
+                              <div className="text-[10px] text-[var(--text-muted)]">Full structured audit ledger</div>
+                            </div>
+                          </div>
+                          <Download className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--brand-accent)]" />
+                        </button>
+
+                        <button
+                          onClick={() => handleExport('markdown', true)}
+                          className="w-full flex items-center justify-between p-2 rounded-xl text-xs hover:bg-[var(--accent-light)] transition text-left cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-[var(--brand-accent)]" />
+                            <div>
+                              <div className="font-bold text-[var(--text-primary)]">Download Markdown (.md)</div>
+                              <div className="text-[10px] text-[var(--text-muted)]">Executive audit report with tables</div>
+                            </div>
+                          </div>
+                          <Download className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--brand-accent)]" />
+                        </button>
+
+                        <div className="border-t my-1" style={{ borderColor: 'var(--border-color)' }} />
+
+                        <button
+                          onClick={() => handleExport('json', false)}
+                          className="w-full flex items-center justify-between p-2 rounded-xl text-xs hover:bg-[var(--accent-light)] transition text-left cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Copy className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--brand-accent)]" />
+                            <span className="font-semibold text-[var(--text-primary)]">Copy JSON to Clipboard</span>
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={() => handleExport('markdown', false)}
+                          className="w-full flex items-center justify-between p-2 rounded-xl text-xs hover:bg-[var(--accent-light)] transition text-left cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Copy className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--brand-accent)]" />
+                            <span className="font-semibold text-[var(--text-primary)]">Copy Markdown to Clipboard</span>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {activeConversation && (
                 <button
                   onClick={handleNewConversation}
@@ -658,6 +828,26 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
               )}
             </div>
           </div>
+
+          {/* Export Toast Notification */}
+          {exportNotification && (
+            <div 
+              className="p-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 shadow-sm animate-in fade-in"
+              style={{
+                backgroundColor: 'var(--success-bg)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--success)',
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{exportNotification}</span>
+              </div>
+              <button onClick={() => setExportNotification(null)} className="p-0.5 hover:opacity-75 cursor-pointer">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Document Context Scope Selector */}
           <div 
@@ -705,7 +895,7 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                   }}
                 >
                   <option value="all">
-                    🌐 {language === 'bn' ? 'সম্পূর্ণ ওয়ার্কস্পেস (সমস্ত পিডিএফ ও নথি — হাইব্রিড ভেক্টর + লেক্সিক্যাল রি-র‍্যাঙ্কার)' : 'Entire Workspace (All PDFs & Docs — Hybrid Qdrant Vector + Lexical RRF)'}
+                    🌐 {language === 'bn' ? `সকল জ্ঞানের উৎস (${documents?.length || 0}টি নথি)` : `All Knowledge Sources (${documents?.length || 0} documents)`}
                   </option>
                   {documents && documents.map((doc: any) => (
                     <option key={doc.id} value={doc.id}>
@@ -845,6 +1035,8 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
                     message={msg}
                     onRetry={(text) => handleExecute(text)}
                     language={language}
+                    activeScopeTitle={selectedDocId !== 'all' ? selectedDocObj?.title : undefined}
+                    totalSourcesCount={documents?.length || 0}
                   />
                 ))}
 

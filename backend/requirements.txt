@@ -26,3 +26,5 @@ gliner>=0.2.13
 stripe>=10.0.0
 boto3>=1.30.0
 gunicorn>=22.0.0
+langgraph>=0.2.60
+langchain-core>=0.3.30

@@ -33,7 +33,9 @@ class EvidencePresentationEngine:
         answer: str,
         active_chunks: List[Dict[str, Any]],
         conflicts_resolved: Optional[List[Dict[str, Any]]] = None,
-        as_of: Optional[datetime] = None
+        as_of: Optional[datetime] = None,
+        policy_context: Optional[Dict[str, Any]] = None,
+        max_tokens: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Filters, minimizes, and curates retrieved chunks into minimal, high-fidelity
@@ -74,7 +76,12 @@ class EvidencePresentationEngine:
         # Step 3: Select only necessary sources
         # Primary source is always included; other sources included only if they add
         # necessary multi-part facts or establish genuine conflicts/supersessions.
-        curated = cls._filter_necessary_sources(candidate_citations, query, answer, conflicts_resolved)
+        eff_max_tokens = max_tokens or (policy_context or {}).get("max_context_tokens", 800)
+        req_limit = (policy_context or {}).get("limit")
+        curated = cls._filter_necessary_sources(
+            candidate_citations, query, answer, conflicts_resolved,
+            max_tokens=eff_max_tokens, limit=req_limit
+        )
 
         return curated
 
@@ -464,7 +471,9 @@ class EvidencePresentationEngine:
         citations: List[Dict[str, Any]],
         query: str,
         answer: str,
-        conflicts_resolved: List[Dict[str, Any]]
+        conflicts_resolved: List[Dict[str, Any]],
+        max_tokens: int = 800,
+        limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Excludes sources merely because they were retrieved.
@@ -473,6 +482,9 @@ class EvidencePresentationEngine:
         """
         if not citations:
             return []
+
+        max_citations = min(12, max(6, int(limit or 12))) if max_tokens > 800 else 6
+        max_excerpt_chars = 1200 if max_tokens > 800 else 600
 
         q_lower = query.lower()
         ans_lower = answer.lower()
@@ -515,7 +527,7 @@ class EvidencePresentationEngine:
                 for cr in conflicts_resolved
             )
             if is_conflict_source:
-                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                if not any(n['document_title'] == title and n.get('page_number') == cit.get('page_number') for n in necessary):
                     necessary.append(cit)
                 continue
 
@@ -526,7 +538,7 @@ class EvidencePresentationEngine:
                 if m_code:
                     doc_code_lower = m_code.group(1)
             if (doc_code_lower and doc_code_lower in ans_lower) or title.lower() in ans_lower or (doc_id and doc_id.lower() in ans_lower):
-                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                if not any(n['document_title'] == title and n.get('page_number') == cit.get('page_number') for n in necessary):
                     necessary.append(cit)
                     continue
 
@@ -539,7 +551,7 @@ class EvidencePresentationEngine:
             already_covered_values = set(re.findall(r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+\s*(?:days?|years?|months?|hours?|users?|gb|tb|mb|%)\b', " ".join(n['shortest_passage'].lower() for n in necessary)))
             new_values = cit_values.intersection(ans_values) - already_covered_values
             if new_values:
-                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                if not any((n.get('document_id') == doc_id or n['document_title'] == title) and n.get('page_number') == cit.get('page_number') for n in necessary):
                     necessary.append(cit)
                     covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
                 continue
@@ -550,35 +562,60 @@ class EvidencePresentationEngine:
                 for ent in multi_entities
             )
             if covers_unrepresented_entity:
-                if not any(n['document_title'] == title or (doc_id and n.get('document_id') == doc_id) for n in necessary):
+                if not any((n.get('document_id') == doc_id or n['document_title'] == title) and n.get('page_number') == cit.get('page_number') for n in necessary):
                     necessary.append(cit)
                     covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
                 continue
 
-            # Do not duplicate citations for the same document unless proving an unrepresented value (handled above in C & D)
-            is_same_doc = any(
-                (cit.get('document_id') and cit.get('document_id') == n.get('document_id')) or
-                cit['document_title'] == n['document_title']
-                for n in necessary
+            # Condition E: Preserve relevant distinct passages/pages up to 6 citations (Phase 5)
+            # For informational or multi-part queries across chapters of 1 book or across multiple books
+            cit_words = set(re.findall(r'\b[a-z]{4,}\b', p_text))
+            query_content_words = set(re.findall(r'\b[a-z]{4,}\b', q_lower)) - {'what', 'when', 'where', 'which', 'who', 'does', 'with', 'from', 'have', 'more'}
+            ans_content_words = set(re.findall(r'\b[a-z]{4,}\b', ans_lower)) - {'what', 'when', 'where', 'which', 'who', 'does', 'with', 'from', 'have', 'more', 'according', 'policy', 'document', 'page', 'proposed', 'formally', 'approved', 'draft'}
+
+            shares_query_terms = bool(cit_words.intersection(query_content_words))
+            shares_ans_terms = bool(cit_words.intersection(ans_content_words))
+
+            is_multipart_or_informational = bool(
+                len(query_content_words) >= 4 or
+                len(ans_values) >= 2 or
+                multi_entities or
+                re.search(r'\b(and|or|both|all|each|list|describe|explain|compare|versus|vs)\b', q_lower)
             )
-            if is_same_doc:
-                continue
 
-            # Otherwise: Exclude unrelated or redundant documents (Requirement 6)
+            if is_multipart_or_informational and (shares_query_terms or shares_ans_terms) and len(necessary) < max_citations and (cit.get('score', 0.0) or 0.0) >= 0.50:
+                is_duplicate_page = any(
+                    (n.get('document_id') == doc_id or n['document_title'] == title) and
+                    n.get('page_number') == cit.get('page_number') and
+                    (n.get('heading_path') == cit.get('heading_path') or not cit.get('heading_path'))
+                    for n in necessary
+                )
+                if not is_duplicate_page:
+                    necessary.append(cit)
+                    covered_facts.update(re.findall(r'\b[a-z0-9$]{3,}\b', p_text))
+                    continue
 
-        # Strict final deduplication by document title and ID (Dimension 9 / Gate 2 contract)
+        # Final deduplication by document and page/section preserving up to max_citations
         deduped_necessary: List[Dict[str, Any]] = []
-        seen_titles: Set[str] = set()
-        seen_ids: Set[str] = set()
+        seen_keys: Set[Tuple[Any, Any, Any]] = set()
         for c in necessary:
             t = c.get('document_title')
             did = str(c.get('document_id') or '')
-            if (t and t in seen_titles) or (did and did in seen_ids):
+            pg = c.get('page_number')
+            sec = c.get('section') or c.get('heading_path')
+            key = (did or t, pg, sec)
+            if key in seen_keys:
                 continue
-            if t:
-                seen_titles.add(t)
-            if did:
-                seen_ids.add(did)
+            seen_keys.add(key)
+
+            # Ensure passage excerpt is bounded to max_excerpt_chars
+            if c.get('shortest_passage') and len(c['shortest_passage']) > max_excerpt_chars:
+                c['shortest_passage'] = c['shortest_passage'][:max_excerpt_chars].rstrip()
+            if c.get('passage') and len(c['passage']) > max_excerpt_chars:
+                c['passage'] = c['passage'][:max_excerpt_chars].rstrip()
+
             deduped_necessary.append(c)
+            if len(deduped_necessary) >= max_citations:
+                break
 
         return deduped_necessary

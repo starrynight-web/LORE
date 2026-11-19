@@ -34,12 +34,16 @@ interface GovernedMessageCardProps {
   message: ChatMessage;
   onRetry?: (query: string) => void;
   language?: 'en' | 'bn';
+  activeScopeTitle?: string;
+  totalSourcesCount?: number;
 }
 
 export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
   message,
   onRetry,
-  language = 'en'
+  language = 'en',
+  activeScopeTitle,
+  totalSourcesCount
 }) => {
   const [showEvidenceDetails, setShowEvidenceDetails] = useState(false);
   const [showLayersInspector, setShowLayersInspector] = useState(false);
@@ -423,6 +427,35 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
               <Cpu className="w-3 h-3 text-[var(--brand-accent)]" />
               LORE Governed Engine
             </span>
+
+            {/* Active Scope Badge (Phase 4) */}
+            <span 
+              className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold border flex items-center gap-1"
+              style={{
+                backgroundColor: 'var(--bg-surface-soft)',
+                borderColor: 'var(--border-color)',
+                color: activeScopeTitle ? 'var(--brand-accent)' : 'var(--text-secondary)',
+              }}
+            >
+              <FileText className="w-3 h-3 text-[var(--brand-accent)]" />
+              <span>{activeScopeTitle ? `Scoped to: ${activeScopeTitle}` : `Searched: All ${totalSourcesCount || 'Knowledge'} Sources`}</span>
+            </span>
+
+            {/* Answer Latency */}
+            {message.latency_ms != null && (
+              <span 
+                className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold border flex items-center gap-1"
+                style={{
+                  backgroundColor: 'var(--bg-surface-soft)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--brand-accent)',
+                }}
+                title={`Answer Latency: ${message.latency_ms.toFixed(1)} ms`}
+              >
+                <Clock className="w-3 h-3 text-[var(--brand-accent)]" />
+                <span>{message.latency_ms < 1000 ? `${message.latency_ms.toFixed(0)}ms` : `${(message.latency_ms / 1000).toFixed(2)}s`}</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono text-[var(--text-muted)]">
@@ -757,6 +790,12 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-[var(--text-secondary)]">Immutable audit ledger recording</p>
+                {message.latency_ms != null && (
+                  <div className="pt-1 mt-1 border-t border-[var(--border-color)] flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-[var(--text-muted)]">Latency:</span>
+                    <span className="font-bold text-[var(--brand-accent)]">{message.latency_ms.toFixed(1)} ms</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -16,6 +16,8 @@ class DecisionRecordSerializer(serializers.ModelSerializer):
 
 class ChatMessageSerializer(serializers.ModelSerializer):
     revalidated_citations = serializers.SerializerMethodField()
+    latency_ms = serializers.SerializerMethodField()
+    latency_breakdown_ms = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatMessage
@@ -24,8 +26,28 @@ class ChatMessageSerializer(serializers.ModelSerializer):
             'status', 'decision', 'governance_state', 'governance_directive',
             'trace_id', 'citations', 'revalidated_citations', 'evidence_missing',
             'conflicts_resolved', 'layers_breakdown', 'retrieval_config',
-            'client_message_id', 'error_message', 'created_at'
+            'client_message_id', 'error_message', 'created_at',
+            'latency_ms', 'latency_breakdown_ms'
         ]
+
+    def get_latency_ms(self, obj: ChatMessage):
+        if obj.role != 'assistant':
+            return None
+        lb = obj.layers_breakdown or {}
+        timings = lb.get('l0_observability', {}).get('timings_ms', {})
+        if isinstance(timings, dict) and timings.get('total_ms') is not None:
+            return timings.get('total_ms')
+        rc = obj.retrieval_config or {}
+        if rc.get('latency_ms') is not None:
+            return rc.get('latency_ms')
+        return None
+
+    def get_latency_breakdown_ms(self, obj: ChatMessage):
+        if obj.role != 'assistant':
+            return {}
+        lb = obj.layers_breakdown or {}
+        timings = lb.get('l0_observability', {}).get('timings_ms', {})
+        return timings if isinstance(timings, dict) else {}
 
     def get_revalidated_citations(self, obj: ChatMessage):
         """

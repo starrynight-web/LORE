@@ -51,7 +51,9 @@ class BoundedGraphTraversalService:
         max_depth: int = DEFAULT_MAX_DEPTH,
         max_nodes: int = DEFAULT_MAX_NODES,
         timeout_ms: float = DEFAULT_TIMEOUT_MS,
-        permitted_relationship_types: Optional[List[str]] = None
+        permitted_relationship_types: Optional[List[str]] = None,
+        document_id: Optional[str] = None,
+        collection_id: Optional[str] = None
     ) -> Dict[str, Any]:
         t0 = time.time()
         effective_depth = min(max(1, max_depth), cls.MAX_DEPTH_HARD_CAP)
@@ -173,6 +175,14 @@ class BoundedGraphTraversalService:
                 # Even if an edge has bad references, target MUST belong to same workspace and organization
                 if str(next_doc.organization_id) != str(organization_id) or str(next_doc.workspace_id) != str(workspace_id):
                     logger.warning(f"[GraphRAG Pruned] Target doc {next_doc.id} belongs to different tenant/workspace. Pruning.")
+                    continue
+
+                # Single-Document Scoping Invariant:
+                if document_id and str(document_id).lower() != 'all' and str(next_doc.id) != str(document_id):
+                    logger.debug(f"[GraphRAG Pruned] Target doc {next_doc.id} does not match scoped document {document_id}")
+                    continue
+
+                if collection_id and getattr(next_doc, 'collection_id', None) and str(next_doc.collection_id) != str(collection_id):
                     continue
 
                 # 3. Target Document Publication & Status Invariant

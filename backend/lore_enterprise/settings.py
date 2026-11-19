@@ -2,6 +2,12 @@ import os
 from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 
+# Explicitly disable LangSmith tracing and egress (Non-Negotiable Invariant #1)
+os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
+os.environ.setdefault("LANGSMITH_TRACING", "false")
+LANGCHAIN_TRACING_V2 = "false"
+LANGSMITH_TRACING = "false"
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
@@ -41,6 +47,7 @@ INSTALLED_APPS = [
     'apps.decisions',
     'apps.audit',
     'apps.subscriptions',
+    'apps.docs',
 ]
 
 MIDDLEWARE = [
@@ -156,7 +163,16 @@ else:
     else:
         CORS_ALLOW_ALL_ORIGINS = False
         raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS must be explicitly configured when running in production (DEBUG=False).")
+from corsheaders.defaults import default_headers
+
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'x-judge-passkey',
+    'x-admin-key',
+    'x-workspace-id',
+    'x-organization-id',
+    'x-ingestion-llm-key',
+]
 
 # Production Security Headers & Cookies (Requirement 10)
 if not DEBUG:
@@ -326,5 +342,13 @@ NEO4J_USER = os.environ.get('NEO4J_USER', 'neo4j')
 NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', '')
 
 KUZU_DB_PATH = os.environ.get('KUZU_DB_PATH', str(BASE_DIR / 'kuzu_storage'))
+
+# Ingestion LLM Extraction (Optional) Configuration
+INGESTION_LLM_ENABLED = os.environ.get('INGESTION_LLM_ENABLED', 'False').lower() in ('true', '1', 'yes')
+INGESTION_LLM_PROVIDER = os.environ.get('INGESTION_LLM_PROVIDER', 'ollama').lower()
+INGESTION_LLM_MODEL = os.environ.get('INGESTION_LLM_MODEL', 'qwen2.5:14b')
+INGESTION_GRADER_MODEL = os.environ.get('INGESTION_GRADER_MODEL', 'phi4:14b')
+INGESTION_LLM_API_KEY = os.environ.get('INGESTION_LLM_API_KEY', '')
+INGESTION_OLLAMA_URL = os.environ.get('INGESTION_OLLAMA_URL', 'http://localhost:11434')
 
 

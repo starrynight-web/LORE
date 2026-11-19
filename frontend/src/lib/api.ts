@@ -489,9 +489,12 @@ export interface ChatMessage {
   evidence_missing?: Array<{ requirement: string; mandatory?: boolean; status?: string; explanation?: string }>;
   conflicts_resolved?: any[];
   layers_breakdown?: LayerBreakdown;
+  latency_ms?: number;
+  latency_breakdown_ms?: Record<string, number>;
   retrieval_config?: {
     document_id?: string | null;
     collection_id?: string | null;
+    latency_ms?: number;
     attached_document?: {
       filename: string;
       file_size: number;
@@ -654,6 +657,7 @@ class ApiClient {
   }
 
   async uploadDocument(formData: FormData) {
+    const extraHeaders = this.attachIngestionLLMConfig(formData);
     return this.request<{
       document?: SourceDocument;
       job_id?: string;
@@ -665,11 +669,13 @@ class ApiClient {
       errors?: Array<{ filename: string; error: string }>;
     }>('/sources/documents/', {
       method: 'POST',
-      body: formData
+      body: formData,
+      headers: Object.keys(extraHeaders).length > 0 ? extraHeaders : undefined
     });
   }
 
   async bulkUploadDocuments(formData: FormData) {
+    const extraHeaders = this.attachIngestionLLMConfig(formData);
     return this.request<{
       status: string;
       total_count: number;
@@ -684,8 +690,35 @@ class ApiClient {
       doc_status?: string;
     }>('/sources/documents/bulk-upload/', {
       method: 'POST',
-      body: formData
+      body: formData,
+      headers: Object.keys(extraHeaders).length > 0 ? extraHeaders : undefined
     });
+  }
+
+  private attachIngestionLLMConfig(formData: FormData): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (typeof window === 'undefined') return headers;
+    try {
+      const raw = localStorage.getItem('lore_ingestion_llm_config');
+      if (raw) {
+        const cfg = JSON.parse(raw);
+        if (cfg && cfg.enabled) {
+          if (!formData.has('ingestion_llm_enabled')) formData.append('ingestion_llm_enabled', 'true');
+          if (cfg.provider && !formData.has('ingestion_llm_provider')) formData.append('ingestion_llm_provider', cfg.provider);
+          if (cfg.model && !formData.has('ingestion_llm_model')) formData.append('ingestion_llm_model', cfg.model);
+          if (cfg.grader_model && !formData.has('ingestion_grader_model')) formData.append('ingestion_grader_model', cfg.grader_model);
+          if (cfg.ollama_url && !formData.has('ingestion_ollama_url')) formData.append('ingestion_ollama_url', cfg.ollama_url);
+          if (cfg.force_llm_extraction && !formData.has('force_llm_extraction')) formData.append('force_llm_extraction', 'true');
+          if (cfg.api_key && !formData.has('ingestion_llm_api_key')) {
+            formData.append('ingestion_llm_api_key', cfg.api_key);
+            headers['X-Ingestion-LLM-Key'] = cfg.api_key;
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return headers;
   }
 
   // ZIP Archive Ingestion Engine
@@ -780,6 +813,8 @@ class ApiClient {
   ) {
     const activeGroqKey = groqApiKey || (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
     const activeModel = llmModel || (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
+    const executionMode = (typeof window !== 'undefined' ? localStorage.getItem('lore_execution_mode') : null) || undefined;
+    const synthesisMode = (activeGroqKey && executionMode !== 'local_only') ? 'generative' : undefined;
 
     if (file) {
       const formData = new FormData();
@@ -790,6 +825,8 @@ class ApiClient {
       if (documentId) formData.append('document_id', documentId);
       if (activeGroqKey) formData.append('groq_api_key', activeGroqKey);
       if (activeModel) formData.append('llm_model', activeModel);
+      if (executionMode) formData.append('execution_mode', executionMode);
+      if (synthesisMode) formData.append('synthesis_mode', synthesisMode);
       if (conversationId) formData.append('conversation_id', conversationId);
       formData.append('save_conversation', 'true');
       if (clientMessageId) formData.append('client_message_id', clientMessageId);
@@ -809,6 +846,8 @@ class ApiClient {
         document_id: documentId,
         groq_api_key: activeGroqKey,
         llm_model: activeModel,
+        execution_mode: executionMode,
+        synthesis_mode: synthesisMode,
         conversation_id: conversationId,
         save_conversation: true,
         client_message_id: clientMessageId
@@ -858,6 +897,16 @@ class ApiClient {
     });
   }
 
+  async exportConversation(
+    id: string,
+    format: 'json' | 'markdown' = 'json',
+    download: boolean = false
+  ): Promise<any> {
+    const downloadParam = download ? '&download=true' : '';
+    const url = `/decisions/conversations/${id}/export/?export_format=${format}${downloadParam}`;
+    return this.request<any>(url);
+  }
+
   async sendConversationMessage(
     conversationId: string,
     query: string,
@@ -867,6 +916,8 @@ class ApiClient {
       collectionId?: string;
       groqApiKey?: string;
       llmModel?: string;
+      executionMode?: string;
+      synthesisMode?: string;
       file?: File;
     }
   ): Promise<{
@@ -878,6 +929,8 @@ class ApiClient {
   }> {
     const activeGroqKey = options?.groqApiKey || (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
     const activeModel = options?.llmModel || (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
+    const executionMode = options?.executionMode || (typeof window !== 'undefined' ? localStorage.getItem('lore_execution_mode') : null) || undefined;
+    const synthesisMode = options?.synthesisMode || ((activeGroqKey && executionMode !== 'local_only') ? 'generative' : undefined);
     const clientMessageId = options?.clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
     if (options?.file) {
@@ -889,6 +942,8 @@ class ApiClient {
       if (options.collectionId) formData.append('collection_id', options.collectionId);
       if (activeGroqKey) formData.append('groq_api_key', activeGroqKey);
       if (activeModel) formData.append('llm_model', activeModel);
+      if (executionMode) formData.append('execution_mode', executionMode);
+      if (synthesisMode) formData.append('synthesis_mode', synthesisMode);
 
       return this.request(`/decisions/conversations/${conversationId}/messages/`, {
         method: 'POST',
@@ -904,7 +959,9 @@ class ApiClient {
         document_id: options?.documentId,
         collection_id: options?.collectionId,
         groq_api_key: activeGroqKey,
-        llm_model: activeModel
+        llm_model: activeModel,
+        execution_mode: executionMode,
+        synthesis_mode: synthesisMode
       })
     });
   }
@@ -923,6 +980,28 @@ class ApiClient {
     }>('/retrieval/test-groq/', {
       method: 'POST',
       body: JSON.stringify({ api_key: apiKey, model })
+    });
+  }
+
+  async testExtractorLLM(config: {
+    provider: string;
+    api_key?: string;
+    model?: string;
+    grader_model?: string;
+    ollama_url?: string;
+  }) {
+    return this.request<{
+      status: string;
+      provider: string;
+      message: string;
+      models?: string[];
+      latency_ms?: number;
+      model?: string;
+      grader_model?: string;
+    }>('/ingestion/test-extractor-llm/', {
+      method: 'POST',
+      body: JSON.stringify(config),
+      headers: config.api_key ? { 'X-Ingestion-LLM-Key': config.api_key } : undefined
     });
   }
 
@@ -1316,6 +1395,155 @@ class ApiClient {
       body: JSON.stringify({ workspace: workspaceId, custom_cases: customCases, dataset_version: datasetVersion })
     });
   }
+
+  async getDocsManifest(passkey?: string, adminKey?: string): Promise<DocsManifestResponse> {
+    const params = new URLSearchParams();
+    if (passkey) params.set('passkey', passkey);
+    if (adminKey) params.set('admin_key', adminKey);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const headers: Record<string, string> = {};
+    if (passkey) headers['X-Judge-Passkey'] = passkey;
+    if (adminKey) headers['X-Admin-Key'] = adminKey;
+    return this.request<DocsManifestResponse>(`/docs/${qs}`, { headers });
+  }
+
+  async updateDocsSettings(settings: Partial<DocsConfig>, adminKey?: string): Promise<{ status: string; message: string; config: DocsConfig }> {
+    const headers: Record<string, string> = {};
+    if (adminKey) headers['X-Admin-Key'] = adminKey;
+    return this.request<{ status: string; message: string; config: DocsConfig }>('/docs/settings/', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async updateDocsContent(section_key: string, content_json: any, title?: string, adminKey?: string): Promise<{ status: string; message: string; revision: any }> {
+    const headers: Record<string, string> = {};
+    if (adminKey) headers['X-Admin-Key'] = adminKey;
+    return this.request<{ status: string; message: string; revision: any }>('/docs/content/', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ section_key, content_json, title }),
+    });
+  }
+
+  async getDocsTelemetry(): Promise<any> {
+    return this.request<any>('/docs/telemetry/');
+  }
+
+  getDocsExportUrl(format: 'markdown' | 'json' = 'markdown'): string {
+    return `${API_BASE}/docs/export/?format=${format}`;
+  }
+}
+
+export interface DocsConfig {
+  id: string;
+  is_public_accessible: boolean;
+  enforce_schedule: boolean;
+  schedule_start: string;
+  schedule_end: string;
+  admin_override: boolean;
+  closed_message: string;
+  allow_judge_passkey: boolean;
+  judge_passkey: string;
+  is_currently_open: boolean;
+  updated_at: string;
+}
+
+export interface DocsTeamMember {
+  id: string;
+  full_name: string;
+  role: string;
+  email: string;
+  avatar_url: string;
+  bio: string;
+  skills?: string[];
+  github?: string;
+  linkedin?: string;
+}
+
+export interface DocsPitchSlide {
+  number: number;
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  points: string[];
+  stats?: { value: string; label: string }[];
+}
+
+export interface DocsManifestResponse {
+  is_open: boolean;
+  status: 'active' | 'restricted' | string;
+  is_admin?: boolean;
+  reason?: 'SCHEDULE_LOCKED' | 'VISIBILITY_OFF' | string;
+  message?: string;
+  config?: DocsConfig;
+  schedule_window?: {
+    start: string;
+    end: string;
+    is_active_now: boolean;
+  };
+  team?: {
+    team_name: string;
+    charter: string;
+    members: DocsTeamMember[];
+  };
+  pitch_deck?: {
+    title: string;
+    tagline: string;
+    slides: DocsPitchSlide[];
+  };
+  whitepaper?: {
+    title: string;
+    version: string;
+    sections: Record<string, any>;
+  };
+  live_telemetry?: {
+    timestamp: string;
+    database: {
+      total_documents: number;
+      total_pages: number;
+      total_chunks: number;
+      total_canonical_entities: number;
+      total_knowledge_relationships: number;
+      total_conversations: number;
+      total_ingestion_jobs: number;
+    };
+    verified_benchmarks: {
+      benchmark_suites_passed: string;
+      measured_hallucination_rate: string;
+      baseline_rag_hallucination_rate: string;
+      factual_precision: string;
+      max_memory_under_large_book: string;
+      average_retrieval_latency_ms: number;
+      nli_conflict_scan_latency_ms: number;
+      core_governance_cost: string;
+    };
+    zero_llm_models: {
+      model_name: string;
+      role: string;
+      device: string;
+      status: string;
+    }[];
+    mcp_manifest: {
+      server_name: string;
+      protocol_version: string;
+      transports: string[];
+      total_tools: number;
+      canonical_tools_count: number;
+      alias_tools_count: number;
+      deep_research_endpoints: number;
+    };
+    system_health: Record<string, string>;
+  };
+  system_meta?: {
+    app_name: string;
+    version: string;
+    docs_route: string;
+    environment: string;
+    license: string;
+  };
 }
 
 export interface Plan {
@@ -1656,4 +1884,9 @@ api.getGraphOverview = api.getGraphOverview.bind(api);
 api.getNodeLineage = api.getNodeLineage.bind(api);
 api.generateZkAttestation = api.generateZkAttestation.bind(api);
 api.verifyZkAttestation = api.verifyZkAttestation.bind(api);
+api.getDocsManifest = api.getDocsManifest.bind(api);
+api.updateDocsSettings = api.updateDocsSettings.bind(api);
+api.updateDocsContent = api.updateDocsContent.bind(api);
+api.getDocsTelemetry = api.getDocsTelemetry.bind(api);
+api.getDocsExportUrl = api.getDocsExportUrl.bind(api);
 

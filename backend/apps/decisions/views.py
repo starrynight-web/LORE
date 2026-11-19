@@ -42,6 +42,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    def perform_content_negotiation(self, request, force=False):
+        """Allows ?format=markdown or custom export format without 404 negotiation errors."""
+        try:
+            return super().perform_content_negotiation(request, force=force)
+        except Exception:
+            from rest_framework.renderers import JSONRenderer
+            return (JSONRenderer(), 'application/json')
+
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return ConversationDetailSerializer
@@ -140,6 +148,62 @@ class ConversationViewSet(viewsets.ModelViewSet):
         )
 
         return Response({'status': 'deleted', 'id': str(conversation.id)}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='export')
+    def export(self, request, pk=None):
+        """
+        Exports the entire conversation audit trail including:
+        - Questions and answers
+        - Governance layers details
+        - Revalidated sources and proof citations
+        - Answer latency (per turn and stage breakdown, plus summary metrics)
+        
+        Query parameters:
+        - format: 'json' (default) or 'markdown' / 'md'
+        - download: 'true' / 'false'
+        """
+        conversation = self.get_object()
+        export_format = (request.query_params.get('export_format') or request.query_params.get('format', 'json')).strip().lower()
+        if export_format not in ('json', 'markdown', 'md'):
+            export_format = 'json'
+
+        download = request.query_params.get('download', '').lower() in ('true', '1', 'yes')
+
+        try:
+            exported_data = ConversationService.export_conversation(
+                conversation=conversation,
+                user=request.user,
+                export_format=export_format
+            )
+
+            import re
+            slug_title = re.sub(r'[^a-zA-Z0-9_\-]+', '_', conversation.title).strip('_')[:30] or 'conversation'
+            ext = 'md' if export_format in ('markdown', 'md') else 'json'
+            filename = f"{slug_title}_{str(conversation.id)[:8]}.{ext}"
+
+            if export_format in ('markdown', 'md'):
+                if download:
+                    from django.http import HttpResponse
+                    resp = HttpResponse(exported_data, content_type='text/markdown; charset=utf-8')
+                    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+                    return resp
+                return Response({'markdown': exported_data, 'filename': filename})
+            else:
+                if download:
+                    import json
+                    from django.http import HttpResponse
+                    resp = HttpResponse(
+                        json.dumps(exported_data, indent=2, ensure_ascii=False),
+                        content_type='application/json; charset=utf-8'
+                    )
+                    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+                    return resp
+                return Response(exported_data)
+
+        except PermissionDenied as pe:
+            return Response({'error': str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            return Response({'error': f"Failed to export conversation: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get', 'post'], url_path='messages')
     def messages(self, request, pk=None):

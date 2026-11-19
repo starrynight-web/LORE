@@ -39,6 +39,47 @@ from apps.ingestion.pipeline.extractors import (
 from apps.ingestion.pipeline.ocr import repair_visual_bengali_document, bangla_to_arabic_digits
 from apps.audit.models import AuditEvent
 
+def _extract_ingestion_llm_config_from_request(request) -> Dict[str, Any]:
+    raw_enabled = request.data.get('ingestion_llm_enabled')
+    if raw_enabled is not None:
+        enabled = str(raw_enabled).lower() in ('true', '1', 'yes')
+    else:
+        enabled = getattr(settings, 'INGESTION_LLM_ENABLED', False)
+
+    provider = (
+        request.data.get('ingestion_llm_provider')
+        or getattr(settings, 'INGESTION_LLM_PROVIDER', 'ollama')
+    )
+    model = (
+        request.data.get('ingestion_llm_model')
+        or getattr(settings, 'INGESTION_LLM_MODEL', 'qwen2.5:14b')
+    )
+    grader_model = (
+        request.data.get('ingestion_grader_model')
+        or getattr(settings, 'INGESTION_GRADER_MODEL', 'phi4:14b')
+    )
+    ollama_url = (
+        request.data.get('ingestion_ollama_url')
+        or getattr(settings, 'INGESTION_OLLAMA_URL', 'http://localhost:11434')
+    )
+    api_key = (
+        request.headers.get('X-Ingestion-LLM-Key')
+        or request.data.get('ingestion_llm_api_key')
+        or getattr(settings, 'INGESTION_LLM_API_KEY', '')
+    )
+    force_llm = str(request.data.get('force_llm_extraction', 'false')).lower() in ('true', '1', 'yes')
+
+    return {
+        'enabled': enabled,
+        'provider': provider,
+        'model': model,
+        'grader_model': grader_model,
+        'ollama_url': ollama_url,
+        'api_key': api_key,
+        'force_llm_extraction': force_llm,
+    }
+
+
 class SourceDocumentViewSet(viewsets.ModelViewSet):
     serializer_class = SourceDocumentSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -63,7 +104,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
 
         return qs.distinct()
 
-    def _ingest_single_file(self, file_obj, workspace, collection, user, title=None, description='', authority_level=3):
+    def _ingest_single_file(self, file_obj, workspace, collection, user, title=None, description='', authority_level=3, ingestion_config=None):
         """Validates, stores, registers, and triggers pipeline ingestion for a single document."""
         # 1. Validate file size, magic bytes, and format support
         sec_meta = StorageSecurityService.inspect_and_validate(file_obj)
@@ -122,6 +163,24 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             version_number=1,
         )
 
+        stage_timings = {
+            'routing': {
+                'workload_class': workload_class,
+                'queue_name': queue_name,
+                'requires_visual_extraction': requires_visual,
+                'routing_reason': routing_reason,
+            }
+        }
+        if ingestion_config:
+            stage_timings['ingestion_llm_config'] = {
+                'enabled': bool(ingestion_config.get('enabled', False)),
+                'provider': ingestion_config.get('provider', 'ollama'),
+                'model': ingestion_config.get('model', 'qwen2.5:14b'),
+                'grader_model': ingestion_config.get('grader_model', 'phi4:14b'),
+                'ollama_url': ingestion_config.get('ollama_url', 'http://localhost:11434'),
+                'force_llm_extraction': bool(ingestion_config.get('force_llm_extraction', False)),
+            }
+
         job = IngestionJob.objects.create(
             document=doc,
             organization=workspace.organization,
@@ -131,15 +190,13 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
             workload_class=workload_class,
             queue_name=queue_name,
             idempotency_key=idempotency_key,
-            stage_timings={
-                'routing': {
-                    'workload_class': workload_class,
-                    'queue_name': queue_name,
-                    'requires_visual_extraction': requires_visual,
-                    'routing_reason': routing_reason,
-                }
-            },
+            stage_timings=stage_timings,
         )
+
+        if ingestion_config:
+            from apps.ingestion.s3_langgraph import TransientIngestionContext
+            TransientIngestionContext.set(str(job.id), ingestion_config)
+            TransientIngestionContext.set(str(doc.id), ingestion_config)
 
         # 6. Log Audit Event
         AuditEvent.objects.create(
@@ -155,7 +212,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
         # 7. Dispatch background ingestion task
         if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', True):
             with WorkloadConcurrencyGate.acquire(workload_class):
-                process_ingestion_pipeline(str(job.id))
+                process_ingestion_pipeline(str(job.id), ingestion_config=ingestion_config)
             doc.refresh_from_db()
             job.refresh_from_db()
         else:
@@ -186,6 +243,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
 
         authority_level = int(request.data.get('authority_level', 3))
         description = request.data.get('description', '')
+        ingestion_config = _extract_ingestion_llm_config_from_request(request)
 
         # Single file upload path (backward compatible contract)
         if len(uploaded_files) == 1:
@@ -273,7 +331,8 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
                     user=request.user,
                     title=title,
                     description=description,
-                    authority_level=authority_level
+                    authority_level=authority_level,
+                    ingestion_config=ingestion_config,
                 )
                 return Response({
                     'document': SourceDocumentSerializer(doc).data,
@@ -325,7 +384,8 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
                     user=request.user,
                     title=file_title,
                     description=description,
-                    authority_level=authority_level
+                    authority_level=authority_level,
+                    ingestion_config=ingestion_config,
                 )
                 created_docs.append(doc)
                 created_jobs.append(job)
@@ -388,6 +448,7 @@ class SourceDocumentViewSet(viewsets.ModelViewSet):
 
         authority_level = int(request.data.get('authority_level', 3))
         description = request.data.get('description', '')
+        ingestion_config = _extract_ingestion_llm_config_from_request(request)
         deduplicate = str(request.data.get('deduplicate', 'true')).lower() in ('true', '1', 'yes')
 
         import json
@@ -658,6 +719,7 @@ class ZipImportViewSet(viewsets.ModelViewSet):
 
         authority_level = int(request.data.get('authority_level', 3))
         description = request.data.get('description', '')
+        ingestion_config = _extract_ingestion_llm_config_from_request(request)
 
         try:
             job = ZipImportEngine.preview_archive(

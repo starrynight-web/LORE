@@ -850,3 +850,215 @@ class TestMCPStreamableHttpProtocol:
             res = json.loads(content_text)
             assert res["schema"] in ("lore.result/2", "lore.result/1")
 
+
+@pytest.mark.django_db(transaction=True)
+class TestMCPDynamicTokenBudget:
+    """
+    Verifies on-demand token budget expansion for ChatGPT Web, Gemini, and MCP clients:
+    - Default <= 800-token surgical budget preserved when max_tokens omitted.
+    - Dynamic expansion up to 3,200 tokens across multiple chapters/passages.
+    - Clamping of extreme values (200 min, 3200 max).
+    - deep_context flag activates 2400-token envelope.
+    - Single-document isolation strictly maintained under expanded budgets.
+    - Streamable HTTP /mcp tools/list schema advertises max_tokens and deep_context.
+    """
+
+    @pytest.fixture(scope="class")
+    def http_server(self):
+        """Starts an ephemeral ThreadingHTTPServer in a background daemon thread."""
+        server = ThreadingHTTPServer(("127.0.0.1", 0), mcp_server.MCPHttpHandler)
+        host, port = server.server_address
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://{host}:{port}"
+        yield base_url
+        server.shutdown()
+        server.server_close()
+
+    def test_default_token_budget_preserves_800_ceiling(self, mcp_fixture):
+        ws = mcp_fixture["ws"]
+        res = json.loads(mcp_server.execute_tool(
+            "lore.get_context",
+            {"query": "encryption standard", "workspace_id": str(ws.id)}
+        ))
+        assert res["schema"] in ("lore.result/2", "lore.result/1")
+        assert res["status"] in ("supported", "qualified")
+        assert res["token_budget_applied"] == 800
+        assert res["context_mode"] == "standard"
+        assert res["tokens_returned"] <= 800
+        assert "evidence_passages" in res
+        assert len(res["citations"]) <= 6
+
+    def test_on_demand_expanded_token_budget(self, mcp_fixture):
+        org = mcp_fixture["org"]
+        ws = mcp_fixture["ws"]
+        doc = mcp_fixture["doc_policy"]
+        ver = doc.versions.filter(is_current=True).first()
+
+        from apps.retrieval.lexical import SqliteFullTextSearchBackend
+        chapter_sections = [
+            ("Key Management & Hardware Modules",
+             "Section 4.2: Cryptographic key management for all production database tiers must utilize dedicated Hardware Security Modules with FIPS 140-3 Level 3 validation across all availability zones. Automated master encryption key rotation must occur at ninety-day intervals with dual-custody approval gates. Decryption operations are strictly tracked through signed access vouchers. In addition, key derivation functions must utilize Argon2id with strict memory and parallelism minimums to prevent offline side-channel attacks on master key material. Redundant key generation nodes ensure zero downtime during scheduled rotation events."),
+            ("Mutual TLS Transport Security",
+             "Section 4.3: Inter-service communication and remote replica synchronization must enforce mutual TLS 1.3 with authenticated elliptic-curve cipher suites (ECDHE-ECDSA-AES256-GCM-SHA384). Cleartext data transmission across physical boundary zones is strictly forbidden and constitutes a tier-one governance violation. Ephemeral session renegotiation intervals must be configured to thirty minutes, and certificate revocation lists must be queried in real time via OCSP stapling with fallback pinning to authorized certificate authority roots."),
+            ("Storage Snapshot Encryption",
+             "Section 4.4: Persistent volume snapshots, cold archival backups, and incremental database differentials must be encrypted using separate envelope keys derived from the master key ring. Decryption passphrase caching in memory must not exceed fifteen minutes under any operational circumstances. Backup retention catalogs must maintain independent cryptographic signatures verified weekly via automated integrity attestation pipelines to detect BitRot or tampering."),
+            ("Audit Logging & Access Trails",
+             "Section 4.5: Immutable audit trails must record all cryptographic key requests, access denials, and decryption invocations. Audit records must be forwarded to append-only write-once-read-many storage within five seconds of generation for regulatory non-repudiation. Audit event pipelines must be cryptographically hashed and linked in tamper-evident Merkle tree batches, ensuring that historical administrative access logs cannot be truncated, reordered, or silently suppressed."),
+            ("Key Revocation & Destruction",
+             "Section 4.6: Emergency cryptographic key destruction procedures must be executable within sixty seconds of confirmed security perimeter compromise. Key zeroization routines must overwrite volatile key registers seven times with pseudo-random noise patterns conforming to national defense standards. Post-destruction verification routines must transmit cryptographically signed tombstone proofs to the security operations center prior to host isolation."),
+            ("Disaster Recovery Replication",
+             "Section 4.7: Cross-region disaster recovery replication links must implement authenticated payload integrity checksums and end-to-end symmetric encryption. Data replication lag must be monitored continuously with alerts triggering when replication latency exceeds thirty seconds. In the event of primary region failover, cryptographic key state replication across secondary data centers must verify quorum consensus before write leases are issued."),
+            ("Ephemeral Storage Scrubbing",
+             "Section 4.8: Temporary scratch volumes, temporary tablespace partitions, and swap partitions must use ephemeral encryption keys generated at system boot and immediately discarded upon system shutdown or container termination. Kernel memory pages holding decrypted database buffers must be locked against paging to swap space and cleared with atomic memory barrier instructions upon connection termination."),
+            ("Third-Party Cloud Storage Volume Attestation",
+             "Section 4.9: Third-party cloud storage volumes hosting production customer data must supply verifiable cryptographic attestation confirming underlying hardware encryption prior to provisioning database partitions. Cloud provider virtual disks must operate under customer-managed encryption key rings with mandatory external key store integration, preventing provider administrative personnel from obtaining access to plaintext volumes.")
+        ]
+        for idx, (header_title, body_text) in enumerate(chapter_sections, start=2):
+            chk = DocumentChunk.objects.create(
+                organization=org,
+                workspace=ws,
+                document=doc,
+                document_version=ver,
+                chunk_index=idx,
+                contextual_header=f"Security > Encryption Standard > {header_title}",
+                text=body_text,
+                page_number=idx,
+                token_count=130
+            )
+            SqliteFullTextSearchBackend.sync_chunk_to_fts(chk)
+
+        res = json.loads(mcp_server.execute_tool(
+            "lore.get_context",
+            {
+                "query": "production database encryption standard AES-256-GCM volumes replication",
+                "workspace_id": str(ws.id),
+                "max_tokens": 2400,
+                "limit": 12
+            }
+        ))
+        assert res["token_budget_applied"] == 2400
+        assert res["context_mode"] == "expanded"
+        assert 800 < res["tokens_returned"] <= 2400
+        assert len(res["evidence_passages"]) >= 3
+        assert len(res["citations"]) >= 2
+        for ep in res["evidence_passages"]:
+            assert ep["document"] == doc.title
+            assert len(ep["text"]) > 0
+
+    def test_deep_context_flag_and_clamping(self, mcp_fixture):
+        ws = mcp_fixture["ws"]
+
+        # deep_context=True -> 2400 tokens
+        res_deep = json.loads(mcp_server.execute_tool(
+            "lore.get_context",
+            {"query": "encryption standard", "workspace_id": str(ws.id), "deep_context": True}
+        ))
+        assert res_deep["token_budget_applied"] == 2400
+        assert res_deep["context_mode"] == "expanded"
+
+        # max_tokens=99999 -> clamped to 3200
+        res_max = json.loads(mcp_server.execute_tool(
+            "lore.get_context",
+            {"query": "encryption standard", "workspace_id": str(ws.id), "max_tokens": 99999}
+        ))
+        assert res_max["token_budget_applied"] == 3200
+        assert res_max["context_mode"] == "expanded"
+
+        # max_tokens=50 -> clamped to 200 min
+        res_min = json.loads(mcp_server.execute_tool(
+            "lore.get_context",
+            {"query": "encryption standard", "workspace_id": str(ws.id), "max_tokens": 50}
+        ))
+        assert res_min["token_budget_applied"] == 200
+        assert res_min["context_mode"] == "standard"
+
+    def test_single_book_scoping_preserved_under_expanded_budget(self, mcp_fixture):
+        org = mcp_fixture["org"]
+        ws = mcp_fixture["ws"]
+        doc_policy = mcp_fixture["doc_policy"]
+
+        from apps.retrieval.lexical import SqliteFullTextSearchBackend
+        # Create an unrelated second book in the same workspace
+        doc_travel = SourceDocument.objects.create(
+            organization=org,
+            workspace=ws,
+            title="Corporate Travel and Expense Policy v1.0",
+            original_filename="travel_expense.pdf",
+            mime_type="application/pdf",
+            file_size=1024,
+            file_hash="hash_travel_expense_99999999999999999999999999999999999999999999",
+            status="ready",
+            authority_level=5,
+            current_version_number=1,
+            effective_date=timezone.now() - timedelta(days=20),
+            expiration_date=timezone.now() + timedelta(days=345)
+        )
+        ver_travel = DocumentVersion.objects.create(
+            document=doc_travel,
+            version_number=1,
+            file_hash=doc_travel.file_hash,
+            change_summary="Travel per diem rates.",
+            is_current=True
+        )
+        travel_chunk = DocumentChunk.objects.create(
+            organization=org,
+            workspace=ws,
+            document=doc_travel,
+            document_version=ver_travel,
+            chunk_index=0,
+            contextual_header="Finance > Travel Policy",
+            text="Section 2.1: The daily per diem meal allowance is $75 for domestic travel and $100 for international travel.",
+            page_number=1,
+            token_count=30
+        )
+        SqliteFullTextSearchBackend.sync_chunk_to_fts(travel_chunk)
+
+        # Query with document_id scoped strictly to doc_policy under expanded budget
+        res = json.loads(mcp_server.execute_tool(
+            "lore.get_context",
+            {
+                "query": "encryption policy and travel meal expenses",
+                "workspace_id": str(ws.id),
+                "document_id": str(doc_policy.id),
+                "max_tokens": 2400,
+                "limit": 12
+            }
+        ))
+        assert res["token_budget_applied"] == 2400
+        assert res["context_mode"] == "expanded"
+
+        # Verify 100% isolation: ZERO passages or citations from doc_travel
+        for cit in res["citations"]:
+            assert cit["document"] == doc_policy.title
+            assert "travel" not in (cit["document"] or "").lower()
+
+        for ep in res["evidence_passages"]:
+            assert ep["document"] == doc_policy.title
+            assert "travel" not in (ep["document"] or "").lower()
+
+    def test_streamable_http_tools_list_schema_reflects_token_budget(self, http_server):
+        list_payload = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 100,
+            "method": "tools/list",
+            "params": {}
+        }).encode("utf-8")
+        req = urllib.request.Request(f"{http_server}/mcp", data=list_payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            tools = data["result"]["tools"]
+            tool_map = {t["name"]: t for t in tools}
+
+            for tool_name in ("lore.get_context", "lore.search", "search", "lore_get_context"):
+                assert tool_name in tool_map, f"Missing {tool_name} in tools/list"
+                schema = tool_map[tool_name].get("inputSchema", {})
+                props = schema.get("properties", {})
+                assert "max_tokens" in props, f"Missing max_tokens in {tool_name} schema"
+                assert "deep_context" in props, f"Missing deep_context in {tool_name} schema"
+                assert props["max_tokens"]["type"] == "integer"
+                assert props["deep_context"]["type"] == "boolean"
+                assert "3200" in props["max_tokens"]["description"]
+
+

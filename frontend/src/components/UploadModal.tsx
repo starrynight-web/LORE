@@ -23,7 +23,8 @@ import {
   AlertTriangle,
   Layers,
   Ban,
-  Globe
+  Globe,
+  Cpu
 } from 'lucide-react';
 import { Collection, ZipImportJob, ZipImportEntry, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -82,6 +83,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [isScraping, setIsScraping] = useState(false);
   const [scraperResult, setScraperResult] = useState<any | null>(null);
 
+  // Stage S3 Ingestion LLM Extraction State
+  const [s3Config, setS3Config] = useState<any>(null);
+  const [showS3Drawer, setShowS3Drawer] = useState(false);
+  const [overrideS3Enabled, setOverrideS3Enabled] = useState<boolean | null>(null);
+  const [overrideS3Provider, setOverrideS3Provider] = useState<string>('ollama');
+  const [overrideS3Model, setOverrideS3Model] = useState<string>('qwen2.5:14b');
+  const [overrideS3GraderModel, setOverrideS3GraderModel] = useState<string>('phi4:14b');
+  const [overrideS3OllamaUrl, setOverrideS3OllamaUrl] = useState<string>('http://localhost:11434');
+  const [overrideS3ApiKey, setOverrideS3ApiKey] = useState<string>('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state when modal is opened or closed
@@ -97,6 +108,27 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setIsZipPreviewing(false);
       setIsZipImporting(false);
       setZipFilter('all');
+      setShowS3Drawer(false);
+      setOverrideS3Enabled(null);
+
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('lore_ingestion_llm_config');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            setS3Config(parsed);
+            setOverrideS3Provider(parsed.provider || 'ollama');
+            setOverrideS3Model(parsed.model || (parsed.provider === 'ollama' ? 'qwen2.5:14b' : 'gpt-oss-120B'));
+            setOverrideS3GraderModel(parsed.grader_model || 'phi4:14b');
+            setOverrideS3OllamaUrl(parsed.ollama_url || 'http://localhost:11434');
+            setOverrideS3ApiKey(parsed.api_key || '');
+          } else {
+            setS3Config(null);
+          }
+        } catch (e) {
+          setS3Config(null);
+        }
+      }
     }
   }, [isOpen]);
 
@@ -284,6 +316,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         titlesMap[item.file.name] = item.title.trim() || item.file.name;
       });
       formData.append('titles', JSON.stringify(titlesMap));
+
+      // Ingestion LLM extraction settings override
+      const activeS3Enabled = overrideS3Enabled !== null ? overrideS3Enabled : Boolean(s3Config?.enabled);
+      if (activeS3Enabled) {
+        formData.append('ingestion_llm_enabled', 'true');
+        formData.append('ingestion_llm_provider', overrideS3Provider || s3Config?.provider || 'ollama');
+        formData.append('ingestion_llm_model', overrideS3Model || s3Config?.model || 'qwen2.5:14b');
+        formData.append('ingestion_grader_model', overrideS3GraderModel || s3Config?.grader_model || 'phi4:14b');
+        formData.append('ingestion_ollama_url', overrideS3OllamaUrl || s3Config?.ollama_url || 'http://localhost:11434');
+        const activeKey = overrideS3ApiKey || s3Config?.api_key;
+        if (activeKey) {
+          formData.append('ingestion_llm_api_key', activeKey);
+        }
+      }
 
       const res = await api.bulkUploadDocuments(formData);
 
@@ -515,6 +561,124 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             <span>Web Scraper & Connectors</span>
           </button>
         </div>
+
+        {/* Stage S3 Extraction Status Pill & Quick Override Drawer */}
+        {(() => {
+          const effectiveS3Enabled = overrideS3Enabled !== null ? overrideS3Enabled : Boolean(s3Config?.enabled);
+          const effectiveProvider = overrideS3Provider || s3Config?.provider || 'ollama';
+          const effectiveModel = overrideS3Model || s3Config?.model || (effectiveProvider === 'ollama' ? 'qwen2.5:14b' : 'gpt-oss-120B');
+          const s3PillLabel = effectiveS3Enabled 
+            ? (effectiveProvider === 'ollama' 
+                ? `Stage S3: LangGraph + Ollama (${effectiveModel})` 
+                : `Stage S3: LangGraph + ${effectiveProvider.toUpperCase()} (${effectiveModel})`)
+            : 'Stage S3: Non-LLM Multi-ML (Default)';
+
+          return (
+            <div className="border-b flex-shrink-0" style={{ borderColor: 'var(--border-color)' }}>
+              <div className="px-5 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2" style={{ backgroundColor: 'var(--bg-surface-soft)' }}>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-[var(--text-secondary)]">Extraction Pipeline:</span>
+                  <span 
+                    className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border flex items-center gap-1.5"
+                    style={{
+                      backgroundColor: effectiveS3Enabled ? 'var(--success-bg)' : 'var(--bg-card)',
+                      borderColor: 'var(--border-color)',
+                      color: effectiveS3Enabled ? 'var(--success)' : 'var(--text-muted)',
+                    }}
+                  >
+                    <Cpu className="w-3 h-3 text-[var(--brand-accent)]" />
+                    <span>{s3PillLabel}</span>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowS3Drawer(!showS3Drawer)}
+                  className="text-[11px] font-medium text-[var(--brand-accent)] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>{showS3Drawer ? 'Hide Extraction Options' : 'Configure Ingestion LLM'}</span>
+                </button>
+              </div>
+
+              {showS3Drawer && (
+                <div className="px-5 sm:px-6 py-3 space-y-3" style={{ backgroundColor: 'var(--bg-card)' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-[var(--text-primary)]">
+                        Enable LangGraph Extraction for Conversational Logs
+                      </span>
+                      <p className="text-[10px] text-[var(--text-muted)]">
+                        Applies strictly to Slack, emails, and chat transcripts. Standard PDFs and Office docs always use $0 Multi-ML.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOverrideS3Enabled(!effectiveS3Enabled)}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${effectiveS3Enabled ? 'bg-[var(--brand-accent)]' : 'bg-gray-300 dark:bg-gray-700'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${effectiveS3Enabled ? 'translate-x-4' : 'translate-x-0'}`}
+                      />
+                    </button>
+                  </div>
+
+                  {effectiveS3Enabled && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-0.5">Provider</label>
+                        <select
+                          value={effectiveProvider}
+                          onChange={(e) => setOverrideS3Provider(e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs rounded-lg border bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                        >
+                          <option value="ollama">Ollama (Local / Air-Gapped)</option>
+                          <option value="groq">Groq Cloud</option>
+                          <option value="openai">OpenAI</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="gemini">Gemini</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-0.5">Model</label>
+                        <input
+                          type="text"
+                          value={effectiveModel}
+                          onChange={(e) => setOverrideS3Model(e.target.value)}
+                          placeholder="qwen2.5:14b"
+                          className="w-full px-2 py-1.5 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                        />
+                      </div>
+                      <div>
+                        {effectiveProvider === 'ollama' ? (
+                          <>
+                            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-0.5">Ollama URL</label>
+                            <input
+                              type="text"
+                              value={overrideS3OllamaUrl}
+                              onChange={(e) => setOverrideS3OllamaUrl(e.target.value)}
+                              placeholder="http://localhost:11434"
+                              className="w-full px-2 py-1.5 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-0.5">Ingestion API Key</label>
+                            <input
+                              type="password"
+                              value={overrideS3ApiKey}
+                              onChange={(e) => setOverrideS3ApiKey(e.target.value)}
+                              placeholder="Key (separate from chat)"
+                              className="w-full px-2 py-1.5 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {intakeMode === 'scraper' ? (
           <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">

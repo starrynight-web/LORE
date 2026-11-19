@@ -15,6 +15,66 @@ class StructureAwareChunker:
     TARGET_CHUNK_TOKENS = 400
     OVERLAP_TOKENS = 50
 
+    RUNNING_HEADER_PATTERNS = [
+        re.compile(r'^\s*\d+\s*\|\s*Chapter\s+\d+.*$', re.IGNORECASE),
+        re.compile(r'^\s*Table of Contents\s*\|\s*[ivxlcdm\d]+\s*$', re.IGNORECASE),
+        re.compile(r'^\s*Chapter\s+\d+.*\|\s*\d+\s*$', re.IGNORECASE),
+        re.compile(r'^\s*Page\s+\d+\s+of\s+\d+\s*$', re.IGNORECASE),
+        re.compile(r'^\s*\|\s*\d+\s*\|?$'),
+    ]
+
+    @classmethod
+    def is_toc_or_frontmatter_page(cls, text: str) -> bool:
+        """
+        Multi-signal structural detection for Table of Contents or frontmatter pages.
+        Explicitly avoids false positives on financial/pricing tables.
+        """
+        if not text:
+            return False
+
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        if not lines:
+            return False
+
+        # Signal 1: Lines 1-5 contain explicit Table of Contents, Contents, or Index heading
+        for line in lines[:5]:
+            clean_l = re.sub(r'^[#\s*_-]+', '', line).strip()
+            if re.match(r'^(?:table of contents|contents|index)\b', clean_l, re.IGNORECASE):
+                return True
+
+        # Signal 2: Dot-leader lines scanning, explicitly ignoring pipe tables and currency/decimals
+        dot_leader_count = 0
+        arabic_pages = []
+
+        dot_leader_regex = re.compile(r'(?:\s*\.\s*){4,}\s*([ivxlcdm]+|\d{1,4})\s*$', re.IGNORECASE)
+
+        for line in lines:
+            # Explicitly ignore Markdown pipe tables
+            if line.count('|') >= 2:
+                continue
+            # Explicitly ignore currency/decimal rows ($ or 12.34)
+            if re.search(r'\$|\b\d+\.\d{2}\b', line):
+                continue
+
+            m = dot_leader_regex.search(line)
+            if m:
+                dot_leader_count += 1
+                page_str = m.group(1)
+                if page_str.isdigit():
+                    arabic_pages.append(int(page_str))
+
+        if dot_leader_count >= 4:
+            if len(arabic_pages) >= 2:
+                # Arabic page numbers must be monotonically non-decreasing
+                is_monotonic = all(arabic_pages[i] <= arabic_pages[i + 1] for i in range(len(arabic_pages) - 1))
+                if is_monotonic:
+                    return True
+            elif dot_leader_count >= 4 and not arabic_pages:
+                # Frontmatter with roman numerals (e.g. iv, v, vi)
+                return True
+
+        return False
+
     @classmethod
     def chunk_document_pages(
         cls,
@@ -38,6 +98,8 @@ class StructureAwareChunker:
             text = page.get('text', '').strip()
             if not text:
                 continue
+
+            is_toc = cls.is_toc_or_frontmatter_page(text)
 
             # Split page into sections by structured headings
             sections = cls._split_into_sections(text)
@@ -76,12 +138,14 @@ class StructureAwareChunker:
                         'token_count': len(words),
                         'char_offset_start': 0,
                         'char_offset_end': len(sec_text),
+                        'is_toc_or_frontmatter': is_toc,
                         'metadata': {
                             'document_code': document_code,
                             'section_identifier': sec_id,
                             'heading_path': sec_heading,
                             'page_number': page_num,
-                            'is_table': is_table
+                            'is_table': is_table,
+                            'is_toc_or_frontmatter': is_toc
                         }
                     })
                     global_chunk_idx += 1
@@ -118,13 +182,15 @@ class StructureAwareChunker:
                             'token_count': len(sub_words),
                             'char_offset_start': 0,
                             'char_offset_end': len(sub_text),
+                            'is_toc_or_frontmatter': is_toc,
                             'metadata': {
                                 'document_code': document_code,
                                 'section_identifier': sec_id,
                                 'heading_path': sec_heading,
                                 'page_number': page_num,
                                 'is_table': is_table,
-                                'table_header_preserved': bool(table_header)
+                                'table_header_preserved': bool(table_header),
+                                'is_toc_or_frontmatter': is_toc
                             }
                         })
                         global_chunk_idx += 1
@@ -136,6 +202,7 @@ class StructureAwareChunker:
         """
         Detects if a page ends with an orphan section heading (e.g. '5. Meal Allowances' at page bottom)
         and prepends it to the beginning of the next page so the heading and body stay together.
+        Also strips repeating running page headers/footers.
         """
         result = []
         carry_heading = ""
@@ -146,7 +213,15 @@ class StructureAwareChunker:
                 text = f"{carry_heading}\n{text}"
                 carry_heading = ""
 
-            lines = text.split('\n')
+            raw_lines = text.split('\n')
+            # Strip repeating running page headers/footers
+            filtered_lines = []
+            for line in raw_lines:
+                if any(pat.match(line) for pat in cls.RUNNING_HEADER_PATTERNS):
+                    continue
+                filtered_lines.append(line)
+            lines = filtered_lines
+            text = "\n".join(lines).strip()
             # Check last 3 non-empty lines for an orphan heading with <= 20 words body
             non_empty = [l.strip() for l in lines if l.strip()]
             if non_empty:

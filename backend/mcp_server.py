@@ -171,7 +171,7 @@ MUTATING_ANNOTATIONS = {
 TOOLS_MANIFEST: List[Dict[str, Any]] = [
     {
         "name": "lore.get_context",
-        "description": "Canonical flagship LORE tool: retrieves governed context for a file or intent, evaluates through the 9-layer governance engine, and returns a canonical lore.result/2 envelope.",
+        "description": "Canonical flagship LORE tool: retrieves governed context for a file or intent, evaluates through the 9-layer governance engine, and returns a canonical lore.result/2 envelope. Defaults to a concise <=800-token governed envelope. Pass max_tokens (up to 3200) or deep_context=true (or limit > 10) when full multi-paragraph chapter excerpts are required.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -223,6 +223,15 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "description": "Maximum number of candidate passages to retrieve (1-50, default: 10).",
                     "default": 10
                 },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Optional maximum token budget for returned context passages (default: 800; max: 3200). Increase to 1600-3200 when synthesizing multi-chapter book sections or cross-document comparisons."
+                },
+                "deep_context": {
+                    "type": "boolean",
+                    "description": "When true, expands context delivery up to 2400 tokens across up to 12 ranked passages for deep multi-paragraph synthesis.",
+                    "default": false
+                },
                 "groq_api_key": {
                     "type": "string",
                     "description": "Optional Groq API key for remote model inference if authorized."
@@ -246,7 +255,7 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
     },
     {
         "name": "lore.search",
-        "description": "Performs hybrid vector + lexical search across LORE enterprise knowledge. NOTICE: Returns un-adjudicated candidate passages; not an authoritative governance decision.",
+        "description": "Performs hybrid vector + lexical search across LORE enterprise knowledge. NOTICE: Returns un-adjudicated candidate passages; not an authoritative governance decision. Defaults to a concise <=800-token governed envelope. Pass max_tokens (up to 3200) or deep_context=true (or limit > 10) when full multi-paragraph chapter excerpts are required.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -266,6 +275,15 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "integer",
                     "description": "Maximum number of ranked passages to return (1-50, default: 6).",
                     "default": 6
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Optional maximum token budget for returned context passages (default: 800; max: 3200). Increase to 1600-3200 when synthesizing multi-chapter book sections or cross-document comparisons."
+                },
+                "deep_context": {
+                    "type": "boolean",
+                    "description": "When true, expands context delivery up to 2400 tokens across up to 12 ranked passages for deep multi-paragraph synthesis.",
+                    "default": false
                 },
                 "document_id": {
                     "type": "string",
@@ -691,6 +709,27 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
         }
     },
     {
+        "name": "lore.list_documents",
+        "description": "Lists all accessible workspace documents (including title, page count, status, authority level, and document ID) for document-scoped discovery.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target organization."
+                }
+            }
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }
+    },
+    {
         "name": "lore.get_document",
         "description": "Retrieves comprehensive document details, page OCR confidence, and extracted text for an enterprise source document.",
         "inputSchema": {
@@ -806,7 +845,7 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
     },
     {
         "name": "search",
-        "description": "ChatGPT Deep Research standard search tool. Queries LORE governed knowledge and returns candidate passages.",
+        "description": "ChatGPT Deep Research standard search tool. Queries LORE governed knowledge and returns candidate passages. Defaults to a concise <=800-token governed envelope. Pass max_tokens (up to 3200) or deep_context=true (or limit > 10) when full multi-paragraph chapter excerpts are required.",
         "annotations": {
             "readOnlyHint": true,
             "destructiveHint": false
@@ -822,6 +861,15 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "integer",
                     "description": "Maximum number of candidate passages to retrieve (1-50, default: 6).",
                     "default": 6
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Optional maximum token budget for returned context passages (default: 800; max: 3200). Increase to 1600-3200 when synthesizing multi-chapter book sections or cross-document comparisons."
+                },
+                "deep_context": {
+                    "type": "boolean",
+                    "description": "When true, expands context delivery up to 2400 tokens across up to 12 ranked passages for deep multi-paragraph synthesis.",
+                    "default": false
                 },
                 "workspace_id": {
                     "type": "string",
@@ -903,7 +951,7 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
     },
     {
         "name": "lore_search",
-        "description": "Legacy alias for lore.search. Performs hybrid vector + lexical search.",
+        "description": "Legacy alias for lore.search. Performs hybrid vector + lexical search. Defaults to a concise <=800-token governed envelope. Pass max_tokens (up to 3200) or deep_context=true (or limit > 10) when full multi-paragraph chapter excerpts are required.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -919,6 +967,15 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "integer",
                     "description": "Result limit (default: 6).",
                     "default": 6
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Optional maximum token budget for returned context passages (default: 800; max: 3200). Increase to 1600-3200 when synthesizing multi-chapter book sections or cross-document comparisons."
+                },
+                "deep_context": {
+                    "type": "boolean",
+                    "description": "When true, expands context delivery up to 2400 tokens across up to 12 ranked passages for deep multi-paragraph synthesis.",
+                    "default": false
                 }
             },
             "required": [
@@ -932,7 +989,7 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
     },
     {
         "name": "lore_governed_query",
-        "description": "Legacy alias for lore.get_context. Executes 9-layer anti-hallucination governed query.",
+        "description": "Legacy alias for lore.get_context. Executes 9-layer anti-hallucination governed query. Defaults to a concise <=800-token governed envelope. Pass max_tokens (up to 3200) or deep_context=true (or limit > 10) when full multi-paragraph chapter excerpts are required.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -943,6 +1000,20 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Target workspace UUID."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of candidate passages to retrieve (1-50, default: 10).",
+                    "default": 10
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Optional maximum token budget for returned context passages (default: 800; max: 3200). Increase to 1600-3200 when synthesizing multi-chapter book sections or cross-document comparisons."
+                },
+                "deep_context": {
+                    "type": "boolean",
+                    "description": "When true, expands context delivery up to 2400 tokens across up to 12 ranked passages for deep multi-paragraph synthesis.",
+                    "default": false
                 },
                 "groq_api_key": {
                     "type": "string",
@@ -957,6 +1028,27 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
             "required": [
                 "query"
             ]
+        },
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false
+        }
+    },
+    {
+        "name": "lore_list_documents",
+        "description": "Legacy alias for lore.list_documents.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target workspace."
+                },
+                "organization_id": {
+                    "type": "string",
+                    "description": "Optional UUID of target organization."
+                }
+            }
         },
         "annotations": {
             "readOnlyHint": true,
@@ -1005,7 +1097,7 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
     },
     {
         "name": "lore_get_context",
-        "description": "Underscore alias for lore.get_context. Canonical flagship LORE tool: retrieves governed context for a file or intent, evaluates through the 9-layer governance engine, and returns a canonical lore.result/2 envelope.",
+        "description": "Underscore alias for lore.get_context. Canonical flagship LORE tool: retrieves governed context for a file or intent, evaluates through the 9-layer governance engine, and returns a canonical lore.result/2 envelope. Defaults to a concise <=800-token governed envelope. Pass max_tokens (up to 3200) or deep_context=true (or limit > 10) when full multi-paragraph chapter excerpts are required.",
         "annotations": {
             "readOnlyHint": true,
             "destructiveHint": false
@@ -1060,6 +1152,15 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "integer",
                     "description": "Maximum number of candidate passages to retrieve (1-50, default: 10).",
                     "default": 10
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Optional maximum token budget for returned context passages (default: 800; max: 3200). Increase to 1600-3200 when synthesizing multi-chapter book sections or cross-document comparisons."
+                },
+                "deep_context": {
+                    "type": "boolean",
+                    "description": "When true, expands context delivery up to 2400 tokens across up to 12 ranked passages for deep multi-paragraph synthesis.",
+                    "default": false
                 },
                 "groq_api_key": {
                     "type": "string",
@@ -1480,6 +1581,76 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
 ]
 
 # ==============================================================================
+# TOKEN BUDGET & EXCERPT RESOLUTION (On-Demand Dynamic Budgeting)
+# ==============================================================================
+
+def resolve_mcp_token_budget(args: Dict[str, Any], default_limit: int = 10) -> Tuple[int, int, bool]:
+    """
+    Dynamically computes effective limit and token budget based on MCP client requests.
+    Returns (limit, effective_max_tokens, is_expanded).
+    """
+    try:
+        limit = min(max(1, int(args.get("limit", default_limit))), 50)
+    except (ValueError, TypeError):
+        limit = default_limit
+
+    raw_max_tokens = args.get("max_tokens")
+    parsed_max_tokens = None
+    if raw_max_tokens is not None:
+        try:
+            parsed_max_tokens = int(raw_max_tokens)
+        except (ValueError, TypeError):
+            parsed_max_tokens = None
+
+    deep_context = bool(args.get("deep_context", False))
+
+    is_expanded = (
+        (parsed_max_tokens is not None and parsed_max_tokens > 800)
+        or deep_context
+        or (limit > 10)
+    )
+
+    if parsed_max_tokens is not None:
+        effective_max_tokens = min(max(200, parsed_max_tokens), 3200)
+    elif deep_context:
+        effective_max_tokens = 2400
+    elif limit > 10:
+        effective_max_tokens = min(3200, limit * 160)
+    else:
+        effective_max_tokens = 800
+
+    return limit, effective_max_tokens, is_expanded
+
+
+def truncate_sentence_safe(text: str, max_chars: int) -> str:
+    """Truncates text up to max_chars without breaking mid-sentence if possible."""
+    if not text or len(text) <= max_chars:
+        return text or ""
+    snippet = text[:max_chars]
+    min_bound = int(max_chars * 0.6)
+    matches = list(re.finditer(r'[.!?](?:\s|$)', snippet))
+    if matches and matches[-1].end() >= min_bound:
+        return snippet[:matches[-1].end()].strip()
+    last_space = snippet.rfind(" ")
+    if last_space >= min_bound:
+        return snippet[:last_space].strip() + "..."
+    return snippet.strip() + "..."
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimates tokens using tiktoken (cl100k_base) if installed, or word-based heuristic."""
+    if not text:
+        return 0
+    try:
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        return max(1, len(enc.encode(text)))
+    except Exception:
+        words = text.split()
+        return max(1, int(len(words) * 1.3))
+
+
+# ==============================================================================
 # TOOL HANDLERS (Direct Routing to Canonical Backend Services)
 # ==============================================================================
 
@@ -1502,14 +1673,26 @@ def handle_get_context(args: Dict[str, Any]) -> str:
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
-    try:
-        limit = min(max(1, int(args.get("limit", 10))), 50)
-    except (ValueError, TypeError):
-        limit = 10
+    limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=10)
 
     groq_api_key = args.get("groq_api_key")
     llm_model = args.get("llm_model", "gpt-oss-120B")
     doc_id = args.get("document_id")
+    doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
+    if not doc_id and doc_title:
+        from apps.knowledge.models import SourceDocument
+        from django.db.models import Q
+        matched_doc = SourceDocument.objects.filter(
+            workspace=ws
+        ).filter(
+            Q(title__icontains=str(doc_title).strip()) |
+            Q(canonical_title__icontains=str(doc_title).strip()) |
+            Q(original_filename__icontains=str(doc_title).strip()) |
+            Q(document_code__iexact=str(doc_title).strip())
+        ).first()
+        if matched_doc:
+            doc_id = str(matched_doc.id)
+
     as_of = args.get("as_of")
     user_role = args.get("user_role", "member")
     execution_mode = args.get("execution_mode")
@@ -1522,10 +1705,17 @@ def handle_get_context(args: Dict[str, Any]) -> str:
         workspace_id=str(ws.id),
         organization_id=get_organization_id(ws),
         document_id=doc_id,
-        limit=limit
+        limit=limit,
+        context_budget_tokens=effective_max_tokens
     )
 
     # 2. Canonical 9-Layer Governance Adjudication
+    policy_context = {
+        "max_context_tokens": effective_max_tokens,
+        "deep_context": is_expanded,
+        "limit": limit,
+        "document_id": doc_id
+    }
     envelope = EnterpriseGovernanceEngine.evaluate(
         query=query,
         retrieved_chunks=candidate_chunks,
@@ -1537,10 +1727,93 @@ def handle_get_context(args: Dict[str, Any]) -> str:
         llm_model=llm_model,
         execution_mode=execution_mode,
         synthesis_mode=synthesis_mode,
+        policy_context=policy_context,
         zk_attestation=bool(args.get("zk_attestation", False))
     )
 
     envelope = sanitize_sensitive_data(envelope)
+
+    max_passage_chars = 1200 if is_expanded else 400
+    envelope_citations = envelope.get("citations", [])
+    if doc_id:
+        envelope_citations = [
+            c for c in envelope_citations
+            if str(c.get("document_id") or "") == str(doc_id)
+        ]
+    max_citations_count = min(limit, 12) if is_expanded else 6
+
+    citations_list = []
+    for c in envelope_citations[:max_citations_count]:
+        raw_p = c.get("passage") or c.get("shortest_passage") or ""
+        trunc_p = truncate_sentence_safe(raw_p, max_chars=max_passage_chars)
+        citations_list.append({
+            "document": c.get("document_title"),
+            "document_code": c.get("document_code"),
+            "page": c.get("page_number"),
+            "section": c.get("section") or c.get("heading_path"),
+            "passage": trunc_p,
+            "authority_rank": c.get("authority_level")
+        })
+
+    # Pack evidence_passages greedily up to effective_max_tokens
+    evidence_passages = []
+    actual_packed_tokens = 0
+
+    potential_items = []
+    for c in envelope_citations:
+        potential_items.append({
+            "document": c.get("document_title"),
+            "page": c.get("page_number"),
+            "section": c.get("section") or c.get("heading_path"),
+            "authority_rank": c.get("authority_level"),
+            "score": float(c.get("score") or 1.0),
+            "text": c.get("passage") or c.get("shortest_passage") or ""
+        })
+
+    if is_expanded:
+        for chk in candidate_chunks:
+            if chk.get("governance_status") in ("draft", "quarantined") or chk.get("status") in ("draft", "quarantined"):
+                continue
+            if doc_id and str(chk.get("document_id")) != str(doc_id):
+                continue
+            t = chk.get("document_title")
+            p = chk.get("page_number")
+            s = chk.get("section") or chk.get("heading_path")
+            if not any(it["document"] == t and it["page"] == p and it["section"] == s for it in potential_items):
+                potential_items.append({
+                    "document": t,
+                    "page": p,
+                    "section": s,
+                    "authority_rank": chk.get("authority_level", 4),
+                    "score": float(chk.get("score") or 0.0),
+                    "text": chk.get("text") or chk.get("content") or ""
+                })
+
+    for item in potential_items:
+        raw_text = item["text"]
+        clean_text = truncate_sentence_safe(raw_text, max_chars=max_passage_chars)
+        if not clean_text:
+            continue
+        toks = estimate_tokens(clean_text)
+        if evidence_passages and (actual_packed_tokens + toks > effective_max_tokens):
+            if not is_expanded or actual_packed_tokens + 20 > effective_max_tokens:
+                break
+            continue
+        if not evidence_passages and toks > effective_max_tokens:
+            clean_text = truncate_sentence_safe(clean_text, max_chars=effective_max_tokens * 3)
+            toks = estimate_tokens(clean_text)
+
+        evidence_passages.append({
+            "document": item["document"],
+            "page": item["page"],
+            "section": item["section"],
+            "authority_rank": item["authority_rank"],
+            "score": item["score"],
+            "text": clean_text
+        })
+        actual_packed_tokens += toks
+        if actual_packed_tokens >= effective_max_tokens:
+            break
 
     result_json = {
         "schema": envelope.get("schema", "lore.result/2"),
@@ -1556,22 +1829,17 @@ def handle_get_context(args: Dict[str, Any]) -> str:
         "llm_provider": envelope.get("llm_provider"),
         "llm_model": envelope.get("llm_model"),
         "anti_hallucination_active": True,
-        "citations_count": len(envelope.get("citations", [])),
+        "citations_count": len(citations_list),
         "retrieval_degraded": envelope.get("retrieval_degraded", False),
         "execution_mode": envelope.get("execution_mode"),
         "was_deterministic": envelope.get("was_deterministic", True),
         "bundle_hash": envelope.get("bundle_hash"),
         "zk_attestation": envelope.get("zk_attestation"),
-        "citations": [
-            {
-                "document": c.get("document_title"),
-                "document_code": c.get("document_code"),
-                "page": c.get("page_number"),
-                "section": c.get("section") or c.get("heading_path"),
-                "passage": c.get("shortest_passage"),
-                "authority_rank": c.get("authority_level")
-            } for c in envelope.get("citations", [])
-        ],
+        "token_budget_applied": effective_max_tokens,
+        "tokens_returned": actual_packed_tokens,
+        "context_mode": "expanded" if is_expanded else "standard",
+        "evidence_passages": evidence_passages,
+        "citations": citations_list,
         "trace_id": envelope.get("trace_id")
     }
 
@@ -1592,12 +1860,24 @@ def handle_search(args: Dict[str, Any]) -> str:
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
-    try:
-        limit = min(max(1, int(args.get("limit", 6))), 50)
-    except (ValueError, TypeError):
-        limit = 6
+    limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=6)
 
     doc_id = args.get("document_id")
+    doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
+    if not doc_id and doc_title:
+        from apps.knowledge.models import SourceDocument
+        from django.db.models import Q
+        matched_doc = SourceDocument.objects.filter(
+            workspace=ws
+        ).filter(
+            Q(title__icontains=str(doc_title).strip()) |
+            Q(canonical_title__icontains=str(doc_title).strip()) |
+            Q(original_filename__icontains=str(doc_title).strip()) |
+            Q(document_code__iexact=str(doc_title).strip())
+        ).first()
+        if matched_doc:
+            doc_id = str(matched_doc.id)
+
     unverified = bool(args.get("unverified", False))
     output_format = args.get("output_format", "text").lower()
 
@@ -1607,7 +1887,8 @@ def handle_search(args: Dict[str, Any]) -> str:
         workspace_id=str(ws.id),
         organization_id=get_organization_id(ws),
         document_id=doc_id,
-        limit=limit
+        limit=limit,
+        context_budget_tokens=effective_max_tokens
     )
 
     # Exclude quarantined or draft documents unless specifically requested
@@ -1620,7 +1901,24 @@ def handle_search(args: Dict[str, Any]) -> str:
     # Clean any secrets from text
     results = sanitize_sensitive_data(results)
 
+    max_chars_per_passage = min(1400, max(350, (effective_max_tokens * 4) // max(1, len(results)))) if results else 350
+
     if output_format == "json":
+        passages_list = []
+        actual_returned_tokens = 0
+        for i, r in enumerate(results, 1):
+            clean_text = truncate_sentence_safe(r.get("text") or "", max_chars=max_chars_per_passage)
+            toks = estimate_tokens(clean_text)
+            actual_returned_tokens += toks
+            passages_list.append({
+                "rank": i,
+                "document_title": r.get("document_title"),
+                "page_number": r.get("page_number"),
+                "score": r.get("score"),
+                "authority_level": r.get("authority_level"),
+                "text": clean_text
+            })
+
         payload = {
             "schema": "lore.search_results/1",
             "is_governed_decision": False,
@@ -1633,18 +1931,11 @@ def handle_search(args: Dict[str, Any]) -> str:
             "query": query,
             "workspace_id": str(ws.id),
             "workspace_name": ws.name,
+            "token_budget_applied": effective_max_tokens,
+            "tokens_returned": actual_returned_tokens,
+            "context_mode": "expanded" if is_expanded else "standard",
             "total_passages": len(results),
-            "passages": [
-                {
-                    "rank": i,
-                    "document_title": r.get("document_title"),
-                    "page_number": r.get("page_number"),
-                    "score": r.get("score"),
-                    "authority_level": r.get("authority_level"),
-                    "text": (r.get("text") or "")[:400]
-                }
-                for i, r in enumerate(results, 1)
-            ]
+            "passages": passages_list
         }
         return json.dumps(payload, indent=2, ensure_ascii=False)
 
@@ -1668,9 +1959,10 @@ def handle_search(args: Dict[str, Any]) -> str:
         output_lines.append("> [!] **Degraded Mode**: Vector store is unavailable. Operating under lexical-only fallback.\n")
 
     for i, r in enumerate(results, 1):
+        clean_text = truncate_sentence_safe(r.get('text', ''), max_chars=max_chars_per_passage)
         output_lines.append(
             f"**[{i}] {r.get('document_title')}** (Page {r.get('page_number')}, Score: {r.get('score')}, Auth Rank: {r.get('authority_level')})\n"
-            f"> {r.get('text', '')[:350]}...\n"
+            f"> {clean_text}...\n"
         )
 
     return sanitize_sensitive_data("\n".join(output_lines))
@@ -1691,17 +1983,32 @@ def handle_standard_search(args: Dict[str, Any]) -> str:
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
-    try:
-        limit = min(max(1, int(args.get("limit", 6))), 50)
-    except (ValueError, TypeError):
-        limit = 6
+    limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=6)
+
+    doc_id = args.get("document_id")
+    doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
+    if not doc_id and doc_title:
+        from apps.knowledge.models import SourceDocument
+        from django.db.models import Q
+        matched_doc = SourceDocument.objects.filter(
+            workspace=ws
+        ).filter(
+            Q(title__icontains=str(doc_title).strip()) |
+            Q(canonical_title__icontains=str(doc_title).strip()) |
+            Q(original_filename__icontains=str(doc_title).strip()) |
+            Q(document_code__iexact=str(doc_title).strip())
+        ).first()
+        if matched_doc:
+            doc_id = str(matched_doc.id)
 
     retriever = HybridRetrievalService()
     results = retriever.search(
         query=query,
         workspace_id=str(ws.id),
         organization_id=get_organization_id(ws),
-        limit=limit
+        document_id=doc_id,
+        limit=limit,
+        context_budget_tokens=effective_max_tokens
     )
     # Exclude quarantined or draft documents
     results = [
@@ -1710,16 +2017,22 @@ def handle_standard_search(args: Dict[str, Any]) -> str:
     ]
     results = sanitize_sensitive_data(results)
 
+    max_chars_per_passage = min(1400, max(350, (effective_max_tokens * 4) // max(1, len(results)))) if results else 350
+
     standard_results = []
+    actual_returned_tokens = 0
     for r in results:
         r_id = str(r.get("chunk_id") or r.get("document_id") or r.get("id") or "")
         title = r.get("document_title") or r.get("title") or "LORE Document"
-        text = r.get("content") or r.get("text") or ""
+        raw_text = r.get("content") or r.get("text") or ""
+        clean_text = truncate_sentence_safe(raw_text, max_chars=max_chars_per_passage)
         url = f"lore://document/{r.get('document_id', r_id)}"
+        toks = estimate_tokens(clean_text)
+        actual_returned_tokens += toks
         standard_results.append({
             "id": r_id,
             "title": title,
-            "text": text,
+            "text": clean_text,
             "url": url,
             "metadata": {
                 "authority_level": r.get("authority_level", 4),
@@ -1729,7 +2042,10 @@ def handle_standard_search(args: Dict[str, Any]) -> str:
         })
 
     payload = {
-        "results": standard_results
+        "results": standard_results,
+        "token_budget_applied": effective_max_tokens,
+        "tokens_returned": actual_returned_tokens,
+        "context_mode": "expanded" if is_expanded else "standard"
     }
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
@@ -2640,6 +2956,40 @@ def handle_get_skill(args: Dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+def handle_list_documents(args: Dict[str, Any]) -> str:
+    """Lists all accessible workspace documents (lore.md §11)."""
+    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
+    if err or not ws:
+        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+
+    from apps.knowledge.models import SourceDocument
+    docs = SourceDocument.objects.filter(workspace=ws).exclude(
+        status__in=['quarantined', 'failed', 'deleted']
+    ).order_by('-authority_level', 'title')
+
+    doc_list = []
+    for d in docs:
+        doc_list.append({
+            "document_id": str(d.id),
+            "title": d.canonical_title or d.title,
+            "document_code": d.document_code or "",
+            "document_type": d.document_type,
+            "page_count": getattr(d, 'page_count', 0) or 0,
+            "status": d.status,
+            "governance_status": d.governance_status or d.status,
+            "authority_level": d.authority_level
+        })
+
+    payload = {
+        "schema": "lore.documents/1",
+        "workspace_id": str(ws.id),
+        "workspace_name": ws.name,
+        "count": len(doc_list),
+        "documents": doc_list
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
 def handle_get_document(args: Dict[str, Any]) -> str:
     """Retrieves document details, page OCR confidence, and full extracted text."""
     doc_id = (args.get("document_id") or "").strip()
@@ -2937,7 +3287,9 @@ TOOL_DISPATCH_MAP = {
     "lore.get_skill": "handle_get_skill",
     "lore_get_skill": "handle_get_skill",
 
-    # Document Inspection
+    # Document Discovery & Inspection
+    "lore.list_documents": "handle_list_documents",
+    "lore_list_documents": "handle_list_documents",
     "lore.get_document": "handle_get_document",
     "lore_get_document": "handle_get_document",
 

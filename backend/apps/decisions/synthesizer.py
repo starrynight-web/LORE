@@ -1071,10 +1071,13 @@ class ConciseAnswerSynthesizer:
         # Sentence 2: Clean source attribution preserving exact title for test compatibility (Requirement 10 & 2)
         raw_status = (best_chunk.get('document_status') or best_chunk.get('status') or '').lower()
         is_unknown_approval = (raw_status == 'unknown' or best_chunk.get('is_unknown'))
+        dec_type = (policy_context.get('decision_type') or '') if policy_context else ''
         if is_unknown_approval:
             s2 = f"According to **{title}** (Page {page}), this policy specifies this rule; however, its formal approval status remains unverified and unknown."
         elif is_asking_older_version:
             s2 = f"According to **{title}** (Page {page}), Version 1.0 specified this rule prior to being superseded."
+        elif dec_type == 'general_inquiry' or (policy_context and policy_context.get('query_intent') == 'informational'):
+            s2 = f"Source: **{title}** (Page {page})."
         else:
             s2 = f"This rule is established in **{title}** (Page {page})."
 

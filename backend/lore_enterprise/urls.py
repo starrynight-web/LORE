@@ -46,6 +46,7 @@ def readiness_check(request):
     }, status=status_code)
 
 from apps.governance.views import telemetry_view
+from apps.docs.views import docs_manifest_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -62,10 +63,15 @@ urlpatterns = [
     path('api/v1/knowledge/', include('apps.knowledge.urls')),
     path('api/v1/audit/', include('apps.audit.urls')),
     path('api/v1/subscriptions/', include('apps.subscriptions.urls')),
+    path('api/v1/docs', docs_manifest_view, name='docs-manifest-noslash'),
+    path('api/v1/docs/', include('apps.docs.urls')),
     # Direct /api/ aliases for enterprise client compatibility
     path('api/governance/', include('apps.governance.urls')),
     path('api/knowledge/', include('apps.knowledge.urls')),
     path('api/sources/', include('apps.sources.urls')),
+    path('api/ingestion/', include('apps.ingestion.urls')),
+    path('api/docs', docs_manifest_view, name='docs-manifest-alias-noslash'),
+    path('api/docs/', include('apps.docs.urls')),
 ]
 
 if settings.DEBUG:

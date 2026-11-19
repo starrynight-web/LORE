@@ -80,6 +80,8 @@ class SettlementReasonCode(str, Enum):
     S3_VISUAL_SCHEMA_INVALID = "S3_VISUAL_SCHEMA_INVALID"
     S3_VISUAL_INCOMPLETE_REVIEW = "S3_VISUAL_INCOMPLETE_REVIEW"
     S3_VISUAL_REJECTED = "S3_VISUAL_REJECTED"
+    S3_LLM_EXTRACTION_PASSED = "S3_LLM_EXTRACTION_PASSED"
+    S3_LLM_FALLBACK_TO_MULTIML = "S3_LLM_FALLBACK_TO_MULTIML"
 
     # Stage 4: Deduplication & Version Identity
     S4_DEDUP_UNIQUE = "S4_DEDUP_UNIQUE"
@@ -310,6 +312,7 @@ class ExtractionValidationService:
         visual_document: Optional[Any] = None,
         extractor: Optional[UnifiedDocumentExtractor] = None,
         job: Optional[Any] = None,
+        ingestion_config: Optional[Dict[str, Any]] = None,
     ) -> Tuple[SettlementStageResult, List[Dict[str, Any]]]:
         t0 = time.time()
         file_path = doc.file_obj.path
@@ -441,6 +444,96 @@ class ExtractionValidationService:
         initial_gov_status = doc.governance_status
         initial_approval_date = doc.approval_date
 
+        # Stage S3 Bounded LangGraph Extraction Loop for Unstructured Conversational Logs
+        resolved_ingestion_config = dict(ingestion_config or {})
+        if not resolved_ingestion_config:
+            from apps.ingestion.s3_langgraph import TransientIngestionContext
+            resolved_ingestion_config = (
+                TransientIngestionContext.get(str(doc.id))
+                or (TransientIngestionContext.get(str(job.id)) if job else {})
+                or (dict(job.stage_timings.get('ingestion_llm_config', {})) if job and isinstance(getattr(job, 'stage_timings', None), dict) else {})
+                or (dict(doc.validation_notes.get('ingestion_llm_config', {})) if isinstance(getattr(doc, 'validation_notes', None), dict) else {})
+                or {}
+            )
+
+        if not resolved_ingestion_config:
+            from django.conf import settings as app_settings
+            resolved_ingestion_config = {
+                'enabled': getattr(app_settings, 'INGESTION_LLM_ENABLED', False),
+                'provider': getattr(app_settings, 'INGESTION_LLM_PROVIDER', 'ollama'),
+                'model': getattr(app_settings, 'INGESTION_LLM_MODEL', 'qwen2.5:14b'),
+                'grader_model': getattr(app_settings, 'INGESTION_GRADER_MODEL', 'phi4:14b'),
+                'ollama_url': getattr(app_settings, 'INGESTION_OLLAMA_URL', 'http://localhost:11434'),
+                'api_key': getattr(app_settings, 'INGESTION_LLM_API_KEY', ''),
+            }
+
+        from apps.ingestion.s3_langgraph import is_conversational_workload, S3ExtractionGraph
+        raw_screen_text = " ".join(p.get('text', '') for p in (pages_data or []) if isinstance(p, dict))
+        is_conv = is_conversational_workload(
+            workload_class=workload_class,
+            filename=doc.original_filename,
+            doc_type=doc.document_type,
+            force_llm=bool(resolved_ingestion_config.get('force_llm_extraction', False)),
+            raw_text=raw_screen_text,
+        )
+
+        is_llm_extracted = False
+        is_llm_fallback = False
+        langgraph_trace = None
+
+        if bool(resolved_ingestion_config.get('enabled', False)) and is_conv and visual_document is None:
+            lg_stage_result, lg_pages_data = S3ExtractionGraph.run(
+                doc_id=str(doc.id),
+                doc_title=doc.title,
+                workload_class=workload_class,
+                raw_pages=pages_data,
+                ingestion_config=resolved_ingestion_config,
+            )
+            langgraph_trace = lg_stage_result.details.get("node_trace")
+
+            if lg_stage_result.status == "needs_review":
+                # Quarantined due to low confidence / ungrounded claims after max retries
+                elapsed = int((time.time() - t0) * 1000)
+                with transaction.atomic():
+                    DocumentPage.objects.filter(document=doc).delete()
+                    pages_to_create = []
+                    for p in (lg_pages_data or pages_data):
+                        p_text = p.get('text', '')
+                        db_conf = float(p.get('confidence', 0.0))
+                        pages_to_create.append(DocumentPage(
+                            document=doc,
+                            document_version=doc_version,
+                            page_number=p['page_number'],
+                            text=p_text,
+                            confidence=db_conf,
+                            words_count=p.get('words_count', len(p_text.split())),
+                            extraction_type='langgraph_llm_quarantine',
+                            engine='langgraph',
+                            is_repaired=True,
+                        ))
+                    if pages_to_create:
+                        DocumentPage.objects.bulk_create(pages_to_create)
+                    doc.page_count = len(pages_to_create)
+                    doc.ocr_confidence = round(lg_stage_result.details.get('groundedness_score', 0.0), 3)
+                    doc.status = 'needs_review'
+                    doc.governance_status = 'needs_review'
+                    existing_notes = dict(doc.validation_notes) if isinstance(doc.validation_notes, dict) else {}
+                    existing_notes['langgraph_extraction'] = {
+                        'status': 'quarantined',
+                        'groundedness_score': doc.ocr_confidence,
+                        'grader_critique': lg_stage_result.details.get('grader_critique', ''),
+                        'node_trace': langgraph_trace,
+                    }
+                    doc.validation_notes = existing_notes
+                    doc.save(update_fields=['page_count', 'ocr_confidence', 'status', 'governance_status', 'validation_notes'])
+
+                return lg_stage_result, lg_pages_data
+            elif lg_stage_result.status == "passed" and "S3_LLM_EXTRACTION_PASSED" in lg_stage_result.reason_codes:
+                pages_data = lg_pages_data
+                is_llm_extracted = True
+            elif "S3_LLM_FALLBACK_TO_MULTIML" in lg_stage_result.reason_codes:
+                is_llm_fallback = True
+
         # Save pages to database atomically
         with transaction.atomic():
             DocumentPage.objects.filter(document=doc).delete()
@@ -550,6 +643,13 @@ class ExtractionValidationService:
                     existing_notes['notes'] = meta['notes']
                 if visual_provenance is not None:
                     existing_notes[cls._DEFAULT_VISUAL_PROVENANCE_KEY] = visual_provenance
+                if langgraph_trace:
+                    existing_notes['langgraph_extraction'] = {
+                        'status': 'passed' if is_llm_extracted else 'fallback',
+                        'groundedness_score': doc.ocr_confidence,
+                        'rules_count': len(pages_data),
+                        'node_trace': langgraph_trace,
+                    }
 
                 # Air-gapped cross-family groundedness routing (docs/enterprise/fix/knowledge.md §1 & prompt §1.2)
                 try:
@@ -567,6 +667,13 @@ class ExtractionValidationService:
                 logger.warning(f"Metadata extraction non-fatal error for doc {doc.id}: {meta_ex}")
                 if visual_provenance is not None:
                     existing_notes[cls._DEFAULT_VISUAL_PROVENANCE_KEY] = visual_provenance
+                if langgraph_trace:
+                    existing_notes['langgraph_extraction'] = {
+                        'status': 'passed' if is_llm_extracted else 'fallback',
+                        'groundedness_score': doc.ocr_confidence,
+                        'rules_count': len(pages_data),
+                        'node_trace': langgraph_trace,
+                    }
                     doc.validation_notes = existing_notes
                     doc.save(update_fields=['validation_notes'])
 
@@ -621,11 +728,23 @@ class ExtractionValidationService:
         pass_codes = [SettlementReasonCode.S3_EXTRACTION_PASSED.value]
         if vdoc is not None:
             pass_codes.append(SettlementReasonCode.S3_VISUAL_SCHEMA_VALIDATED.value)
+        if is_llm_extracted:
+            pass_codes.append(SettlementReasonCode.S3_LLM_EXTRACTION_PASSED.value)
+        elif is_llm_fallback:
+            pass_codes.append(SettlementReasonCode.S3_LLM_FALLBACK_TO_MULTIML.value)
+
         pass_details: Dict[str, Any] = {
             "page_count": len(pages_data),
             "ocr_confidence": doc.ocr_confidence,
             "workload_class": workload_class,
         }
+        if is_llm_extracted:
+            pass_details["mode"] = "langgraph_llm_extraction"
+            pass_details["groundedness_score"] = doc.ocr_confidence
+            if langgraph_trace:
+                pass_details["node_trace"] = langgraph_trace
+        elif is_llm_fallback:
+            pass_details["mode"] = "fallback_to_multiml"
         if vdoc is not None and visual_provenance is not None:
             pass_details["visual_schema_version"] = vdoc.schema_version
             pass_details["visual_provenance"] = visual_provenance
@@ -1141,6 +1260,7 @@ class SettlementGateCoordinator:
         visual_document: Optional[Any] = None,
         extractor: Optional[UnifiedDocumentExtractor] = None,
         job: Optional[Any] = None,
+        ingestion_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         stages_output = {}
         all_reasons = []
@@ -1185,6 +1305,7 @@ class SettlementGateCoordinator:
             visual_document=visual_document,
             extractor=extractor,
             job=job,
+            ingestion_config=ingestion_config,
         )
         stages_output["stage_3_extraction"] = s3.__dict__
         all_reasons.extend(s3.reason_codes)

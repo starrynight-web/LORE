@@ -290,7 +290,8 @@ class GroundedGenerationService:
         # ----------------------------------------------------------------------
         if mode == ExecutionMode.DETERMINISTIC_FIRST:
             is_generative_requested = (synthesis_mode == 'generative')
-            if not is_generative_requested:
+            has_explicit_user_key = bool(groq_api_key)
+            if not is_generative_requested and not has_explicit_user_key:
                 # Core efficiency: routine factual lookups and policy answers are generated deterministically
                 ans, cls.last_metrics = cls._run_deterministic_synthesis(
                     query, retrieved_chunks, conflicts, state,
@@ -307,6 +308,10 @@ class GroundedGenerationService:
                 mode=mode,
                 purpose=ModelTaskPurpose.GENERATION
             )
+            if not is_allowed and (has_explicit_user_key or is_generative_requested):
+                is_allowed = True
+                auth_reason = "Authorized via explicit user credentials or generative request"
+
             if not is_allowed:
                 ans, cls.last_metrics = cls._run_deterministic_synthesis(
                     query, retrieved_chunks, conflicts, state,
@@ -341,6 +346,7 @@ class GroundedGenerationService:
         active_groq_key = groq_api_key or getattr(settings, 'GROQ_API_KEY', '')
         active_model = llm_model or getattr(settings, 'GROQ_MODEL', 'gpt-oss-120B')
         active_evidence_pkg = evidence_package or (policy_context.get('evidence_package') if policy_context else None)
+        evidence_budget = 2400 if (synthesis_mode == 'generative') else 800
 
         if active_groq_key:
             slot_acquired = acquire_remote_concurrency_slot(timeout=5.0)
@@ -349,7 +355,8 @@ class GroundedGenerationService:
                 ans, call_meta = cls._generate_with_groq_llm(
                     query, retrieved_chunks, conflicts, active_groq_key, active_model,
                     evidence_package=active_evidence_pkg,
-                    ephemeral_document=(policy_context.get('ephemeral_document') if policy_context else None)
+                    ephemeral_document=(policy_context.get('ephemeral_document') if policy_context else None),
+                    evidence_tokens_budget=evidence_budget
                 )
                 elapsed_ms = (time.time() - t_call) * 1000
                 if ans and len(ans.strip()) > 10:
@@ -396,15 +403,34 @@ class GroundedGenerationService:
 
         # Check configured general external LLM provider
         llm_provider = getattr(settings, 'LLM_PROVIDER', 'none').lower()
-        api_key = getattr(settings, 'LLM_API_KEY', '')
+        api_key = (
+            getattr(settings, 'OPENAI_API_KEY', '') or
+            getattr(settings, 'ANTHROPIC_API_KEY', '') or
+            getattr(settings, 'GEMINI_API_KEY', '') or
+            getattr(settings, 'LLM_API_KEY', '')
+        )
+        base_url = getattr(settings, 'OPENAI_BASE_URL', '') or getattr(settings, 'OLLAMA_BASE_URL', '')
 
-        if llm_provider in ('openai', 'anthropic') and api_key:
+        # Detect provider from active_model if set
+        if 'claude' in active_model.lower():
+            llm_provider = 'anthropic'
+            api_key = getattr(settings, 'ANTHROPIC_API_KEY', '') or api_key
+        elif 'gemini' in active_model.lower():
+            llm_provider = 'gemini'
+            api_key = getattr(settings, 'GEMINI_API_KEY', '') or api_key
+        elif base_url or 'gpt' in active_model.lower() or llm_provider == 'openai':
+            llm_provider = 'openai'
+            api_key = getattr(settings, 'OPENAI_API_KEY', '') or api_key
+
+        if (llm_provider in ('openai', 'anthropic', 'gemini') and api_key) or base_url:
             slot_acquired = acquire_remote_concurrency_slot(timeout=5.0)
             t_call = time.time()
             try:
                 ans, call_meta = cls._generate_with_external_llm(
                     query, retrieved_chunks, conflicts, llm_provider, api_key,
-                    evidence_package=active_evidence_pkg
+                    model_name=active_model,
+                    evidence_package=active_evidence_pkg,
+                    evidence_tokens_budget=evidence_budget
                 )
                 elapsed_ms = (time.time() - t_call) * 1000
                 if ans and len(ans.strip()) > 10:
@@ -418,7 +444,7 @@ class GroundedGenerationService:
 
                     metric = ModelExecutionMetric(
                         provider=llm_provider,
-                        model_name=call_meta.get("model", "default"),
+                        model_name=call_meta.get("model", active_model or "default"),
                         purpose=ModelTaskPurpose.GENERATION.value,
                         latency_ms=elapsed_ms,
                         tokens_prompt=call_meta.get("tokens_prompt", 0),
@@ -433,7 +459,7 @@ class GroundedGenerationService:
             except Exception as e:
                 sanitized_err = sanitize_sensitive_data(str(e))
                 logger.warning(
-                    f"External LLM generation failed: {sanitized_err}. "
+                    f"External LLM generation failed ({llm_provider}): {sanitized_err}. "
                     "Refusing silent cloud fallback; safely falling back to deterministic synthesis."
                 )
             finally:
@@ -458,7 +484,8 @@ class GroundedGenerationService:
         api_key: str,
         model_name: str = 'gpt-oss-120B',
         evidence_package: Optional[Any] = None,
-        ephemeral_document: Optional[Dict[str, Any]] = None
+        ephemeral_document: Optional[Dict[str, Any]] = None,
+        evidence_tokens_budget: int = 800
     ) -> Tuple[str, Dict[str, Any]]:
         r"""
         Invokes Groq API Cloud with gpt-oss-120B or specified model.
@@ -466,6 +493,7 @@ class GroundedGenerationService:
         Uses runtime master prompt from e:\LORE\system-prompt.md with structured evidence package input.
         """
         import urllib.request
+        import urllib.error
         import json
         from apps.governance.evidence_package import StructuredEvidencePackage
 
@@ -473,7 +501,7 @@ class GroundedGenerationService:
             pkg = evidence_package
         else:
             pkg = StructuredEvidencePackage.from_chunks(query=query, chunks=retrieved_chunks, conflicts_resolved=conflicts)
-        context_str = pkg.format_for_llm()
+        context_str = pkg.format_for_llm(max_tokens=evidence_tokens_budget)
 
         system_prompt = cls.get_master_system_prompt()
         user_content = (
@@ -601,15 +629,20 @@ class GroundedGenerationService:
         conflicts: List[Dict[str, Any]],
         provider: str,
         api_key: str,
-        evidence_package: Optional[Any] = None
+        model_name: Optional[str] = None,
+        evidence_package: Optional[Any] = None,
+        evidence_tokens_budget: int = 800
     ) -> Tuple[str, Dict[str, Any]]:
+        import urllib.request
+        import urllib.error
+        import json
         from apps.governance.evidence_package import StructuredEvidencePackage
 
         if evidence_package is not None and isinstance(evidence_package, StructuredEvidencePackage):
             pkg = evidence_package
         else:
             pkg = StructuredEvidencePackage.from_chunks(query=query, chunks=retrieved_chunks, conflicts_resolved=conflicts)
-        context_str = pkg.format_for_llm()
+        context_str = pkg.format_for_llm(max_tokens=evidence_tokens_budget)
 
         system_prompt = cls.get_master_system_prompt()
         user_content = (
@@ -619,51 +652,166 @@ class GroundedGenerationService:
         )
 
         timeout_secs = int(getattr(settings, 'REMOTE_CALL_TIMEOUT_SECONDS', 15))
-        model_name = getattr(settings, 'LLM_MODEL_NAME', 'gpt-4o-mini')
+        max_retries = int(getattr(settings, 'REMOTE_CALL_MAX_RETRIES', 2))
+        clean_key = (api_key or '').strip()
 
+        # ----------------------------------------------------------------------
+        # 1. OpenAI / OpenAI-compatible (vLLM, SGLang, Ollama)
+        # ----------------------------------------------------------------------
         if provider == 'openai':
-            import urllib.request
-            import json
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key.strip()}"
-                },
-                data=json.dumps({
-                    "model": model_name,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                    ],
-                    "temperature": 0.0
-                }).encode('utf-8')
-            )
-            with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-                content = data['choices'][0]['message']['content'].strip()
-                try:
-                    json_m = re.search(r'\{.*\}', content, re.DOTALL)
-                    if json_m:
-                        parsed = json.loads(json_m.group(0))
-                        if isinstance(parsed, dict) and parsed.get('answer'):
-                            content = parsed['answer'].strip()
-                except Exception:
-                    pass
-                usage = data.get('usage', {})
-                p_toks = usage.get('prompt_tokens', len(user_content.split()))
-                c_toks = usage.get('completion_tokens', len(content.split()))
-                t_toks = usage.get('total_tokens', p_toks + c_toks)
-                # OpenAI gpt-4o-mini approx $0.00015 / 1k input, $0.0006 / 1k output
-                cost_usd = (p_toks / 1000.0) * 0.00015 + (c_toks / 1000.0) * 0.00060
+            base_url = getattr(settings, 'OPENAI_BASE_URL', '') or getattr(settings, 'OLLAMA_BASE_URL', '')
+            endpoint = f"{base_url.rstrip('/')}/chat/completions" if base_url else "https://api.openai.com/v1/chat/completions"
+            active_model = model_name or getattr(settings, 'LLM_MODEL_NAME', 'gpt-4o-mini')
 
-                return content, {
-                    "model": model_name,
-                    "tokens_prompt": p_toks,
-                    "tokens_completion": c_toks,
-                    "tokens_total": t_toks,
-                    "cost_usd": cost_usd
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "LORE-Enterprise/2.0"
+            }
+            if clean_key:
+                headers["Authorization"] = f"Bearer {clean_key}"
+
+            payload = {
+                "model": active_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                "temperature": 0.0,
+                "max_tokens": 1024
+            }
+
+            for attempt in range(max_retries):
+                try:
+                    req = urllib.request.Request(endpoint, headers=headers, data=json.dumps(payload).encode('utf-8'))
+                    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
+                        data = json.loads(resp.read().decode('utf-8'))
+                        content = data['choices'][0]['message']['content'].strip()
+                        try:
+                            json_m = re.search(r'\{.*\}', content, re.DOTALL)
+                            if json_m:
+                                parsed = json.loads(json_m.group(0))
+                                if isinstance(parsed, dict) and parsed.get('answer'):
+                                    content = parsed['answer'].strip()
+                        except Exception:
+                            pass
+                        usage = data.get('usage', {})
+                        p_toks = usage.get('prompt_tokens', len(user_content.split()))
+                        c_toks = usage.get('completion_tokens', len(content.split()))
+                        t_toks = usage.get('total_tokens', p_toks + c_toks)
+                        cost_usd = (p_toks / 1000.0) * 0.00015 + (c_toks / 1000.0) * 0.00060
+
+                        return content, {
+                            "model": active_model,
+                            "tokens_prompt": p_toks,
+                            "tokens_completion": c_toks,
+                            "tokens_total": t_toks,
+                            "cost_usd": cost_usd
+                        }
+                except Exception as ex:
+                    sanitized_msg = sanitize_sensitive_data(str(ex))
+                    logger.warning(f"OpenAI attempt {attempt + 1}/{max_retries} failed: {sanitized_msg}")
+                    if attempt < max_retries - 1:
+                        time.sleep(0.5 * (attempt + 1))
+                    continue
+
+        # ----------------------------------------------------------------------
+        # 2. Anthropic (Claude)
+        # ----------------------------------------------------------------------
+        elif provider == 'anthropic':
+            active_model = model_name or getattr(settings, 'ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022')
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": clean_key,
+                "anthropic-version": "2023-06-01",
+                "User-Agent": "LORE-Enterprise/2.0"
+            }
+            payload = {
+                "model": active_model,
+                "system": system_prompt,
+                "messages": [
+                    {"role": "user", "content": user_content}
+                ],
+                "max_tokens": 1024,
+                "temperature": 0.0
+            }
+
+            for attempt in range(max_retries):
+                try:
+                    req = urllib.request.Request(
+                        "https://api.anthropic.com/v1/messages",
+                        headers=headers,
+                        data=json.dumps(payload).encode('utf-8')
+                    )
+                    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
+                        data = json.loads(resp.read().decode('utf-8'))
+                        content = ""
+                        for block in data.get('content', []):
+                            if block.get('type') == 'text':
+                                content += block.get('text', '')
+                        content = content.strip()
+                        usage = data.get('usage', {})
+                        p_toks = usage.get('input_tokens', len(user_content.split()))
+                        c_toks = usage.get('output_tokens', len(content.split()))
+                        cost_usd = (p_toks / 1000.0) * 0.003 + (c_toks / 1000.0) * 0.015
+
+                        return content, {
+                            "model": active_model,
+                            "tokens_prompt": p_toks,
+                            "tokens_completion": c_toks,
+                            "tokens_total": p_toks + c_toks,
+                            "cost_usd": cost_usd
+                        }
+                except Exception as ex:
+                    sanitized_msg = sanitize_sensitive_data(str(ex))
+                    logger.warning(f"Anthropic attempt {attempt + 1}/{max_retries} failed: {sanitized_msg}")
+                    if attempt < max_retries - 1:
+                        time.sleep(0.5 * (attempt + 1))
+                    continue
+
+        # ----------------------------------------------------------------------
+        # 3. Gemini
+        # ----------------------------------------------------------------------
+        elif provider == 'gemini':
+            active_model = model_name or getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash')
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={clean_key}"
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "LORE-Enterprise/2.0"
+            }
+            payload = {
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"parts": [{"text": user_content}]}],
+                "generationConfig": {
+                    "temperature": 0.0,
+                    "maxOutputTokens": 1024
                 }
+            }
+
+            for attempt in range(max_retries):
+                try:
+                    req = urllib.request.Request(endpoint, headers=headers, data=json.dumps(payload).encode('utf-8'))
+                    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
+                        data = json.loads(resp.read().decode('utf-8'))
+                        parts = data.get('candidates', [{}])[0].get('content', {}).get('parts', [])
+                        content = "".join(p.get('text', '') for p in parts).strip()
+                        usage = data.get('usageMetadata', {})
+                        p_toks = usage.get('promptTokenCount', len(user_content.split()))
+                        c_toks = usage.get('candidatesTokenCount', len(content.split()))
+                        cost_usd = (p_toks / 1000.0) * 0.000075 + (c_toks / 1000.0) * 0.00030
+
+                        return content, {
+                            "model": active_model,
+                            "tokens_prompt": p_toks,
+                            "tokens_completion": c_toks,
+                            "tokens_total": p_toks + c_toks,
+                            "cost_usd": cost_usd
+                        }
+                except Exception as ex:
+                    sanitized_msg = sanitize_sensitive_data(str(ex))
+                    logger.warning(f"Gemini attempt {attempt + 1}/{max_retries} failed: {sanitized_msg}")
+                    if attempt < max_retries - 1:
+                        time.sleep(0.5 * (attempt + 1))
+                    continue
 
         return "", {"model": "unsupported", "tokens_prompt": 0, "tokens_completion": 0, "tokens_total": 0, "cost_usd": 0.0}
 

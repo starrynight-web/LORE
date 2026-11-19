@@ -152,7 +152,7 @@ class HybridRetrievalService:
                 pass
 
         budget = context_budget_tokens or getattr(settings, 'RETRIEVAL_CONTEXT_BUDGET_TOKENS', 800)
-        candidate_budget = RerankerFactory.get_candidate_budget(limit=limit)
+        candidate_budget = max(40, limit * 5, RerankerFactory.get_candidate_budget(limit=limit))
         query_clean = query.strip()
         q_tokens = [w.lower() for w in re.findall(r'\w+', query_clean) if len(w) > 1]
 
@@ -214,7 +214,7 @@ class HybridRetrievalService:
 
         # ---------------- Stage 2b: Multi-Document Companion Guarantees (Requirement 3) ----------------
         all_candidate_ids = set(vector_ranks.keys()) | set(lexical_ranks.keys())
-        if workspace_id and analysis.all_target_doc_codes:
+        if workspace_id and analysis.all_target_doc_codes and (not document_id or str(document_id).lower() == 'all'):
             for t_code in analysis.all_target_doc_codes:
                 if t_code.upper() == 'DOC-021':
                     continue
@@ -237,7 +237,7 @@ class HybridRetrievalService:
 
         # Negative Retrieval / Missing Document Boundary Detection (Requirement 3 & 7)
         missing_boundary_candidates = []
-        if analysis.is_negative_query or 'DOC-021' in [c.upper() for c in analysis.all_target_doc_codes]:
+        if (analysis.is_negative_query or 'DOC-021' in [c.upper() for c in analysis.all_target_doc_codes]) and (not document_id or str(document_id).lower() == 'all'):
             missing_docs = SourceDocument.objects.filter(workspace_id=workspace_id, is_missing=True)
             for m_doc in missing_docs:
                 m_cid = f"missing-{m_doc.id}"
@@ -413,7 +413,9 @@ class HybridRetrievalService:
                     max_depth=graph_max_depth,
                     max_nodes=graph_max_nodes,
                     timeout_ms=graph_timeout_ms,
-                    permitted_relationship_types=permitted_relationship_types
+                    permitted_relationship_types=permitted_relationship_types,
+                    document_id=document_id,
+                    collection_id=collection_id
                 )
                 graph_status = graph_res.get('status', 'completed')
                 graph_degraded = graph_res.get('degraded', False)
@@ -512,6 +514,18 @@ class HybridRetrievalService:
                 }
                 merged_candidates.append(exp_item)
 
+        # Strict Single-Document Isolation (Phase 4):
+        # Querying 1 selected book must return 0 chunks from any other book
+        if document_id and str(document_id).lower() != 'all':
+            merged_candidates = [
+                c for c in merged_candidates
+                if str(c.get('document_id')) == str(document_id)
+            ]
+            expanded_chunks_list = [
+                c for c in expanded_chunks_list
+                if str(c.get('document_id')) == str(document_id)
+            ]
+
         # ---------------- Stage 4: Pluggable Reranking (Phase 2-5) ----------------
         t_rerank_start = time.time()
         active_reranker = self.reranker
@@ -523,6 +537,38 @@ class HybridRetrievalService:
             query_analysis=analysis
         )
         t_rerank_end = time.time()
+
+        # Phase 3 Table-Safe TOC Demotion (0.20x soft multiplier):
+        # Substantive body text outranks TOC unless user explicitly queries TOC / index
+        is_toc_query = any(w in query_clean.lower() for w in ['table of contents', 'contents', 'index', 'outline'])
+        if not is_toc_query and reranked_candidates:
+            adjusted_reranked = []
+            for item in reranked_candidates:
+                if isinstance(item, tuple):
+                    sc, chk, meta = item
+                    is_toc = False
+                    if hasattr(chk, 'metadata') and isinstance(chk.metadata, dict):
+                        is_toc = chk.metadata.get('is_toc_or_frontmatter', False)
+                    elif isinstance(chk, dict):
+                        is_toc = chk.get('metadata', {}).get('is_toc_or_frontmatter') or chk.get('is_toc_or_frontmatter', False)
+                    if is_toc:
+                        sc = round(sc * 0.20, 4)
+                        if isinstance(meta, dict):
+                            meta['relevance_score'] = sc
+                    adjusted_reranked.append((sc, chk, meta))
+                elif isinstance(item, dict):
+                    it = dict(item)
+                    is_toc = it.get('metadata', {}).get('is_toc_or_frontmatter') or it.get('is_toc_or_frontmatter', False)
+                    if is_toc:
+                        it['score'] = round(it.get('score', 0.0) * 0.20, 4)
+                        if 'reranking_scores' in it and isinstance(it['reranking_scores'], dict):
+                            it['reranking_scores']['relevance_score'] = it['score']
+                    adjusted_reranked.append(it)
+            if adjusted_reranked and isinstance(adjusted_reranked[0], tuple):
+                adjusted_reranked.sort(key=lambda x: x[0], reverse=True)
+            elif adjusted_reranked:
+                adjusted_reranked.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+            reranked_candidates = adjusted_reranked
 
         # Prepend missing boundary items for negative retrieval
         if missing_boundary_candidates:
@@ -616,6 +662,12 @@ class HybridRetrievalService:
             for existing in final_results:
                 if existing.get('document_id') == doc_id or existing.get('document_title') == doc_title:
                     ex_clean = re.sub(r'\s+', ' ', (existing.get('text') or '').lower().strip())
+                    # Distinct pages from the same document represent different sections/chapters
+                    if existing.get('page_number') and page_num and existing.get('page_number') != page_num:
+                        if clean_text_cand == ex_clean:
+                            is_dup = True
+                            break
+                        continue
                     if clean_text_cand[:60] == ex_clean[:60] and len(clean_text_cand) > 30:
                         is_dup = True
                     elif cand_tokens and len(cand_tokens) >= 5:

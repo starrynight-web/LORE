@@ -12,6 +12,7 @@ def process_ingestion_pipeline(
     job_id: str,
     raise_exceptions: bool = False,
     worker_id: Optional[str] = None,
+    ingestion_config: Optional[Dict[str, Any]] = None,
 ):
     """
     Delegates pipeline execution to the enterprise SequentialPipelineCoordinator
@@ -22,6 +23,7 @@ def process_ingestion_pipeline(
         job_id,
         raise_exceptions=raise_exceptions,
         worker_id=worker_id,
+        ingestion_config=ingestion_config,
     )
 
 

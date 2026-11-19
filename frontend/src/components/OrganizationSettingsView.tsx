@@ -86,6 +86,17 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
   const [testingGroq, setTestingGroq] = useState(false);
   const [groqStatus, setGroqStatus] = useState<{ connected: boolean; latency?: number; message?: string; error?: string } | null>(null);
 
+  // Stage S3 Ingestion LLM Extraction (Optional) Configuration
+  const [ingestionEnabled, setIngestionEnabled] = useState(false);
+  const [ingestionProvider, setIngestionProvider] = useState<'ollama' | 'groq' | 'openai' | 'anthropic' | 'gemini'>('ollama');
+  const [ingestionOllamaUrl, setIngestionOllamaUrl] = useState('http://localhost:11434');
+  const [ingestionModel, setIngestionModel] = useState('qwen2.5:14b');
+  const [ingestionGraderModel, setIngestionGraderModel] = useState('phi4:14b');
+  const [ingestionApiKey, setIngestionApiKey] = useState('');
+  const [showIngestionKey, setShowIngestionKey] = useState(false);
+  const [testingIngestion, setTestingIngestion] = useState(false);
+  const [ingestionStatus, setIngestionStatus] = useState<{ connected: boolean; latency?: number; message?: string; error?: string; models?: string[] } | null>(null);
+
   // MCP Server Configuration
   const [mcpPlatform, setMcpPlatform] = useState<'claude' | 'cursor' | 'windsurf' | 'stdio'>('claude');
   const [mcpTransport, setMcpTransport] = useState<'stdio' | 'sse'>('stdio');
@@ -190,8 +201,82 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
       if (storedKey) {
         setGroqStatus({ connected: true, message: 'Saved in local workspace' });
       }
+
+      const storedIngestion = localStorage.getItem('lore_ingestion_llm_config');
+      if (storedIngestion) {
+        try {
+          const parsed = JSON.parse(storedIngestion);
+          setIngestionEnabled(Boolean(parsed.enabled));
+          setIngestionProvider(parsed.provider || 'ollama');
+          setIngestionOllamaUrl(parsed.ollama_url || 'http://localhost:11434');
+          setIngestionModel(parsed.model || (parsed.provider === 'ollama' ? 'qwen2.5:14b' : 'gpt-oss-120B'));
+          setIngestionGraderModel(parsed.grader_model || 'phi4:14b');
+          setIngestionApiKey(parsed.api_key || '');
+          if (parsed.enabled) {
+            setIngestionStatus({ connected: true, message: 'Saved and active for conversational logs' });
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
     }
   }, []);
+
+  const handleSaveIngestionConfig = () => {
+    if (typeof window !== 'undefined') {
+      const cfg = {
+        enabled: ingestionEnabled,
+        provider: ingestionProvider,
+        ollama_url: ingestionOllamaUrl.trim(),
+        model: ingestionModel.trim(),
+        grader_model: ingestionGraderModel.trim(),
+        api_key: ingestionApiKey.trim(),
+      };
+      localStorage.setItem('lore_ingestion_llm_config', JSON.stringify(cfg));
+      setMessage('Ingestion LLM extraction settings saved successfully!');
+      setIngestionStatus({ connected: true, message: 'Settings saved in local workspace' });
+    }
+  };
+
+  const handleClearIngestionConfig = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('lore_ingestion_llm_config');
+      setIngestionEnabled(false);
+      setIngestionApiKey('');
+      setIngestionStatus(null);
+      setMessage('Ingestion LLM extraction disabled. Running 100% Non-LLM Multi-ML fast path.');
+    }
+  };
+
+  const handleTestIngestion = async () => {
+    setTestingIngestion(true);
+    setIngestionStatus(null);
+    setError(null);
+    try {
+      const res = await api.testExtractorLLM({
+        provider: ingestionProvider,
+        api_key: ingestionApiKey.trim(),
+        model: ingestionModel.trim(),
+        grader_model: ingestionGraderModel.trim(),
+        ollama_url: ingestionOllamaUrl.trim(),
+      });
+      setIngestionStatus({
+        connected: true,
+        latency: res.latency_ms,
+        message: res.message,
+        models: res.models,
+      });
+      setMessage(`Ingestion LLM verified successfully (${res.latency_ms || 0}ms)!`);
+    } catch (e: any) {
+      setIngestionStatus({
+        connected: false,
+        error: e.message || 'Ingestion LLM connection failed.'
+      });
+      setError(e.message || 'Failed connecting to Ingestion LLM.');
+    } finally {
+      setTestingIngestion(false);
+    }
+  };
 
   useEffect(() => {
     if (initialSection) {
@@ -812,6 +897,233 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
               Protocol: <span className="font-mono">OpenAI-compatible v1</span> • Temperature: <span className="font-mono">0.0</span>
             </div>
           </div>
+        </div>
+
+        {/* =====================================================================
+            STAGE S3 INGESTION LLM EXTRACTION (OPTIONAL) CARD
+            ===================================================================== */}
+        <div 
+          className="p-6 rounded-2xl border shadow-sm space-y-5"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3" style={{ borderColor: 'var(--border-color)' }}>
+            <div>
+              <h2 className="text-sm sm:text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-[var(--brand-accent)]" />
+                <span>Ingestion LLM Extraction (Optional · Unstructured Conversational Logs)</span>
+              </h2>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Optional bounded LangGraph extraction loop for messy conversational logs (Slack JSON, email threads, raw chat transcripts). Standard PDFs, Office docs, and images always run at $0 LLM cost using LORE&apos;s deterministic multi-ML pipeline.
+              </p>
+            </div>
+
+            <span 
+              className="px-2.5 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5 self-start sm:self-auto"
+              style={{
+                backgroundColor: ingestionEnabled ? 'var(--success-bg)' : 'var(--bg-card)',
+                borderColor: 'var(--border-color)',
+                color: ingestionEnabled ? 'var(--success)' : 'var(--text-muted)',
+              }}
+            >
+              <span className={`w-2 h-2 rounded-full ${ingestionEnabled ? 'bg-[var(--success)] animate-pulse' : 'bg-gray-400'}`} />
+              {ingestionEnabled ? 'LLM Extraction Active' : 'Non-LLM Multi-ML Mode (Default)'}
+            </span>
+          </div>
+
+          {/* Master Toggle */}
+          <div className="flex items-center justify-between p-3.5 rounded-xl border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
+            <div className="space-y-0.5 pr-4">
+              <label className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-2 cursor-pointer">
+                <span>Enable Optional LLM Extraction for Unstructured Conversational Logs</span>
+              </label>
+              <p className="text-[11px] text-[var(--text-muted)]">
+                When enabled, conversational uploads cycle through a LangGraph self-repair loop with cross-family grading.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIngestionEnabled(!ingestionEnabled)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${ingestionEnabled ? 'bg-[var(--brand-accent)]' : 'bg-gray-300 dark:bg-gray-700'}`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${ingestionEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+              />
+            </button>
+          </div>
+
+          {ingestionEnabled && (
+            <div className="space-y-4 pt-1">
+              {/* Provider Selector Tabs */}
+              <div>
+                <label className="block text-xs font-bold text-[var(--text-secondary)] mb-2">
+                  Ingestion Extractor Provider
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {[
+                    { id: 'ollama', label: 'Ollama (Local / Air-Gapped)', desc: 'Zero egress / Local GPU' },
+                    { id: 'groq', label: 'Groq Cloud', desc: 'Fast Llama-3.3' },
+                    { id: 'openai', label: 'OpenAI', desc: 'gpt-4o-mini' },
+                    { id: 'anthropic', label: 'Anthropic', desc: 'Claude 3.5 Haiku' },
+                    { id: 'gemini', label: 'Gemini', desc: 'Gemini 1.5 Flash' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setIngestionProvider(p.id as any);
+                        if (p.id === 'ollama') {
+                          setIngestionModel('qwen2.5:14b');
+                          setIngestionGraderModel('phi4:14b');
+                        } else if (p.id === 'groq') {
+                          setIngestionModel('llama-3.3-70b-versatile');
+                        } else if (p.id === 'openai') {
+                          setIngestionModel('gpt-4o-mini');
+                        } else if (p.id === 'anthropic') {
+                          setIngestionModel('claude-3-5-haiku-20241022');
+                        } else if (p.id === 'gemini') {
+                          setIngestionModel('gemini-1.5-flash');
+                        }
+                      }}
+                      className={`p-2.5 text-left rounded-xl border text-xs transition-all ${
+                        ingestionProvider === p.id 
+                          ? 'border-[var(--brand-accent)] bg-[var(--accent-light)] text-[var(--text-primary)] font-semibold shadow-xs' 
+                          : 'border-[var(--border-color)] text-[var(--text-muted)] hover:border-[var(--brand-accent)]'
+                      }`}
+                    >
+                      <div className="font-bold text-[12px]">{p.label}</div>
+                      <div className="text-[10px] opacity-75 mt-0.5">{p.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Conditional Inputs */}
+              {ingestionProvider === 'ollama' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                      Ollama Base URL
+                    </label>
+                    <input
+                      type="text"
+                      value={ingestionOllamaUrl}
+                      onChange={(e) => setIngestionOllamaUrl(e.target.value)}
+                      placeholder="http://localhost:11434"
+                      className="w-full px-3 py-2 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                      Extractor Model
+                    </label>
+                    <input
+                      type="text"
+                      value={ingestionModel}
+                      onChange={(e) => setIngestionModel(e.target.value)}
+                      placeholder="qwen2.5:14b"
+                      className="w-full px-3 py-2 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                      Cross-Family Grader Model
+                    </label>
+                    <input
+                      type="text"
+                      value={ingestionGraderModel}
+                      onChange={(e) => setIngestionGraderModel(e.target.value)}
+                      placeholder="phi4:14b"
+                      className="w-full px-3 py-2 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                    />
+                    <div className="text-[10px] text-[var(--text-muted)] mt-1">Design Principle #9: Never self-grades</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                      Dedicated Ingestion API Key ({ingestionProvider.toUpperCase()})
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showIngestionKey ? 'text' : 'password'}
+                        value={ingestionApiKey}
+                        onChange={(e) => setIngestionApiKey(e.target.value)}
+                        placeholder={`Enter dedicated ${ingestionProvider} key (separate from chat)...`}
+                        className="w-full px-3 py-2 pr-9 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowIngestionKey(!showIngestionKey)}
+                        className="absolute right-2.5 top-2.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      >
+                        {showIngestionKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                      Extractor Model Name
+                    </label>
+                    <input
+                      type="text"
+                      value={ingestionModel}
+                      onChange={(e) => setIngestionModel(e.target.value)}
+                      placeholder="Model identifier"
+                      className="w-full px-3 py-2 text-xs rounded-lg border font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Status & Test Results */}
+              {ingestionStatus && (
+                <div className={`p-3 rounded-xl border text-xs ${ingestionStatus.connected ? 'border-[var(--success)] bg-[var(--success-bg)] text-[var(--success)]' : 'border-[var(--error)] bg-[var(--error-bg)] text-[var(--error)]'}`}>
+                  <div className="font-bold flex items-center gap-1.5">
+                    {ingestionStatus.connected ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                    <span>{ingestionStatus.connected ? 'Ingestion Provider Verified' : 'Ingestion Connection Error'}</span>
+                  </div>
+                  <div className="text-[11px] mt-0.5">{ingestionStatus.message || ingestionStatus.error}</div>
+                  {ingestionStatus.models && ingestionStatus.models.length > 0 && (
+                    <div className="text-[10px] mt-1 text-[var(--text-muted)]">
+                      Available models: {ingestionStatus.models.slice(0, 8).join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleTestIngestion}
+                  disabled={testingIngestion}
+                  className="px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 bg-[var(--bg-card)] hover:border-[var(--brand-accent)] text-[var(--text-primary)] disabled:opacity-50"
+                >
+                  <Zap className={`w-3.5 h-3.5 ${testingIngestion ? 'animate-spin text-[var(--brand-accent)]' : ''}`} />
+                  <span>{testingIngestion ? 'Testing Connection...' : 'Test Connection'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveIngestionConfig}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-[var(--brand-accent)] text-white hover:opacity-90 shadow-xs"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Ingestion Settings</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearIngestionConfig}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:text-[var(--error)] hover:bg-[var(--error-bg)] transition-colors"
+                >
+                  <span>Disable / Reset to Multi-ML Fast Path</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       )}

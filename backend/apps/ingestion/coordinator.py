@@ -83,6 +83,7 @@ class SequentialPipelineCoordinator:
         job_id: str,
         raise_exceptions: bool = False,
         worker_id: Optional[str] = None,
+        ingestion_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Executes the 4-run sequential pipeline for the given IngestionJob.
@@ -165,7 +166,7 @@ class SequentialPipelineCoordinator:
             run1_rec.attempt_count = job.attempt_count
             run1_rec.save()
 
-            run1_result = cls._execute_run_1(job, doc, doc_version)
+            run1_result = cls._execute_run_1(job, doc, doc_version, ingestion_config=ingestion_config)
             run1_rec.completed_at = timezone.now()
             run1_rec.status = run1_result['status']
             run1_rec.diagnostics = run1_result.get('diagnostics', {})
@@ -183,10 +184,24 @@ class SequentialPipelineCoordinator:
                 is_quarantined = (run1_rec.status == 'quarantined')
                 job.status = 'quarantined' if is_quarantined else 'failed'
                 job.current_stage = 'quarantined' if is_quarantined else 'failed'
-                job.error_message = run1_rec.error_message or (
-                    "Run 1 quarantined at Stage 2 security screening." if is_quarantined
-                    else "Run 1 Initial Ingestion failed."
+
+                # Accurately identify which settlement stage failed or caused quarantine
+                failed_stage_name = None
+                stages_diag = (run1_rec.diagnostics or {}).get('stages', {})
+                for s_key, s_data in stages_diag.items():
+                    if isinstance(s_data, dict) and s_data.get('status') in ('failed', 'quarantined', 'needs_review'):
+                        failed_stage_name = s_data.get('stage_name', s_key).replace('_', ' ').title()
+                        break
+
+                reasons = (run1_rec.diagnostics or {}).get('reason_codes', [])
+                reasons_str = f" ({', '.join(reasons)})" if reasons else ""
+
+                default_err = (
+                    f"Run 1 quarantined at {failed_stage_name or 'Stage 2 Security Screening'}{reasons_str}."
+                    if is_quarantined else
+                    f"Run 1 Initial Ingestion failed at {failed_stage_name or 'Ingestion'}{reasons_str}."
                 )
+                job.error_message = run1_rec.error_message or default_err
                 job.error_category = run1_result.get(
                     'error_category',
                     'SECURITY_QUARANTINED' if is_quarantined else 'RUN_1_FAILED'
@@ -376,7 +391,13 @@ class SequentialPipelineCoordinator:
             return pipeline_summary
 
     @classmethod
-    def _execute_run_1(cls, job: IngestionJob, doc: SourceDocument, doc_version: DocumentVersion) -> Dict[str, Any]:
+    def _execute_run_1(
+        cls,
+        job: IngestionJob,
+        doc: SourceDocument,
+        doc_version: DocumentVersion,
+        ingestion_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Run 1: Initial Ingestion & Indexing via SettlementGateCoordinator."""
         t0 = time.time()
         require_approval = False
@@ -393,6 +414,7 @@ class SequentialPipelineCoordinator:
             require_approval=require_approval,
             visual_document=visual_document,
             job=job,
+            ingestion_config=ingestion_config,
         )
         elapsed_ms = int((time.time() - t0) * 1000)
 

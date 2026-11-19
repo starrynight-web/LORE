@@ -1830,6 +1830,7 @@ class EnterpriseGovernanceEngine:
         workspace = req.workspace
         ws_id = str(workspace.id) if workspace and hasattr(workspace, 'id') else ''
         candidate_chunks = req.candidate_evidence or []
+        doc_scope_id = (req.policy_context or {}).get('document_id')
 
         if not candidate_chunks and req.query and workspace:
             from apps.retrieval.services import HybridRetrievalService
@@ -1842,8 +1843,15 @@ class EnterpriseGovernanceEngine:
                 user=req.principal,
                 user_role=req.user_role,
                 as_of=req.as_of,
-                enable_multi_hop=True
+                enable_multi_hop=True,
+                document_id=doc_scope_id
             )
+
+        if doc_scope_id:
+            candidate_chunks = [
+                c for c in candidate_chunks
+                if str(c.get('document_id')) == str(doc_scope_id)
+            ]
 
         # Check for degraded retrieval (e.g. vector store outage or lexical-only fallback)
         is_retrieval_degraded = any(
@@ -1873,6 +1881,8 @@ class EnterpriseGovernanceEngine:
             candidate_chunks, user=req.principal, user_role=req.user_role
         )
         cleared_chunks = perm_res.cleared_chunks
+        if doc_scope_id:
+            cleared_chunks = [c for c in cleared_chunks if str(c.get('document_id', '')) == str(doc_scope_id)]
         denial_reasons = perm_res.denial_reasons
         is_denied = perm_res.is_denied
         all_reason_codes.extend(perm_res.reason_codes)
@@ -1955,7 +1965,15 @@ class EnterpriseGovernanceEngine:
             for n in temporal_notes
         )
         has_future_amendment_disclosure = any('remains in force until' in n.lower() for n in temporal_notes)
-        is_qualified = bool(has_exception or has_stale or conflicts_resolved or has_future_amendment_disclosure)
+        has_missing_or_superseded_doc = any(
+            c.get('is_missing') or c.get('status') == 'missing' or c.get('governance_status') == 'missing'
+            for c in active_chunks
+        )
+        is_qualified = bool(
+            has_exception or has_stale or conflicts_resolved or
+            has_future_amendment_disclosure or has_temporal_caveat or
+            has_missing_or_superseded_doc
+        )
         is_violation = False
         if req.policy_context and req.policy_context.get('is_violation'):
             is_violation = True
@@ -2030,6 +2048,42 @@ class EnterpriseGovernanceEngine:
         directive = state_res.directive
         all_reason_codes.extend(state_res.reason_codes)
 
+        # 3-Condition Paraphrase-Safe Entity Abstention (Phase 5):
+        # Extract only hard out-of-vocabulary entities/acronyms: capitalized acronyms, hyphenated/versioned identifiers
+        # (DeepSeek-R1, Qwen-2.5, GRPO, GPT-4o), and CamelCase identifiers, excluding common domain acronyms.
+        COMMON_DOMAIN_ACRONYMS = {
+            'PDF', 'API', 'SQL', 'CNN', 'RNN', 'NLP', 'SGD', 'LLM', 'RAG', 'MCP',
+            'AI', 'ML', 'JSON', 'UTC', 'CSV', 'HTTP', 'HTTPS', 'URI', 'URL', 'REST',
+            'RAM', 'CPU', 'GPU', 'OS', 'UI', 'UX', 'HTML', 'XML', 'DOM'
+        }
+
+        raw_query_tokens = req.query.split()
+        hard_entities = set()
+        for tok in raw_query_tokens:
+            clean_tok = tok.strip('?.,;:!\"\'()[]{}')
+            if not clean_tok:
+                continue
+            if re.match(r'^[A-Z]{2,6}$', clean_tok) and clean_tok not in COMMON_DOMAIN_ACRONYMS:
+                hard_entities.add(clean_tok)
+            elif re.match(r'^[A-Za-z0-9]+-[A-Za-z0-9\.]+$', clean_tok):
+                if not re.match(r'^(?:DOC|POL)-\d+$', clean_tok, re.IGNORECASE):
+                    hard_entities.add(clean_tok)
+            elif re.match(r'^[A-Z][a-z]+[A-Z][a-zA-Z0-9]*$', clean_tok):
+                hard_entities.add(clean_tok)
+
+        # Transition an informational query to no_knowledge ONLY when all 3 conditions hold:
+        # 1. len(hard_entities) >= 1
+        # 2. Zero of those hard entities appear anywhere in active_chunks
+        # 3. Top retrieved chunk's relevance score < 0.52
+        if hard_entities and not is_violation and not is_denied:
+            all_chunks_text = " ".join((c.get('text', '') + " " + c.get('document_title', '')) for c in active_chunks).lower()
+            present_entities = [ent for ent in hard_entities if ent.lower() in all_chunks_text]
+            top_score = max([float(c.get('score', 0.0) or 0.0) for c in active_chunks], default=0.0)
+            if len(present_entities) == 0 and top_score < 0.52:
+                state = 'no_knowledge'
+                directive = 'proceed'
+                all_reason_codes.append(GovernanceReasonCode.L2_NO_KNOWLEDGE_DETERMINED.value)
+
         # Assemble notes across layers
         all_notes = temporal_notes + exception_notes + authority_notes
         if is_denied:
@@ -2068,7 +2122,8 @@ class EnterpriseGovernanceEngine:
                 answer=answer,
                 active_chunks=active_chunks,
                 conflicts_resolved=conflicts_resolved,
-                as_of=req.as_of
+                as_of=req.as_of,
+                policy_context=req.policy_context
             )
         elif state == 'no_knowledge':
             answer = f"No governed knowledge found in active workspace matching '{req.query}'."
@@ -2138,7 +2193,8 @@ class EnterpriseGovernanceEngine:
                 answer=answer,
                 active_chunks=active_chunks,
                 conflicts_resolved=conflicts_resolved,
-                as_of=req.as_of
+                as_of=req.as_of,
+                policy_context=req.policy_context
             )
 
             # Stage: Citation and Answer-Quality Validator (Section 7)
@@ -2156,6 +2212,8 @@ class EnterpriseGovernanceEngine:
             if aq_val.sanitized_answer:
                 answer = aq_val.sanitized_answer
             citations = aq_val.sanitized_citations
+            if doc_scope_id:
+                citations = [c for c in citations if str(c.get('document_id', '')) == str(doc_scope_id)]
         
         # If terminal non-supported state, always record fresh deterministic metric
         if not gen_metrics or state in ('denied', 'violation', 'conflicting', 'insufficient', 'abstain', 'human_review', 'no_knowledge'):

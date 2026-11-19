@@ -280,6 +280,10 @@ def governed_query_view(request):
                 retrieval_config=user_retrieval_config
             )
 
+            query_lat_ms = None
+            if isinstance(envelope, dict):
+                query_lat_ms = envelope.get('layers_breakdown', {}).get('l0_observability', {}).get('timings_ms', {}).get('total_ms')
+
             assistant_msg = ChatMessage.objects.create(
                 conversation=conv,
                 role='assistant',
@@ -293,7 +297,12 @@ def governed_query_view(request):
                 evidence_missing=envelope.get('evidence_missing', []),
                 conflicts_resolved=envelope.get('conflicts_resolved', []),
                 layers_breakdown=envelope.get('layers_breakdown', {}),
-                retrieval_config={'document_id': document_id, 'collection_id': collection_id}
+                retrieval_config={
+                    'document_id': document_id,
+                    'collection_id': collection_id,
+                    'latency_ms': query_lat_ms,
+                    'validation_signals': envelope.get('validation_signals', {}) if isinstance(envelope, dict) else {}
+                }
             )
 
             conv.last_activity_at = timezone.now()

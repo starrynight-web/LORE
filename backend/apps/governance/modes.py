@@ -93,7 +93,9 @@ _SECRET_PATTERNS = [
 
 _SENSITIVE_KEY_NAMES = {
     'groq_api_key', 'api_key', 'apikey', 'secret_key', 'secret',
-    'password', 'authorization', 'x-groq-api-key', 'auth_token', 'token'
+    'password', 'authorization', 'x-groq-api-key', 'auth_token', 'token',
+    'ingestion_llm_api_key', 'x-ingestion-llm-key', 'ingestion_api_key',
+    'lore_ingestion_llm_key'
 }
 
 
@@ -199,6 +201,19 @@ def is_remote_model_allowed(
         if policy_context.get('allow_remote_llm') is True or policy_context.get('allow_remote_models') is True:
             tenant_authorized = True
             auth_reason = "Authorized via explicit policy_context.allow_remote_llm"
+        elif policy_context.get('groq_api_key') or (
+            policy_context.get('synthesis_mode') == 'generative' and (
+                policy_context.get('api_key') or
+                getattr(settings, 'GROQ_API_KEY', '') or
+                getattr(settings, 'OPENAI_API_KEY', '') or
+                getattr(settings, 'ANTHROPIC_API_KEY', '') or
+                getattr(settings, 'GEMINI_API_KEY', '') or
+                getattr(settings, 'OPENAI_BASE_URL', '') or
+                getattr(settings, 'OLLAMA_BASE_URL', '')
+            )
+        ):
+            tenant_authorized = True
+            auth_reason = "Authorized via user-supplied API credentials or generative request"
 
     if not tenant_authorized and workspace:
         if getattr(workspace, 'allow_remote_llm', False) is True:
