@@ -1,22 +1,22 @@
 # Graph Report - LORE  (2026-11-19)
 
 ## Corpus Check
-- 319 files · ~513,952 words
+- 319 files · ~509,192 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 18 file(s) not represented in the graph (top: (none) 5, .ico 3, .bat 2)
 
 ## Summary
-- 5210 nodes · 15406 edges · 208 communities (96 shown, 112 thin omitted)
-- Extraction: 86% EXTRACTED · 14% INFERRED · 0% AMBIGUOUS · INFERRED: 2101 edges (avg confidence: 0.94)
+- 5218 nodes · 15360 edges · 203 communities (93 shown, 110 thin omitted)
+- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 2043 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `c72f592e`
+- Built from commit: `9d950263`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- DecisionIntelligenceLayer
+- EnterpriseDecisionClassifier
 - pdf_visual.py
 - SourceDocument
 - charts.py
@@ -25,35 +25,34 @@
 - .evaluate
 - test_slack_and_pptx_ingestion.py
 - layout.py
-- retrieval/views.py
+- RetrievalConfiguration
 - Workspace
 - forms.py
-- test_visual_integration_contract.py
-- VisualDocumentExtractor
-- .search
-- test_multi_hop_retrieval.py
-- mcp_server.py
+- VisualPipelineIntegrationAdapter
+- visual.py
+- TestQueryRetrievalEvaluationSuite
+- QueryUnderstandingService
+- HybridRetrievalService
 - SyncCheckpoint
 - run_evaluation_release_gates.py
 - tables.py
-- StripeBillingAdapter
+- EndToEndEvaluationService
 - django_db
 - EvidencePresentationEngine
-- EmailOAuthCallbackView
+- StructuredEvidencePackage
 - governance/views.py
-- DocumentChunk
+- SqliteFullTextSearchBackend
 - _StaticOrTagMockOCR
 - GovernanceRequest
-- test_neural_reranker_benchmark.py
-- TestEmailConnector
+- BaseReranker
+- SCIMService
 - execute_tool
 - .extract_document
-- .expand
-- os
+- MultiDbGraphRagDeploymentTestCase
 - ApiClient
 - identity/views.py
 - test_selective_zkp_attestation.py
-- Any
+- DjangoORMGraphStore
 - _run_single_case
 - email_views.py
 - visual_schema.py
@@ -62,87 +61,90 @@
 - ConciseAnswerSynthesizer
 - api.ts
 - run_evaluation_suite
-- TesseractOCRProvider
+- TestEnterpriseLifecycleP2
+- test_visual_cpu_optimization.py
 - requirements.py
 - TestFinalEnterpriseAcceptance
-- _StrictVisualBaseModel
+- .test_all_twelve_models_and_mandatory_element_fields_present
 - package.json
-- RetrievalEvaluationHarness
+- SequentialPipelineCoordinator
 - EnterpriseKnowledgeGridTestCase
-- .sync
-- run_evaluation_suite
+- EnterpriseConnectorRegistry
+- GraphStoreInterface
 - ingestion/tasks.py
 - NeuralCrossEncoderReranker
 - GovernanceEvaluationHarness
 - .execute_settlement
 - HeuristicReranker
-- django_db
+- LiveEvidenceRegistry
 - page.tsx
 - TestIngestionAndEvidencePreservation
-- .create_conversation
-- react
 - retrieval/views.py
-- TestLOREEnterprisePipeline
+- react
+- SourcePermission
+- TestPresentationExtractionAndIngestion
 - i18n.tsx
-- visual.py
-- sources/views.py
+- test_visual_regression_and_security.py
+- .inspect_and_validate
 - TextElement
 - region_dict_to_visual_element
 - TestEnterpriseP4Integrations
 - DataSovereigntyRouter
 - QuotaEnforcementService
 - CircuitBreaker
-- gmail.py
+- .synthesize
+- TestEvaluationAndResilienceP3
 - compilerOptions
-- test_deterministic_execution_modes.py
-- decisions/views.py
-- .normalize_channel
+- .extract_metadata
+- .synthesize_answer
+- OrganizationViewSet
+- .reconcile
 - OverviewView.tsx
 - Any
-- DecisionRecord
-- process_ingestion_pipeline
+- pack_loader.py
+- PresentationExtractor
 - TestCeleryVisualBatchIngestion
 - StructureAwareChunker
 - SentenceTransformerEmbeddingAdapter
 - TestZipArchiveSecurity
 - lucide-react
 - node_lineage_view
-- generate_conversation_title
-- .validate
-- .test_all_twelve_models_and_mandatory_element_fields_present
-- ResilientFallbackReranker
+- TestMultiFormatExtensions
+- TokenEncryptionService
+- TableElement
+- KuzuGraphStore
 - GmailConnector
-- TestChatDocumentUploadCompliance
+- BaselineComparator
 - TestMCPStreamableHttpProtocol
 - SecurityScreeningService
 - backend
 - GovernedRAGView.tsx
-- ConversationViewSet
+- ReviewQueueViewSet
 - lore_enterprise/urls.py
-- ModelUnavailableError
-- BaseVectorStore
+- run_minimization_benchmark
+- .execute_settlement
 - HierarchicalCommunityService
-- TestNeuralRerankerAndBenchmark
+- _HTMLTableStructureTokenizer
 - services
 - test_benchmark_12_corpus.py
-- .validate
+- .detect_cycles
 - _FakeOCRProvider
-- TestPermissionLayerL7
+- MockDigitalPage
+- Command
 - .test_settlement_versioning_permissions_retrieval_and_mcp_compatibility
-- ConversationService
-- resilient_vector_search
-- evaluation_suite_runner.py
-- rest_framework
+- LexicalSearchService
+- abac.py
+- EnterpriseKnowledgeGridTestCase
+- identity/urls.py
 - MCPHttpHandler
 - .test_09_comparative_evaluation_benchmark_metrics
 - EnterpriseConnectorsView.tsx
+- .setup_corpus
 - evidence_presentation.test.js
-- Conversation
+- _strict_enum_validator
 - TestMCPFetchAndCitationEnrichment
 - .resolve_and_link_entity
-- SettlementCompatibilityReport
-- TestMCPComplianceCheckingAndGating
-- TestMCPExternalSafetyAndSecretScrubbing
+- _UnavailableOCRProvider
 - context
 - healthcheck
 - mcp_server
@@ -150,116 +152,108 @@
 - neo4j
 - volumes
 - GraphTraversalBudgetExceeded
-- TestMCPSearchVsGovernedDecision
-- TestMCPLineageTraceAndDecisionLogging
 - celery_beat
 - celery_worker
 - postgres
 - TestMCPToolDiscoveryAndManifest
-- TestMCPTenantIsolationAndAuthorization
 - frontend
 - EmailConnectorView.tsx
 - .__get__
-- visual_schema.py
-- SourcesConfig
+- VisualSchemaEvolutionError
 - TestUploadMemorySettings
 
 ## God Nodes (most connected - your core abstractions)
-1. `SourceDocument` - 231 edges
+1. `SourceDocument` - 212 edges
 2. `Workspace` - 208 edges
 3. `Organization` - 161 edges
-4. `DocumentChunk` - 125 edges
-5. `HybridRetrievalService` - 122 edges
+4. `DocumentChunk` - 122 edges
+5. `HybridRetrievalService` - 121 edges
 6. `EnterpriseGovernanceEngine` - 106 edges
 7. `TesseractOCRProvider` - 101 edges
-8. `DocumentVersion` - 98 edges
+8. `DocumentVersion` - 93 edges
 9. `ApiClient` - 85 edges
-10. `QdrantVectorStore` - 83 edges
+10. `QdrantVectorStore` - 82 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `GroundedGenerationService` --uses--> `AnswerCompletenessValidator`  [INFERRED]
-  backend/apps/decisions/engine.py → backend/apps/decisions/synthesizer.py
-- `GroundedGenerationService` --uses--> `ConciseAnswerSynthesizer`  [INFERRED]
-  backend/apps/decisions/engine.py → backend/apps/decisions/synthesizer.py
-- `GroundedGenerationService` --uses--> `StructuredEvidencePackage`  [INFERRED]
-  backend/apps/decisions/engine.py → backend/apps/governance/evidence_package.py
-- `EnterpriseGovernanceEngine` --uses--> `GroundedGenerationService`  [INFERRED]
-  backend/apps/governance/layers.py → backend/apps/decisions/engine.py
-- `TestMasterSystemPromptAndStructuredInput` --uses--> `GroundedGenerationService`  [INFERRED]
-  backend/tests/test_master_system_prompt_synthesis.py → backend/apps/decisions/engine.py
+- `IngestionBatchService` --uses--> `SequentialPipelineCoordinator`  [INFERRED]
+  backend/apps/ingestion/batch.py → backend/apps/ingestion/coordinator.py
+- `SequentialPipelineCoordinator` --uses--> `SettlementGateCoordinator`  [INFERRED]
+  backend/apps/ingestion/coordinator.py → backend/apps/ingestion/settlement.py
+- `process_ingestion_pipeline()` --uses--> `SequentialPipelineCoordinator`  [INFERRED]
+  backend/apps/ingestion/tasks.py → backend/apps/ingestion/coordinator.py
+- `TestCeleryVisualBatchIngestion` --uses--> `SequentialPipelineCoordinator`  [INFERRED]
+  backend/tests/test_celery_visual_batch_ingestion.py → backend/apps/ingestion/coordinator.py
+- `test_pipeline_run_1_to_4_strict_sequential_ordering()` --uses--> `SequentialPipelineCoordinator`  [INFERRED]
+  backend/tests/test_end_to_end_final_evaluation_and_regression.py → backend/apps/ingestion/coordinator.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (208 total, 112 thin omitted)
-
-### Community 6 - "DecisionIntelligenceLayer"
-Cohesion: 0.06
-Nodes (9): EnterpriseDecisionClassifier, AnswerStateTuple, AuthorityConflictTuple, DecisionIntelligenceLayer, DecisionIntelligenceTuple, SufficiencyEvaluationTuple, TemporalEvaluationTuple, TestDecisionIntelligenceLayerL1 (+1 more)
+## Communities (203 total, 110 thin omitted)
 
 ### Community 7 - "pdf_visual.py"
 Cohesion: 0.05
-Nodes (19): sanitize_sensitive_data(), _clamp_engine_str(), _close_image_quietly(), display_rect_to_normalized_box(), get_page_geometry(), _materialize_pdf_input(), PyMuPDFNativePDFExtractor, PyMuPDFPageRenderer (+11 more)
+Nodes (19): sanitize_sensitive_data(), build_visual_region_provenance(), compute_containment(), compute_iou(), bangla_to_arabic_digits(), _clamp_engine_str(), _close_image_quietly(), display_rect_to_normalized_box() (+11 more)
 
 ### Community 8 - "SourceDocument"
-Cohesion: 0.03
-Nodes (53): EndToEndEvaluationService, EndToEndEvaluationRun, Meta, EvaluationFailureRecord, EvaluationThresholdConfig, SequentialPipelineCoordinator, IngestionJob, Meta (+45 more)
+Cohesion: 0.04
+Nodes (45): DocumentQualityService, QualityAuditReport, BoundedGraphTraversalService, DocumentChunk, Meta, EmbeddingConfigurationError, get_embedding_adapter(), validate_embedding_configuration() (+37 more)
 
 ### Community 9 - "charts.py"
 Cohesion: 0.04
-Nodes (57): _box_intersection_area(), build_chart_crop_reference(), calibrate_numeric_axis(), ChartExtractorConfig, ChartSourceMode, ChartType, _coerce_bool(), _collect_pymupdf_text_spans() (+49 more)
+Nodes (61): _box_intersection_area(), build_chart_crop_reference(), calibrate_numeric_axis(), ChartExtractorConfig, ChartSourceMode, ChartType, _coerce_bool(), _collect_pymupdf_text_spans() (+53 more)
 
 ### Community 10 - "EnterpriseGovernanceEngine"
-Cohesion: 0.06
-Nodes (34): AnswerCompletenessValidator, AnswerStatus, ContractValidationError, Directive, EvidenceStatus, fail_closed_envelope(), GovernanceReasonCode, StructuredAnswerContract (+26 more)
+Cohesion: 0.05
+Nodes (50): GroundedGenerationService, AnswerCompletenessValidator, FactRequirement, AnswerStatus, ContractValidationError, Directive, EvidenceStatus, fail_closed_envelope() (+42 more)
 
 ### Community 11 - "typing"
-Cohesion: 0.03
-Nodes (37): CompliancePackLoader, ConflictRecord, EvidenceRequirement, ScopedException, L0GraphHealthMonitor, NLIConflictScanner, SettlementSecurityFunnel, DjangoORMGraphStore (+29 more)
+Cohesion: 0.04
+Nodes (31): ConflictRecord, EvidenceRequirement, JudgeDistillationPair, Meta, ScopedException, L0GraphHealthMonitor, _cosine_similarity(), GraphIntegrityService (+23 more)
 
 ### Community 12 - ".evaluate"
 Cohesion: 0.02
-Nodes (14): test_access_control_logging_retrieves_information_security_policy(), test_actual_conflict_between_relevant_sources_still_detected(), test_concise_answers_and_expandable_evidence_work(), test_draft_source_not_silently_represented_as_approved(), test_every_answer_claim_supported_by_cited_passage(), test_irrelevant_evidence_excluded_from_final_citations(), test_travel_expense_metadata_does_not_create_false_access_control_conflict(), TestAnsMdDefectsRegression (+6 more)
+Nodes (16): test_access_control_logging_retrieves_information_security_policy(), test_actual_conflict_between_relevant_sources_still_detected(), test_concise_answers_and_expandable_evidence_work(), test_draft_source_not_silently_represented_as_approved(), test_every_answer_claim_supported_by_cited_passage(), test_irrelevant_evidence_excluded_from_final_citations(), test_travel_expense_metadata_does_not_create_false_access_control_conflict(), TestAnsMdDefectsRegression (+8 more)
 
 ### Community 13 - "test_slack_and_pptx_ingestion.py"
-Cohesion: 0.04
-Nodes (23): PermissionLayer, process_document_job(), ZipImportEntry, Meta, ZipImportJob, Meta, DocumentPageSerializer, Meta (+15 more)
+Cohesion: 0.03
+Nodes (47): AuditEvent, Meta, compute_idempotency_key(), dispatch_job_to_celery(), get_workload_queue_name(), classify_ingestion_workload(), needs_visual_extraction(), DeduplicationService (+39 more)
 
 ### Community 14 - "layout.py"
-Cohesion: 0.03
-Nodes (48): build_visual_region_provenance(), OCROutputContract, rect_to_normalized_box(), SourceDocumentVisualNotesContract, validate_normalized_box(), VisualPageMetadataContract, VisualProviderResultContract, VisualRegionProvenanceContract (+40 more)
+Cohesion: 0.05
+Nodes (26): ModelExecutionMetric, classify_layout_label(), _coerce_bool(), deduplicate_layout_regions(), _area(), _sort_key(), PPDocLayoutSConfig, PPDocLayoutSProvider (+18 more)
 
-### Community 15 - "retrieval/views.py"
-Cohesion: 0.10
-Nodes (10): RetrievalConfiguration, Meta, RetrievalOptimizationRun, Meta, EvidenceDrivenOptimizationService, make_search_fn(), test_candidate_generation_and_comparison(), test_configuration_rollback_restores_known_good() (+2 more)
+### Community 15 - "RetrievalConfiguration"
+Cohesion: 0.05
+Nodes (17): RetrievalEvaluationHarness, RetrievalTestCase, RetrievalConfiguration, Meta, make_search_fn(), configurations_view(), optimization_runs_view(), promote_configuration_view() (+9 more)
 
 ### Community 16 - "Workspace"
-Cohesion: 0.06
-Nodes (41): AuditEvent, Meta, TelemetryService, Organization, OrganizationMembership, Meta, Command, Workspace (+33 more)
+Cohesion: 0.05
+Nodes (39): AccessLevel, Organization, OrganizationMembership, Meta, Command, Collection, Workspace, Meta (+31 more)
 
 ### Community 17 - "forms.py"
-Cohesion: 0.05
-Nodes (36): crop_box_to_page_coords(), _analyze_signature_roi(), _as_box4(), _assign_column_index(), build_form_crop_reference(), _classify_checkbox_roi(), classify_form_subtype(), _classify_radio_roi() (+28 more)
-
-### Community 18 - "test_visual_integration_contract.py"
-Cohesion: 0.03
-Nodes (31): CanonicalExtractedPageContract, DocumentExtractorProtocol, OCRProviderProtocol, OCRRouterProtocol, VisualContractError, VisualContractValidationError, VisualDocumentExtractorProtocol, VisualExtensionHookProtocol (+23 more)
-
-### Community 19 - "VisualDocumentExtractor"
-Cohesion: 0.07
-Nodes (13): BaseVisualProvider, crop_image_safe(), HTMLVisualProbe, LocalDeterministicVisualProvider, normalize_bbox(), OfficeVisualProbe, _open_zip_safe(), PDFVisualProbe (+5 more)
-
-### Community 21 - "test_multi_hop_retrieval.py"
 Cohesion: 0.04
-Nodes (9): EvidenceItem, StructuredEvidencePackage, MultiHopResult, QueryDecomposer, SubQuery, QueryAnalysis, QueryUnderstandingService, TestMasterSystemPromptAndStructuredInput (+1 more)
+Nodes (49): _analyze_signature_roi(), _as_box4(), _assign_column_index(), build_form_crop_reference(), CheckboxState, _classify_checkbox_roi(), classify_form_subtype(), _classify_radio_roi() (+41 more)
 
-### Community 22 - "mcp_server.py"
-Cohesion: 0.08
-Nodes (28): dispatch_jsonrpc_request(), get_organization_id(), handle_attest_compliance(), handle_bootstrap(), handle_check_compliance(), handle_check_evidence_sufficiency(), handle_detect_conflicts(), handle_escalate_to_human() (+20 more)
+### Community 18 - "VisualPipelineIntegrationAdapter"
+Cohesion: 0.04
+Nodes (22): CanonicalExtractedPageContract, DocumentExtractorProtocol, OCROutputContract, OCRProviderProtocol, OCRRouterProtocol, rect_to_normalized_box(), SettlementCompatibilityReport, SourceDocumentVisualNotesContract (+14 more)
+
+### Community 19 - "visual.py"
+Cohesion: 0.04
+Nodes (30): acquire_remote_concurrency_slot(), ExecutionMode, get_active_execution_mode(), is_remote_model_allowed(), ModelTaskPurpose, release_remote_concurrency_slot(), BaseVisualProvider, crop_image_safe() (+22 more)
+
+### Community 21 - "QueryUnderstandingService"
+Cohesion: 0.10
+Nodes (4): QueryDecomposer, QueryAnalysis, QueryIntent, QueryUnderstandingService
+
+### Community 22 - "HybridRetrievalService"
+Cohesion: 0.03
+Nodes (38): reset_embedding_adapter(), MultiHopResult, SubQuery, HybridRetrievalService, search_view(), dispatch_jsonrpc_request(), get_organization_id(), handle_attest_compliance() (+30 more)
 
 ### Community 23 - "SyncCheckpoint"
-Cohesion: 0.06
-Nodes (11): BaseConnector, SyncCheckpoint, SyncEvent, ConfluenceConnector, GitHubConnector, JiraConnector, LocalFolderConnector, EnterpriseConnectorRegistry (+3 more)
+Cohesion: 0.04
+Nodes (12): BaseConnector, SyncCheckpoint, SyncEvent, SyncResult, ConfluenceConnector, BaseEmailConnector, GitHubConnector, JiraConnector (+4 more)
 
 ### Community 24 - "run_evaluation_release_gates.py"
 Cohesion: 0.07
@@ -267,199 +261,203 @@ Nodes (18): EvaluationDimensionsResult, GoldTestCase, IndependentSemanticEvaluat
 
 ### Community 25 - "tables.py"
 Cohesion: 0.03
-Nodes (43): _assign_native_words_exclusively(), _box_intersection_area(), _build_grid_and_reconstructions(), CellSource, CellStatus, _coerce_bool(), _collect_adjacent_layout_footnotes(), crop_box_to_page_coords() (+35 more)
+Nodes (47): extract_form_kv_pairs(), _format_layout_region_markdown(), is_form_kv_text(), LayoutCategory, LayoutExtractorRoute, _norm_box_to_xyxy(), _normalize_raw_label(), _remap_crop_word_box() (+39 more)
 
-### Community 26 - "StripeBillingAdapter"
-Cohesion: 0.16
-Nodes (4): BaseBillingAdapter, get_billing_adapter(), LocalDevBillingAdapter, StripeBillingAdapter
+### Community 26 - "EndToEndEvaluationService"
+Cohesion: 0.08
+Nodes (15): EndToEndEvaluationService, EndToEndEvaluationRun, Meta, EvaluationFailureRecord, test_baseline_comparison_and_improvement_demonstrated(), test_controlled_baseline_promotion_and_rollback(), test_cross_tenant_and_permission_isolation_security(), test_dual_layer_retrieval_and_answer_grounding_metrics() (+7 more)
 
 ### Community 27 - "django_db"
-Cohesion: 0.05
-Nodes (25): Migration, Migration, Migration, Migration, Migration, Migration, Migration, Migration (+17 more)
+Cohesion: 0.04
+Nodes (37): Migration, Migration, Migration, Migration, Migration, Migration, Migration, EvaluationThresholdConfig (+29 more)
 
 ### Community 28 - "EvidencePresentationEngine"
 Cohesion: 0.06
 Nodes (8): EvidencePresentationEngine, TestDocumentStatusResolution, TestEvidenceDeduplication, TestEvidenceTypeClassification, TestMetadataFidelity, TestShortestExactPassage, TestSourceLimitations, TestUnnecessarySourceExclusion
 
-### Community 30 - "governance/views.py"
-Cohesion: 0.04
-Nodes (42): compliance_packs_apply_view(), compliance_packs_list_view(), ConflictRecordSerializer, Meta, ConflictViewSet, EndToEndEvaluationRunSerializer, Meta, evaluation_baseline_view() (+34 more)
+### Community 29 - "StructuredEvidencePackage"
+Cohesion: 0.12
+Nodes (3): EvidenceItem, StructuredEvidencePackage, TestMasterSystemPromptAndStructuredInput
 
-### Community 31 - "DocumentChunk"
-Cohesion: 0.05
-Nodes (12): DocumentChunk, Meta, EmbeddingConfigurationError, get_embedding_adapter(), reset_embedding_adapter(), validate_embedding_configuration(), BaseLexicalSearchBackend, LexicalSearchService (+4 more)
+### Community 30 - "governance/views.py"
+Cohesion: 0.08
+Nodes (27): compliance_packs_apply_view(), compliance_packs_list_view(), ConflictRecordSerializer, Meta, ConflictViewSet, EndToEndEvaluationRunSerializer, Meta, evaluation_baseline_view() (+19 more)
+
+### Community 31 - "SqliteFullTextSearchBackend"
+Cohesion: 0.18
+Nodes (3): BaseLexicalSearchBackend, PostgresFullTextSearchBackend, SqliteFullTextSearchBackend
 
 ### Community 33 - "GovernanceRequest"
 Cohesion: 0.05
-Nodes (4): GovernanceRequest, TestInvariantEnforcement, TestResilienceAndDeterminism, TestStructuredEvidenceSynthesis
+Nodes (6): GovernanceRequest, AnswerQualityValidationResult, TestInvariantEnforcement, TestResilienceAndDeterminism, TestRetrievalToEvidencePipeline, TestStructuredEvidenceSynthesis
 
-### Community 34 - "test_neural_reranker_benchmark.py"
-Cohesion: 0.13
-Nodes (8): BaseReranker, RerankerDiagnostics, RerankerException, RerankingTimeoutError, RerankResult, get_reranker(), RerankerFactory, ShadowRerankerEvaluator
+### Community 34 - "BaseReranker"
+Cohesion: 0.05
+Nodes (14): BaseReranker, FallbackPolicy, ModelUnavailableError, RerankerBackend, RerankerDiagnostics, RerankerException, RerankingTimeoutError, RerankResult (+6 more)
+
+### Community 35 - "SCIMService"
+Cohesion: 0.14
+Nodes (3): SCIMService, scim_user_detail_view(), scim_users_view()
 
 ### Community 36 - "execute_tool"
-Cohesion: 0.11
-Nodes (4): execute_tool(), TestMCPAliasEquivalence, TestMCPDomainGovernanceTools, TestMCPInputValidationAndErrors
+Cohesion: 0.06
+Nodes (9): execute_tool(), TestMCPAliasEquivalence, TestMCPComplianceCheckingAndGating, TestMCPDomainGovernanceTools, TestMCPExternalSafetyAndSecretScrubbing, TestMCPInputValidationAndErrors, TestMCPLineageTraceAndDecisionLogging, TestMCPSearchVsGovernedDecision (+1 more)
 
 ### Community 37 - ".extract_document"
-Cohesion: 0.06
-Nodes (8): EmlFileExtractor, HTMLExtractor, PresentationExtractor, SpreadsheetExtractor, TextExtractor, TestMultiFormatExtensions, create_realistic_pptx(), TestPresentationExtractionAndIngestion
-
-### Community 39 - "os"
-Cohesion: 0.03
-Nodes (17): Command, JudgeDistillationPair, Meta, get_graph_store(), get_vector_store(), Command, Command, Command (+9 more)
+Cohesion: 0.18
+Nodes (4): DocxExtractor, HTMLExtractor, SpreadsheetExtractor, TextExtractor
 
 ### Community 42 - "identity/views.py"
-Cohesion: 0.07
-Nodes (18): GuestModeAuthentication, SCIMService, OrganizationMembershipSerializer, Meta, OrganizationSerializer, Meta, UserSerializer, Meta (+10 more)
+Cohesion: 0.12
+Nodes (12): GuestModeAuthentication, OrganizationSerializer, Meta, UserSerializer, Meta, accept_invitation_view(), login_view(), logout_view() (+4 more)
 
 ### Community 43 - "test_selective_zkp_attestation.py"
-Cohesion: 0.06
-Nodes (26): zk_verify_view(), build_merkle_tree(), compute_workspace_state_root(), _extract_workspace_stable_rules(), generate_merkle_inclusion_proof(), hash_leaf_preimage(), _pad_leaves_to_power_of_two(), verify_merkle_inclusion_proof() (+18 more)
+Cohesion: 0.08
+Nodes (24): build_merkle_tree(), compute_workspace_state_root(), _extract_workspace_stable_rules(), generate_merkle_inclusion_proof(), hash_leaf_preimage(), _pad_leaves_to_power_of_two(), verify_merkle_inclusion_proof(), get_zk_attestation_service() (+16 more)
+
+### Community 44 - "DjangoORMGraphStore"
+Cohesion: 0.17
+Nodes (4): DjangoORMGraphStore, get_graph_store(), is_edge_temporally_valid(), Neo4jGraphStore
 
 ### Community 45 - "_run_single_case"
 Cohesion: 0.08
-Nodes (6): BenchmarkEvaluator, BenchmarkExecutionRecord, BenchmarkTestCase, build_benchmark_test_cases(), _run_single_case(), TestLoreRegressionBenchmark
+Nodes (7): BenchmarkEvaluator, BenchmarkExecutionRecord, BenchmarkRunner, BenchmarkTestCase, build_benchmark_test_cases(), _run_single_case(), TestLoreRegressionBenchmark
 
 ### Community 46 - "email_views.py"
-Cohesion: 0.09
-Nodes (11): EmailSyncService, EmailConnectionViewSet, models_q(), EmailAccountConnection, Meta, EmailSyncJob, Meta, EmailAccountConnectionSerializer (+3 more)
+Cohesion: 0.05
+Nodes (12): EmailSyncService, EmailConnectionViewSet, models_q(), EmailAccountConnection, Meta, EmailSyncJob, Meta, EmailAccountConnectionSerializer (+4 more)
 
 ### Community 47 - "visual_schema.py"
-Cohesion: 0.27
+Cohesion: 0.25
 Nodes (16): ChartDataPoint, ChartType, ChartValuePrecision, CoordinateSpace, FormFieldStatus, FormFieldType, SelectionState, SourceMode (+8 more)
 
 ### Community 48 - "VisualDocument"
-Cohesion: 0.11
-Nodes (8): assess_visual_document_settlement_readiness(), build_settlement_visual_provenance(), extract_visual_document_screenable_text(), migrate_visual_payload(), validate_visual_document_payload(), VisualDocument, TestSchemaVersionSerializationAndEvolution, _UnavailableOCRProvider
+Cohesion: 0.10
+Nodes (13): assess_visual_document_settlement_readiness(), build_settlement_visual_provenance(), _discriminate_element_tag(), extract_visual_document_screenable_text(), migrate_visual_payload(), parse_visual_schema_version(), _split_minor_extras_for_model(), _truncate_str() (+5 more)
 
 ### Community 51 - "api.ts"
 Cohesion: 0.10
 Nodes (28): IngestionActivityViewProps, KnowledgeGridViewProps, SimNode, BatchReviewPayload, BoundingBox, CanonicalEntitySummary, CompliancePack, DomainSummaryCommunity (+20 more)
 
-### Community 54 - "TesseractOCRProvider"
+### Community 52 - "run_evaluation_suite"
 Cohesion: 0.07
-Nodes (19): CheckboxState, FormDocumentSubtype, FormFieldDataType, FormFieldStatus, FormKVExtractor, BaseOCRProvider, TesseractOCRProvider, _build_worker_adapter() (+11 more)
+Nodes (10): evaluate_governance_correctness(), evaluate_graphrag_contribution(), evaluate_groundedness_and_citations(), evaluate_operational_performance(), evaluate_release_gates(), evaluate_retrieval_quality(), evaluate_tenant_isolation_and_egress(), load_golden_dataset() (+2 more)
+
+### Community 53 - "TestEnterpriseLifecycleP2"
+Cohesion: 0.10
+Nodes (4): TenantSafeCacheService, governed_query_view(), on_source_permission_changed(), TestEnterpriseLifecycleP2
+
+### Community 54 - "test_visual_cpu_optimization.py"
+Cohesion: 0.05
+Nodes (37): WorkerExtractorRegistry, configure_visual_cpu_runtime(), get_configured_cpu_threads(), get_configured_max_render_pixels(), get_configured_opencv_threads(), get_configured_tesseract_omp_threads(), get_configured_visual_concurrency(), get_configured_visual_dpi() (+29 more)
 
 ### Community 55 - "requirements.py"
 Cohesion: 0.12
 Nodes (9): _is_active_hotel_cap_query(), _is_leave_carryover_query(), _is_procurement_over_25k(), _is_travel_exception_action_request(), _is_vendor_onboarding_action(), RequirementEvaluationResult, RequirementHandlingStrategy, RequirementRegistry (+1 more)
 
 ### Community 56 - "TestFinalEnterpriseAcceptance"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (3): create_test_chunk(), create_test_document(), TestFinalEnterpriseAcceptance
 
-### Community 57 - "_StrictVisualBaseModel"
-Cohesion: 0.12
-Nodes (5): ChartAxis, ChartSeries, FormField, FormRadioGroup, _StrictVisualBaseModel
+### Community 57 - ".test_all_twelve_models_and_mandatory_element_fields_present"
+Cohesion: 0.08
+Nodes (12): ChartAxis, ChartElement, ChartSeries, FormElement, FormField, FormRadioGroup, _render_chart_element_text(), _render_form_element_text() (+4 more)
 
 ### Community 58 - "package.json"
 Cohesion: 0.10
 Nodes (26): eslintConfig, devDependencies, eslint@^9, eslint-config-next@^16.4.6, tailwindcss@^4, @tailwindcss/turbopack@^4, @types/node@^20, @types/react@^19 (+18 more)
 
-### Community 59 - "RetrievalEvaluationHarness"
-Cohesion: 0.12
-Nodes (7): RetrievalEvaluationHarness, RetrievalMetricsResult, RetrievalTestCase, test_baseline_evaluation_metrics_computation(), test_policy_version_and_authority_precedence(), test_rejection_of_regressive_or_leaking_candidate(), test_tuning_vs_heldout_dataset_separation()
-
 ### Community 60 - "EnterpriseKnowledgeGridTestCase"
-Cohesion: 0.05
-Nodes (12): evaluate_gate(), main(), BaseSystemOfRecordConnector, JiraEvidenceConnector, LiveEvidenceRegistry, LiveEvidenceStatus, ServiceNowEvidenceConnector, VantaEvidenceConnector (+4 more)
-
-### Community 62 - "run_evaluation_suite"
-Cohesion: 0.16
-Nodes (9): evaluate_governance_correctness(), evaluate_graphrag_contribution(), evaluate_groundedness_and_citations(), evaluate_operational_performance(), evaluate_release_gates(), evaluate_retrieval_quality(), evaluate_tenant_isolation_and_egress(), load_golden_dataset() (+1 more)
+Cohesion: 0.07
+Nodes (9): evaluate_gate(), main(), BaseSystemOfRecordConnector, JiraEvidenceConnector, LiveEvidenceStatus, ServiceNowEvidenceConnector, VantaEvidenceConnector, SettlementSecurityFunnel (+1 more)
 
 ### Community 63 - "ingestion/tasks.py"
-Cohesion: 0.07
-Nodes (22): dispatch_pending_batch_jobs(), get_max_batch_files(), get_workload_concurrency_limit(), IngestionBatchService, purge_unsettled_partial_state(), sync_batch_status(), WorkloadConcurrencyGate, IngestionBatch (+14 more)
+Cohesion: 0.06
+Nodes (26): dispatch_pending_batch_jobs(), get_max_batch_files(), get_stale_job_timeout_seconds(), get_workload_concurrency_limit(), IngestionBatchService, purge_unsettled_partial_state(), sync_batch_status(), WorkloadConcurrencyGate (+18 more)
 
 ### Community 64 - "NeuralCrossEncoderReranker"
-Cohesion: 0.14
-Nodes (3): NeuralCrossEncoderReranker, LoreEnterpriseConfig, _prewarm_subsystems()
-
-### Community 65 - "GovernanceEvaluationHarness"
-Cohesion: 0.12
-Nodes (3): BaselineComparator, GovernanceEvaluationHarness, Command
+Cohesion: 0.11
+Nodes (4): NeuralCrossEncoderReranker, SourcesConfig, LoreEnterpriseConfig, _prewarm_subsystems()
 
 ### Community 66 - ".execute_settlement"
-Cohesion: 0.27
+Cohesion: 0.24
 Nodes (7): _build_valid_visual_doc_dict(), _create_pdf_doc_and_version(), _make_pdf_bytes(), _sha256_hex(), TestVisualGovernanceInvariants, TestVisualSchemaSettlementFlow, TestVisualSettlementBypassPrevention
 
-### Community 68 - "django_db"
+### Community 67 - "HeuristicReranker"
 Cohesion: 0.09
-Nodes (6): TestDraftVsApprovedPolicyResolution, TestExpiredAndSupersededPolicyExclusion, TestFutureEffectiveAmendmentResolution, TestHistoricalExpensePredatingDoc002, TestSeparateGovernanceAttributes, TestUnverifiableApprovalStatus
+Nodes (4): HeuristicReranker, MockNeuralCrossEncoderEngine, TestNeuralRerankerAndBenchmark, TestQueryPathRerankingCoverage
+
+### Community 68 - "LiveEvidenceRegistry"
+Cohesion: 0.16
+Nodes (5): LiveEvidenceRegistry, periodic_connector_sync(), periodic_l0_graph_drift_check(), periodic_live_evidence_refresh(), debug_task()
 
 ### Community 69 - "page.tsx"
 Cohesion: 0.19
 Nodes (22): Home(), AuditView(), AuditViewProps, AuthModal(), CommandPalette(), DocumentDetailModal(), DocumentList(), Header() (+14 more)
 
+### Community 71 - "retrieval/views.py"
+Cohesion: 0.04
+Nodes (21): ChatMessage, Meta, Conversation, Meta, DecisionRecord, Meta, ChatMessageSerializer, Meta (+13 more)
+
 ### Community 72 - "react"
 Cohesion: 0.15
 Nodes (17): CommandPaletteProps, DocumentDetailModalProps, DocumentListProps, RealtimeOCRStudioProps, ReviewQueueViewProps, UploadFileItem, UploadModalProps, api (+9 more)
 
-### Community 73 - "retrieval/views.py"
-Cohesion: 0.18
-Nodes (7): configurations_view(), governed_query_view(), optimization_runs_view(), promote_configuration_view(), rollback_configuration_view(), search_view(), test_groq_api_view()
+### Community 73 - "SourcePermission"
+Cohesion: 0.13
+Nodes (3): SourcePermission, TestGraphRAGEmpiricalBenchmark, TestEvidencePermissionPreservation
 
 ### Community 75 - "i18n.tsx"
 Cohesion: 0.12
 Nodes (18): hindSiliguri, inter, metadata, RootLayout(), viewport, ThemeToggle(), ThemeToggleProps, I18nContext (+10 more)
 
-### Community 76 - "visual.py"
+### Community 76 - "test_visual_regression_and_security.py"
 Cohesion: 0.03
-Nodes (62): WorkerExtractorRegistry, bangla_to_arabic_digits(), DigitalPDFExtractor, find_tesseract_binary(), ImagePreprocessor, is_visual_encoded_document(), OCRRouter, PDFPageRenderer (+54 more)
-
-### Community 77 - "sources/views.py"
-Cohesion: 0.08
-Nodes (12): compute_idempotency_key(), dispatch_job_to_celery(), get_stale_job_timeout_seconds(), get_workload_queue_name(), EphemeralDocumentExtractionError, extract_ephemeral_document(), classify_ingestion_workload(), needs_visual_extraction() (+4 more)
+Nodes (44): UnifiedDocumentExtractor, BaseOCRProvider, DigitalPDFExtractor, find_tesseract_binary(), ImagePreprocessor, is_visual_encoded_document(), OCRRouter, PDFPageRenderer (+36 more)
 
 ### Community 78 - "TextElement"
 Cohesion: 0.14
-Nodes (6): BoundingBox, ExtractionProvenance, TextElement, VisualPage, _sample_bbox(), TestStrictValidationCoordinatesAndPageRefs
+Nodes (7): BoundingBox, _coerce_bounding_box_from_dict(), ExtractionProvenance, TextElement, VisualPage, _sample_bbox(), TestStrictValidationCoordinatesAndPageRefs
 
 ### Community 79 - "region_dict_to_visual_element"
-Cohesion: 0.15
-Nodes (11): _coerce_bounding_box_from_dict(), _coerce_crop_reference(), _discriminate_element_tag(), _extract_confidence_safely(), ExtractionWarning, _map_validation_status(), pages_to_visual_document(), region_dict_to_visual_element() (+3 more)
+Cohesion: 0.19
+Nodes (7): _coerce_crop_reference(), _extract_confidence_safely(), ExtractionWarning, _map_validation_status(), pages_to_visual_document(), region_dict_to_visual_element(), _warnings_from_validation_dict()
 
 ### Community 82 - "QuotaEnforcementService"
-Cohesion: 0.13
-Nodes (14): Plan, Subscription, UsageRecord, Meta, PlanSerializer, Meta, SubscriptionSerializer, Meta (+6 more)
+Cohesion: 0.07
+Nodes (20): AnswerStateMachine, Plan, Subscription, UsageRecord, Meta, PlanSerializer, Meta, SubscriptionSerializer (+12 more)
 
 ### Community 86 - "compilerOptions"
 Cohesion: 0.11
 Nodes (18): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+10 more)
 
-### Community 88 - "test_deterministic_execution_modes.py"
-Cohesion: 0.05
-Nodes (16): AnswerStateMachine, GroundedGenerationService, acquire_remote_concurrency_slot(), ExecutionMode, get_active_execution_mode(), is_remote_model_allowed(), ModelExecutionMetric, ModelTaskPurpose (+8 more)
-
-### Community 89 - "decisions/views.py"
-Cohesion: 0.18
-Nodes (4): ChatMessage, Meta, ChatMessageSerializer, Meta
+### Community 89 - "OrganizationViewSet"
+Cohesion: 0.21
+Nodes (6): OrganizationInvitation, OrganizationInvitationSerializer, Meta, OrganizationMembershipSerializer, Meta, OrganizationViewSet
 
 ### Community 91 - "OverviewView.tsx"
 Cohesion: 0.14
 Nodes (15): nextConfig, dependencies, lucide-react@^1.61.0, motion@^14.14.0, next@^16.4.6, react@19.3.0, react-dom@19.3.0, CountUp() (+7 more)
 
 ### Community 92 - "Any"
-Cohesion: 0.04
-Nodes (11): ExceptionEvaluationTuple, ExceptionLayer, ObservabilityLayer, TestAuthorityLayerL6, TestExceptionLayerL4, TestTemporalValidityLayerL5, TestAuthorityAndTemporalReasoning, TestContextRerankerSeparation (+3 more)
+Cohesion: 0.03
+Nodes (16): AnswerStateTuple, AuthorityConflictTuple, DecisionIntelligenceTuple, ExceptionEvaluationTuple, ObservabilityLayer, PermissionFilterTuple, SufficiencyEvaluationTuple, TemporalEvaluationTuple (+8 more)
 
-### Community 93 - "DecisionRecord"
-Cohesion: 0.29
-Nodes (5): DecisionRecord, Meta, DecisionRecordSerializer, Meta, DecisionRecordViewSet
+### Community 93 - "pack_loader.py"
+Cohesion: 0.23
+Nodes (3): CompliancePackLoader, CanonicalEntityType, OntologyRelationshipType
 
 ### Community 95 - "TestCeleryVisualBatchIngestion"
-Cohesion: 0.08
-Nodes (16): DocxExtractor, PermanentIngestionError, process_visual_document_job(), TransientIngestionError, _build_mock_vstore(), _FastDeterministicOCR, _make_csv_bytes(), _make_docx_bytes() (+8 more)
+Cohesion: 0.06
+Nodes (13): _build_mock_vstore(), _FastDeterministicOCR, _make_csv_bytes(), _make_docx_bytes(), _make_pdf_bytes(), _make_png_bytes(), _make_pptx_bytes(), _make_xlsx_bytes() (+5 more)
 
 ### Community 97 - "SentenceTransformerEmbeddingAdapter"
 Cohesion: 0.17
 Nodes (3): BaseEmbeddingAdapter, HashProjectionEmbeddingAdapter, SentenceTransformerEmbeddingAdapter
 
 ### Community 98 - "TestZipArchiveSecurity"
-Cohesion: 0.11
-Nodes (3): create_in_memory_zip(), TestZipArchiveSecurity, TestZipIngestionEngineWorkflow
+Cohesion: 0.06
+Nodes (4): _load_ch_file(), create_in_memory_zip(), TestZipArchiveSecurity, TestZipIngestionEngineWorkflow
 
 ### Community 99 - "lucide-react"
 Cohesion: 0.27
@@ -469,21 +467,13 @@ Nodes (12): AuthModalProps, HeaderProps, OrgSettingsProps, OverviewViewProps, Na
 Cohesion: 0.21
 Nodes (4): graph_overview_view(), is_valid_uuid(), node_lineage_view(), _resolve_workspace()
 
-### Community 103 - ".test_all_twelve_models_and_mandatory_element_fields_present"
-Cohesion: 0.10
-Nodes (8): ChartElement, FormElement, parse_visual_schema_version(), SourceCropReference, TableCell, TableElement, VisualElement, _mandatory_keys()
-
-### Community 104 - "ResilientFallbackReranker"
-Cohesion: 0.18
-Nodes (3): FallbackPolicy, RerankerBackend, ResilientFallbackReranker
+### Community 103 - "TableElement"
+Cohesion: 0.22
+Nodes (3): _render_table_element_text(), TableCell, TableElement
 
 ### Community 105 - "GmailConnector"
-Cohesion: 0.07
-Nodes (3): EmailAttachmentDTO, GmailConnector, _traverse_parts()
-
-### Community 108 - "SecurityScreeningService"
-Cohesion: 0.21
-Nodes (3): SecurityScreeningService, SettlementStageResult, TestStage2SecurityScreening
+Cohesion: 0.04
+Nodes (6): EmailAttachmentDTO, EmailMessageDTO, GmailConnector, _traverse_parts(), EmailOAuthAuthorizeView, EmailOAuthCallbackView
 
 ### Community 109 - "backend"
 Cohesion: 0.13
@@ -493,25 +483,29 @@ Nodes (15): container_name, depends_on, environment, ports, restart, volumes, po
 Cohesion: 0.21
 Nodes (12): ConversationHistoryPanel(), ConversationHistoryPanelProps, GovernedMessageCard(), GovernedMessageCardProps, GovernedRAGView(), GovernedRAGViewProps, ChatMessage, Citation (+4 more)
 
-### Community 111 - "ConversationViewSet"
-Cohesion: 0.22
-Nodes (3): ConversationDetailSerializer, Meta, ConversationViewSet
+### Community 114 - "run_minimization_benchmark"
+Cohesion: 0.32
+Nodes (3): create_sample_retrieved_chunks(), generate_benchmark_workload(), run_minimization_benchmark()
 
-### Community 114 - "ModelUnavailableError"
-Cohesion: 0.16
-Nodes (3): ModelUnavailableError, rerank(), rerank()
+### Community 116 - ".execute_settlement"
+Cohesion: 0.13
+Nodes (4): ConflictPreScanService, SettlementGateCoordinator, SettlementStageResult, StructureValidationService
 
 ### Community 119 - "services"
 Cohesion: 0.15
 Nodes (12): container_name, image, ports, restart, volumes, container_name, image, ports (+4 more)
 
-### Community 129 - "evaluation_suite_runner.py"
-Cohesion: 0.06
-Nodes (14): build_authorized_document_filter(), SCIMRoleSynchronizer, AccessLevel, SourcePermission, QueryIntent, ContextReranker, BenchmarkRunner, TestBoundedGovernedGraphRAG (+6 more)
+### Community 128 - "LexicalSearchService"
+Cohesion: 0.21
+Nodes (3): LexicalSearchService, resilient_vector_search(), _execute_fallback()
 
-### Community 131 - "rest_framework"
-Cohesion: 0.07
-Nodes (13): AuditEventSerializer, Meta, AuditEventViewSet, OrganizationInvitation, OrganizationInvitationSerializer, Meta, connector_status_view(), connector_webhook_view() (+5 more)
+### Community 130 - "EnterpriseKnowledgeGridTestCase"
+Cohesion: 0.13
+Nodes (3): NLIConflictScanner, DataSovereigntyViolation, EnterpriseKnowledgeGridTestCase
+
+### Community 131 - "identity/urls.py"
+Cohesion: 0.27
+Nodes (3): AuditEventSerializer, Meta, AuditEventViewSet
 
 ### Community 133 - ".test_09_comparative_evaluation_benchmark_metrics"
 Cohesion: 0.25
@@ -524,10 +518,6 @@ Nodes (9): ConfluenceLogo(), EnterpriseConnectorsView(), EnterpriseConnectorsVie
 ### Community 136 - "evidence_presentation.test.js"
 Cohesion: 0.25
 Nodes (4): assert, renderCitationCard(), resolveDocumentStatus(), { test, describe }
-
-### Community 137 - "Conversation"
-Cohesion: 0.32
-Nodes (4): Conversation, Meta, ConversationListSerializer, Meta
 
 ### Community 145 - "context"
 Cohesion: 0.39
@@ -573,27 +563,23 @@ Nodes (6): container_name, depends_on, environment, ports, restart, frontend
 Cohesion: 0.40
 Nodes (5): EmailConnectorView(), EmailConnectorViewProps, GoogleWorkspaceLogo(), EmailAccountConnection, EmailSyncJob
 
-### Community 173 - "visual_schema.py"
-Cohesion: 0.13
-Nodes (7): _render_chart_element_text(), _render_form_element_text(), _render_table_element_text(), _strict_enum_validator(), _truncate_str(), visual_document_to_canonical_pages(), VisualSchemaEvolutionError
-
 ## Knowledge Gaps
-- **112 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **110 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `SourceDocument` connect `SourceDocument` to `evaluation_suite_runner.py`, `.invalidate_workspace`, `charts.py`, `EnterpriseGovernanceEngine`, `typing`, `.evaluate`, `test_slack_and_pptx_ingestion.py`, `TestMCPFetchAndCitationEnrichment`, `retrieval/views.py`, `Workspace`, `test_visual_integration_contract.py`, `test_multi_hop_retrieval.py`, `mcp_server.py`, `SyncCheckpoint`, `tables.py`, `governance/views.py`, `DocumentChunk`, `GovernanceRequest`, `TestEmailConnector`, `.extract_document`, `os`, `test_selective_zkp_attestation.py`, `_run_single_case`, `email_views.py`, `VisualDocument`, `TesseractOCRProvider`, `TestFinalEnterpriseAcceptance`, `RetrievalEvaluationHarness`, `run_evaluation_suite`, `ingestion/tasks.py`, `.execute_settlement`, `HeuristicReranker`, `TestIngestionAndEvidencePreservation`, `TestLOREEnterprisePipeline`, `visual.py`, `sources/views.py`, `test_deterministic_execution_modes.py`, `Any`, `TestCeleryVisualBatchIngestion`, `TestZipArchiveSecurity`, `TestChatDocumentUploadCompliance`, `SecurityScreeningService`, `BaseVectorStore`, `TestPermissionLayerL7`, `ConversationService`?**
-  _High betweenness centrality (0.115) - this node is a cross-community bridge._
-- **Are the 121 inferred relationships involving `SourceDocument` (e.g. with `ConversationService` and `EndToEndEvaluationService`) actually correct?**
-  _`SourceDocument` has 121 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `SourceDocument` connect `SourceDocument` to `EnterpriseKnowledgeGridTestCase`, `charts.py`, `EnterpriseGovernanceEngine`, `typing`, `.evaluate`, `test_slack_and_pptx_ingestion.py`, `TestMCPFetchAndCitationEnrichment`, `RetrievalConfiguration`, `Workspace`, `forms.py`, `visual.py`, `TestQueryRetrievalEvaluationSuite`, `HybridRetrievalService`, `SyncCheckpoint`, `tables.py`, `EndToEndEvaluationService`, `django_db`, `governance/views.py`, `GovernanceRequest`, `MultiDbGraphRagDeploymentTestCase`, `test_selective_zkp_attestation.py`, `_run_single_case`, `email_views.py`, `run_evaluation_suite`, `TestEnterpriseLifecycleP2`, `TestFinalEnterpriseAcceptance`, `EnterpriseConnectorRegistry`, `ingestion/tasks.py`, `.execute_settlement`, `HeuristicReranker`, `TestIngestionAndEvidencePreservation`, `retrieval/views.py`, `SourcePermission`, `TestPresentationExtractionAndIngestion`, `test_visual_regression_and_security.py`, `.inspect_and_validate`, `QuotaEnforcementService`, `TestEvaluationAndResilienceP3`, `Any`, `TestCeleryVisualBatchIngestion`, `TestZipArchiveSecurity`, `ReviewQueueViewSet`, `.execute_settlement`?**
+  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Are the 114 inferred relationships involving `SourceDocument` (e.g. with `ConversationService` and `EndToEndEvaluationService`) actually correct?**
+  _`SourceDocument` has 114 INFERRED edges - model-reasoned connections that need verification._
 - **Should `RAPTOR: Travel & Expense Policy` be split into smaller, more focused modules?**
   _Cohesion score 0.12418300653594772 - nodes in this community are weakly interconnected._
-- **Why does `Workspace` connect `Workspace` to `evaluation_suite_runner.py`, `rest_framework`, `SourceDocument`, `Conversation`, `EnterpriseGovernanceEngine`, `typing`, `TestMCPFetchAndCitationEnrichment`, `test_slack_and_pptx_ingestion.py`, `retrieval/views.py`, `test_visual_integration_contract.py`, `test_multi_hop_retrieval.py`, `mcp_server.py`, `run_evaluation_release_gates.py`, `tables.py`, `EmailOAuthCallbackView`, `governance/views.py`, `DocumentChunk`, `GovernanceRequest`, `TestEmailConnector`, `os`, `identity/views.py`, `test_selective_zkp_attestation.py`, `email_views.py`, `RetrievalEvaluationHarness`, `run_evaluation_suite`, `ingestion/tasks.py`, `HeuristicReranker`, `TestIngestionAndEvidencePreservation`, `.create_conversation`, `retrieval/views.py`, `TestLOREEnterprisePipeline`, `visual.py`, `sources/views.py`, `QuotaEnforcementService`, `test_deterministic_execution_modes.py`, `DecisionRecord`, `TestCeleryVisualBatchIngestion`, `ConversationViewSet`, `ConversationService`?**
-  _High betweenness centrality (0.085) - this node is a cross-community bridge._
+- **Why does `Workspace` connect `Workspace` to `EnterpriseKnowledgeGridTestCase`, `SourceDocument`, `EnterpriseGovernanceEngine`, `typing`, `.evaluate`, `test_slack_and_pptx_ingestion.py`, `TestMCPFetchAndCitationEnrichment`, `RetrievalConfiguration`, `forms.py`, `TestQueryRetrievalEvaluationSuite`, `HybridRetrievalService`, `run_evaluation_release_gates.py`, `EndToEndEvaluationService`, `django_db`, `governance/views.py`, `GovernanceRequest`, `SCIMService`, `MultiDbGraphRagDeploymentTestCase`, `test_selective_zkp_attestation.py`, `_run_single_case`, `email_views.py`, `run_evaluation_suite`, `TestEnterpriseLifecycleP2`, `ingestion/tasks.py`, `HeuristicReranker`, `TestIngestionAndEvidencePreservation`, `retrieval/views.py`, `SourcePermission`, `test_visual_regression_and_security.py`, `QuotaEnforcementService`, `TestEvaluationAndResilienceP3`, `GmailConnector`, `Command`?**
+  _High betweenness centrality (0.079) - this node is a cross-community bridge._
 - **Are the 114 inferred relationships involving `Workspace` (e.g. with `AuditEvent` and `Conversation`) actually correct?**
   _`Workspace` has 114 INFERRED edges - model-reasoned connections that need verification._
 - **Should `RAPTOR: Identity & Access Control` be split into smaller, more focused modules?**
   _Cohesion score 0.14285714285714285 - nodes in this community are weakly interconnected._
-- **Why does `Organization` connect `Workspace` to `evaluation_suite_runner.py`, `rest_framework`, `SourceDocument`, `Conversation`, `EnterpriseGovernanceEngine`, `typing`, `TestMCPFetchAndCitationEnrichment`, `test_slack_and_pptx_ingestion.py`, `test_visual_integration_contract.py`, `test_multi_hop_retrieval.py`, `mcp_server.py`, `tables.py`, `StripeBillingAdapter`, `governance/views.py`, `DocumentChunk`, `GovernanceRequest`, `TestEmailConnector`, `os`, `identity/views.py`, `test_selective_zkp_attestation.py`, `email_views.py`, `ingestion/tasks.py`, `HeuristicReranker`, `TestIngestionAndEvidencePreservation`, `TestLOREEnterprisePipeline`, `visual.py`, `QuotaEnforcementService`, `test_deterministic_execution_modes.py`, `DecisionRecord`, `TestCeleryVisualBatchIngestion`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+- **Why does `Organization` connect `Workspace` to `EnterpriseKnowledgeGridTestCase`, `SourceDocument`, `EnterpriseGovernanceEngine`, `typing`, `.evaluate`, `test_slack_and_pptx_ingestion.py`, `TestMCPFetchAndCitationEnrichment`, `forms.py`, `TestQueryRetrievalEvaluationSuite`, `HybridRetrievalService`, `django_db`, `GovernanceRequest`, `SCIMService`, `MultiDbGraphRagDeploymentTestCase`, `identity/views.py`, `test_selective_zkp_attestation.py`, `_run_single_case`, `email_views.py`, `TestEnterpriseLifecycleP2`, `ingestion/tasks.py`, `HeuristicReranker`, `TestIngestionAndEvidencePreservation`, `retrieval/views.py`, `SourcePermission`, `test_visual_regression_and_security.py`, `QuotaEnforcementService`, `TestEvaluationAndResilienceP3`, `OrganizationViewSet`?**
+  _High betweenness centrality (0.056) - this node is a cross-community bridge._

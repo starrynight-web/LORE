@@ -106,7 +106,7 @@ MAX_PAGES_PER_CHUNK: int = 15
 class PDFSafetyLimits:
     """Safety and memory boundaries for single-page PDF processing."""
 
-    max_pages: int = 50
+    max_pages: Optional[int] = None
     max_file_bytes: int = MAX_FILE_SIZE_BYTES
     dpi: Optional[int] = None
     max_render_pixels: Optional[int] = None
@@ -732,7 +732,7 @@ class PyMuPDFVisualPDFAdapter:
     def _run_ocr_router_fallback(
         self,
         pdf_bytes: bytes,
-        max_pages: int,
+        max_pages: Optional[int],
         reason: VisualFallbackReason,
         warnings: List[str],
     ) -> List[Dict[str, Any]]:
@@ -1614,6 +1614,139 @@ class PyMuPDFVisualPDFAdapter:
             plumber_page = None
             if plumber_pdf is not None and idx < len(plumber_pdf.pages):
                 plumber_page = plumber_pdf.pages[idx]
+
+            # Fast-Path Check for Digital Text (PyMuPDF C++ in milliseconds)
+            raw_text = (pymupdf_page.get_text("text", sort=True) or "").replace("\u00a0", " ").strip()
+            is_valid_utf8 = True
+            try:
+                raw_text.encode("utf-8")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                is_valid_utf8 = False
+
+            is_bengali_visual = self.repair_bengali and is_visual_encoded_document(raw_text)
+
+            # When clean native digital text (>= 40 chars) is present, extract directly via PyMuPDF C++
+            # without triggering slow pixel-level Tesseract/Paddle OCR or raster region crops on this page.
+            if is_valid_utf8 and len(raw_text) >= 40 and not is_bengali_visual:
+                if self.prefer_existing_native and plumber_page is not None:
+                    native_data = self._extract_native_first(pymupdf_page, plumber_page, geometry, page_warnings)
+                    eng_name = _clamp_engine_str(native_data.get("engine", "pdfplumber"))
+                    eng_ver = _clamp_engine_str(native_data.get("engine_version", "0.11.9"))
+                    boxes = list(native_data.get("bounding_boxes", []))
+                    clean_text = native_data["text"]
+                    conf = native_data["confidence"]
+                    w_cnt = native_data["words_count"]
+                    repaired = bool(native_data.get("is_repaired", False))
+                else:
+                    pymupdf_res = PyMuPDFNativePDFExtractor.extract_page(
+                        pymupdf_page,
+                        geometry=geometry,
+                        repair_bengali=self.repair_bengali,
+                        convert_bangla_digits=self.convert_bangla_digits,
+                        digital_threshold=self.limits.digital_text_threshold_chars,
+                    )
+                    eng_name = "pymupdf_native"
+                    eng_ver = _clamp_engine_str(PYMUPDF_VERSION)
+                    boxes = list(pymupdf_res.get("bounding_boxes", []))
+                    clean_text = pymupdf_res["text"]
+                    conf = pymupdf_res["confidence"]
+                    w_cnt = pymupdf_res["words_count"]
+                    repaired = bool(pymupdf_res.get("is_repaired", False))
+
+                # Extract vector tables via PyMuPDF C++ (only if page contains graphic drawings/lines)
+                fast_table_regions: List[Dict[str, Any]] = []
+                has_drawings = hasattr(pymupdf_page, "get_drawings") and bool(pymupdf_page.get_drawings())
+                if self.enable_visual_regions and has_drawings and hasattr(pymupdf_page, "find_tables"):
+                    try:
+                        finder = pymupdf_page.find_tables()
+                        raw_tables = getattr(finder, "tables", None) or []
+                        for t_idx, tbl in enumerate(raw_tables, start=1):
+                            rows = tbl.extract() or []
+                            md = format_markdown_table(rows)
+                            if not md:
+                                continue
+                            disp = transform_rect_to_display(tbl.bbox, pymupdf_page, already_in_display_space=True)
+                            if disp is None:
+                                disp = (geometry["x0"], geometry["y0"], geometry["x0"] + pw, geometry["y0"] + ph)
+                            dx0, dy0, dx1, dy1 = disp
+                            region_id = f"p{page_num}-tbl{t_idx}"
+                            fast_table_regions.append(cast(Dict[str, Any], build_visual_region_provenance(
+                                region_id=region_id,
+                                region_type=VisualRegionType.TABLE,
+                                extraction_kind=VisualExtractionKind.VECTOR_TABLE,
+                                page_number=page_num,
+                                bbox=[dx0, dy0, dx1 - dx0, dy1 - dy0],
+                                normalized_box=display_rect_to_normalized_box(disp, geometry),
+                                text=md,
+                                markdown=format_visual_region_markdown(page_num, region_id, "Visual Table", md),
+                                confidence=0.95,
+                                engine="pymupdf_table",
+                                engine_version=_clamp_engine_str(PYMUPDF_VERSION),
+                                is_inference=False,
+                                is_repaired=False,
+                                source_asset_name=f"pdf:page_{page_num}:table_{t_idx}",
+                                metadata={"row_count": len(rows)},
+                            )))
+                    except Exception as tbl_err:
+                        logger.debug("Fast path table extraction skipped on p%s: %s", page_num, tbl_err)
+
+                baseline_fast_page = {
+                    "page_number": page_num,
+                    "text": clean_text,
+                    "confidence": conf,
+                    "words_count": w_cnt,
+                    "width": pw,
+                    "height": ph,
+                    "extraction_type": "digital_pdf",
+                    "engine": eng_name,
+                    "engine_version": eng_ver,
+                    "is_repaired": repaired,
+                    "needs_review": False,
+                    "status": "digital",
+                    "bounding_boxes": boxes,
+                    "warnings": page_warnings,
+                }
+
+                render_telemetry = {
+                    "full_page_renders": 0,
+                    "region_clip_renders": 0,
+                    "ocr_calls": 0,
+                    "stage_timings_ms": {"fast_path_digital_ms": 0.5},
+                }
+
+                if self.append_visual_text or not str(baseline_fast_page.get("text") or "").strip():
+                    merged_fast = cast(Dict[str, Any], VisualPipelineIntegrationAdapter.merge_baseline_and_visual_page(
+                        baseline_page=baseline_fast_page,
+                        visual_regions=cast(Any, fast_table_regions if self.enable_visual_regions else []),
+                        visual_metadata={
+                            "provider_metrics": [],
+                            "render_telemetry": render_telemetry,
+                        },
+                        extra_fallback_reasons=[],
+                    ))
+                else:
+                    merged_fast = cast(Dict[str, Any], VisualPipelineIntegrationAdapter.merge_baseline_and_visual_page(
+                        baseline_page=baseline_fast_page,
+                        visual_regions=[],
+                        visual_metadata={
+                            "provider_metrics": [],
+                            "render_telemetry": render_telemetry,
+                        },
+                        extra_fallback_reasons=[],
+                    ))
+                    if self.enable_visual_regions and fast_table_regions:
+                        merged_fast["visual_regions"] = fast_table_regions
+                        merged_fast["visual_metadata"]["has_visual_content"] = True
+                        merged_fast["visual_metadata"]["visual_region_count"] = len(fast_table_regions)
+
+                merged_fast["visual_metadata"]["classification"] = PDFPageClassification.SEARCHABLE.value
+                merged_fast["visual_metadata"]["ocr_triggered"] = False
+                merged_fast["visual_metadata"]["render_count"] = 0
+                merged_fast["visual_metadata"]["warnings"] = page_warnings
+                merged_fast["visual_metadata"]["render_telemetry"] = render_telemetry
+                merged_fast["rotation"] = rotation
+                merged_fast["page_classification"] = PDFPageClassification.SEARCHABLE.value
+                return merged_fast
 
             # 1. Native text extraction FIRST (before any raster rendering or OCR)
             native_data = self._extract_native_first(pymupdf_page, plumber_page, geometry, page_warnings)
@@ -2497,14 +2630,18 @@ class PyMuPDFVisualPDFAdapter:
                 self.last_run_diagnostics = {"status": "empty_pdf", "warnings": run_warnings}
                 return []
 
-            total_pages = min(total_doc_pages, max(1, eff_max_pages))
+            if eff_max_pages is not None and eff_max_pages > 0:
+                total_pages = min(total_doc_pages, eff_max_pages)
+            else:
+                total_pages = total_doc_pages
+
             if total_doc_pages > total_pages:
                 run_warnings.append(
                     f"PDF page limit applied: processed {total_pages} of {total_doc_pages} pages."
                 )
 
             plumber_cm = nullcontext(None)
-            if self.prefer_existing_native and HAS_PDFPLUMBER:
+            if self.prefer_existing_native and HAS_PDFPLUMBER and total_pages <= 50:
                 try:
                     plumber_cm = pdfplumber.open(io.BytesIO(pdf_bytes))
                 except Exception as exc:
@@ -2557,6 +2694,20 @@ class PyMuPDFVisualPDFAdapter:
                         if page_res.get("status") == "page_error":
                             page_failure_count = max(page_failure_count, 1)
                         pages_out.append(page_res)
+                    # Update progress if policy_context has job
+                    if policy_context:
+                        job_obj = policy_context.get("job")
+                        if job_obj:
+                            try:
+                                timings = dict(job_obj.stage_timings or {})
+                                timings["processed_pages"] = chunk_end
+                                timings["total_pages"] = total_pages
+                                timings["progress_pct"] = round((chunk_end / max(total_pages, 1)) * 100, 1)
+                                job_obj.stage_timings = timings
+                                job_obj.save(update_fields=["stage_timings", "updated_at"])
+                            except Exception:
+                                pass
+
                     # Explicit batch boundary memory cleanup to protect against Celery OOM kills on 200+ page PDFs
                     gc.collect()
 

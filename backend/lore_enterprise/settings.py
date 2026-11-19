@@ -192,13 +192,15 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_ALWAYS_EAGER', 'True').lower() in ('true', '1', 'yes')
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_TASK_TIME_LIMIT = int(os.environ.get('CELERY_TASK_TIME_LIMIT', '2100'))
+CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get('CELERY_TASK_SOFT_TIME_LIMIT', '1800'))
 CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.environ.get('CELERY_WORKER_PREFETCH_MULTIPLIER', '1'))
 
 # Ingestion Batch & Workload Queue Separation
 INGESTION_MAX_BATCH_FILES = int(os.environ.get('INGESTION_MAX_BATCH_FILES', '100'))
 DATA_UPLOAD_MAX_NUMBER_FILES = max(INGESTION_MAX_BATCH_FILES + 25, int(os.environ.get('DATA_UPLOAD_MAX_NUMBER_FILES', '128')))
-DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('DATA_UPLOAD_MAX_MEMORY_SIZE', str(100 * 1024 * 1024)))  # 100 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('FILE_UPLOAD_MAX_MEMORY_SIZE', str(50 * 1024 * 1024)))   # 50 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('DATA_UPLOAD_MAX_MEMORY_SIZE', str(200 * 1024 * 1024)))  # 200 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get('FILE_UPLOAD_MAX_MEMORY_SIZE', str(200 * 1024 * 1024)))   # 200 MB
 INGESTION_VISUAL_QUEUE = os.environ.get('INGESTION_VISUAL_QUEUE', 'ingestion_visual')
 INGESTION_LIGHTWEIGHT_QUEUE = os.environ.get('INGESTION_LIGHTWEIGHT_QUEUE', 'ingestion_light')
 # Conservative visual worker concurrency default (1) for 16 GB RAM CPU-only deployment;

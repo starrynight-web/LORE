@@ -392,6 +392,7 @@ class SequentialPipelineCoordinator:
             doc_version=doc_version,
             require_approval=require_approval,
             visual_document=visual_document,
+            job=job,
         )
         elapsed_ms = int((time.time() - t0) * 1000)
 

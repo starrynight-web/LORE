@@ -309,6 +309,7 @@ class ExtractionValidationService:
         doc_version: DocumentVersion,
         visual_document: Optional[Any] = None,
         extractor: Optional[UnifiedDocumentExtractor] = None,
+        job: Optional[Any] = None,
     ) -> Tuple[SettlementStageResult, List[Dict[str, Any]]]:
         t0 = time.time()
         file_path = doc.file_obj.path
@@ -350,10 +351,12 @@ class ExtractionValidationService:
                     source_file_hash=source_file_hash,
                 )
             else:
+                policy_ctx = {'job': job, 'document': doc, 'document_version': doc_version}
                 pages_data = active_extractor.extract_document(
                     file_path_or_bytes=file_path,
                     doc_type=doc.document_type,
-                    filename=doc.original_filename
+                    filename=doc.original_filename,
+                    policy_context=policy_ctx,
                 )
                 if pages_data and any(
                     isinstance(p, dict)
@@ -1137,6 +1140,7 @@ class SettlementGateCoordinator:
         require_approval: bool = False,
         visual_document: Optional[Any] = None,
         extractor: Optional[UnifiedDocumentExtractor] = None,
+        job: Optional[Any] = None,
     ) -> Dict[str, Any]:
         stages_output = {}
         all_reasons = []
@@ -1180,6 +1184,7 @@ class SettlementGateCoordinator:
             doc_version,
             visual_document=visual_document,
             extractor=extractor,
+            job=job,
         )
         stages_output["stage_3_extraction"] = s3.__dict__
         all_reasons.extend(s3.reason_codes)

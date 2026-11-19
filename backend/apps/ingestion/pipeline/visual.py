@@ -1044,7 +1044,7 @@ class PDFVisualProbe:
         cls,
         file_path_or_bytes: Any,
         visual_provider: BaseVisualProvider,
-        max_pages: int = 50,
+        max_pages: Optional[int] = None,
         render_mixed_pages: bool = True,
         repair_bengali: bool = True,
         convert_bangla_digits: bool = False,
@@ -1061,7 +1061,7 @@ class PDFVisualProbe:
                 else file_path_or_bytes
             )
             with pdfplumber.open(pdf_stream) as pdf:
-                total = min(len(pdf.pages), max_pages)
+                total = min(len(pdf.pages), max_pages) if max_pages is not None else len(pdf.pages)
                 for idx in range(total):
                     page_num = idx + 1
                     page = pdf.pages[idx]
@@ -1568,7 +1568,7 @@ class VisualDocumentExtractor:
         visual_provider: Optional[BaseVisualProvider] = None,
         enable_baseline_text: bool = True,
         render_mixed_pdf_pages: bool = True,
-        max_pages: int = 50,
+        max_pages: Optional[int] = None,
         max_assets: int = 25,
         repair_bengali: bool = True,
         convert_bangla_digits: bool = False,
@@ -1708,7 +1708,7 @@ class VisualDocumentExtractor:
                 render_mixed_regions_on_demand=bool(kwargs.get("render_mixed_pdf_pages", True)),
                 repair_bengali=repair_bengali,
                 convert_bangla_digits=convert_bangla,
-                limits=PDFSafetyLimits(max_pages=int(kwargs.get("max_pages", 50))),
+                limits=PDFSafetyLimits(max_pages=int(kwargs["max_pages"]) if kwargs.get("max_pages") is not None else None),
             )
         return cls(
             ocr_provider=eff_ocr,

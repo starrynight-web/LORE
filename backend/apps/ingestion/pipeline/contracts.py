@@ -322,7 +322,7 @@ class OCRProviderProtocol(Protocol):
 class OCRRouterProtocol(Protocol):
     """Structural contract matching apps.ingestion.pipeline.ocr.OCRRouter."""
 
-    def process_pdf(self, file_path_or_bytes: Any, max_pages: int = 50) -> List[Dict[str, Any]]:
+    def process_pdf(self, file_path_or_bytes: Any, max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
         ...
 
     def process_image(self, file_path_or_bytes: Any) -> List[Dict[str, Any]]:

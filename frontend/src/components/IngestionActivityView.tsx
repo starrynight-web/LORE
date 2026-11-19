@@ -717,15 +717,41 @@ export const IngestionActivityView: React.FC<IngestionActivityViewProps> = ({
                   <div className="space-y-0.5">
                     <span className="text-[var(--text-muted)] uppercase text-[9px] font-bold block">1. Ingestion Outcome</span>
                     <strong className="text-[var(--text-primary)] flex items-center gap-1">
-                      <Check className="w-3 h-3 text-[var(--success)]" />
-                      {job.status === 'ready' ? 'Ingested & Verified' : job.status}
+                      {job.status === 'ready' || job.status === 'passed' ? (
+                        <>
+                          <Check className="w-3 h-3 text-[var(--success)]" />
+                          <span>Ingested & Verified</span>
+                        </>
+                      ) : job.status === 'quarantined' ? (
+                        <>
+                          <ShieldAlert className="w-3 h-3 text-[var(--warning)]" />
+                          <span>Quarantined</span>
+                        </>
+                      ) : job.status === 'failed' ? (
+                        <>
+                          <X className="w-3 h-3 text-[var(--danger)]" />
+                          <span>Failed</span>
+                        </>
+                      ) : job.status === 'needs_review' ? (
+                        <>
+                          <AlertCircle className="w-3 h-3 text-[var(--warning)]" />
+                          <span>Needs Review</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="w-3 h-3 text-[var(--text-muted)]" />
+                          <span>{job.status}</span>
+                        </>
+                      )}
                     </strong>
                   </div>
 
                   <div className="space-y-0.5">
                     <span className="text-[var(--text-muted)] uppercase text-[9px] font-bold block">2. Retrieval Optimization</span>
                     <strong className="text-[var(--text-primary)]">
-                      {qRetrievDiagnostics.candidate_optimization 
+                      {job.status === 'quarantined' || job.status === 'failed'
+                        ? 'Skipped'
+                        : qRetrievDiagnostics.candidate_optimization 
                         ? qRetrievDiagnostics.candidate_optimization.replace(/_/g, ' ') 
                         : (isDone ? 'Completed' : 'Pending')}
                     </strong>
@@ -734,7 +760,9 @@ export const IngestionActivityView: React.FC<IngestionActivityViewProps> = ({
                   <div className="space-y-0.5">
                     <span className="text-[var(--text-muted)] uppercase text-[9px] font-bold block">3. Measured Quality</span>
                     <strong className="text-[var(--text-primary)]">
-                      {qRetrievDiagnostics.evaluation_dataset_available 
+                      {job.status === 'quarantined' || job.status === 'failed'
+                        ? 'Skipped'
+                        : qRetrievDiagnostics.evaluation_dataset_available 
                         ? (qRetrievDiagnostics.decision === 'candidate_promoted' || qRetrievDiagnostics.decision === 'candidate_recommended' ? 'Measured Delta Improved' : 'Baseline Verified (0 Regression)') 
                         : 'Blocked (No Ground-Truth)'}
                     </strong>
@@ -743,9 +771,15 @@ export const IngestionActivityView: React.FC<IngestionActivityViewProps> = ({
                   <div className="space-y-0.5">
                     <span className="text-[var(--text-muted)] uppercase text-[9px] font-bold block">4. Production Promotion</span>
                     <strong className="text-[var(--text-primary)]">
-                      {qRetrievDiagnostics.production_settings_preserved 
+                      {job.status === 'quarantined'
+                        ? 'Blocked (Quarantined)'
+                        : job.status === 'failed'
+                        ? 'Blocked (Failed)'
+                        : job.status === 'needs_review'
+                        ? 'Pending Review'
+                        : qRetrievDiagnostics.production_settings_preserved 
                         ? 'Production Preserved' 
-                        : 'Promoted to Live'}
+                        : (job.status === 'ready' ? 'Promoted to Live' : 'Pending')}
                     </strong>
                   </div>
                 </div>

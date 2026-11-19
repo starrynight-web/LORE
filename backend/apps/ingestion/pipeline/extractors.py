@@ -631,20 +631,28 @@ class UnifiedDocumentExtractor:
         adapter = PyMuPDFVisualPDFAdapter(ocr_provider=eff_ocr, **adapter_kwargs)
         return cls(ocr_provider=adapter.ocr_provider, pdf_visual_adapter=adapter)
 
-    def _extract_pdf_with_adapter(self, file_path_or_bytes, filename: str = '') -> List[Dict[str, Any]]:
+    def _extract_pdf_with_adapter(
+        self,
+        file_path_or_bytes,
+        filename: str = '',
+        policy_context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         if self.pdf_visual_adapter is None:
             return self.router.process_pdf(file_path_or_bytes)
 
         try:
             if hasattr(self.pdf_visual_adapter, 'process_pdf'):
-                return self.pdf_visual_adapter.process_pdf(file_path_or_bytes)
+                return self.pdf_visual_adapter.process_pdf(
+                    file_path_or_bytes,
+                    policy_context=policy_context,
+                )
             if hasattr(self.pdf_visual_adapter, 'enrich_page'):
                 base_pages = self.router.process_pdf(file_path_or_bytes)
                 return [
                     self.pdf_visual_adapter.enrich_page(
                         page,
                         raw_file=file_path_or_bytes,
-                        context={'doc_type': 'pdf', 'filename': filename},
+                        context={'doc_type': 'pdf', 'filename': filename, 'policy_context': policy_context},
                     )
                     for page in base_pages
                 ]
@@ -661,11 +669,17 @@ class UnifiedDocumentExtractor:
                 logger.warning("pdf_visual_adapter.process_image failed; falling back to OCRRouter: %s", exc)
         return self.router.process_image(file_path_or_bytes)
 
-    def extract_document(self, file_path_or_bytes, doc_type: str, filename: str = '') -> List[Dict[str, Any]]:
+    def extract_document(
+        self,
+        file_path_or_bytes,
+        doc_type: str,
+        filename: str = '',
+        policy_context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         ext = os.path.splitext(filename.lower())[1] if filename else ''
 
         if doc_type == 'pdf' or ext == '.pdf':
-            return self._extract_pdf_with_adapter(file_path_or_bytes, filename=filename)
+            return self._extract_pdf_with_adapter(file_path_or_bytes, filename=filename, policy_context=policy_context)
         elif doc_type == 'image' or ext in ('.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'):
             return self._extract_image_with_adapter(file_path_or_bytes)
         elif doc_type == 'docx' or ext == '.docx':

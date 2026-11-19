@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import os
+import time
 import zipfile
 from typing import Any, Dict, List
 from unittest.mock import patch
@@ -596,4 +597,40 @@ class TestProvenanceBengaliSafetyAndFallbacks:
             v_pages = vde.extract_document(sample_pdf, doc_type="pdf", filename="DOC-001.pdf")
             assert len(v_pages) >= 1
             VisualPipelineIntegrationAdapter.validate_page_payload(v_pages[0], strict=True)
+
+    @pytest.mark.skipif(not HAS_PYMUPDF, reason="PyMuPDF required for 622-page simulation")
+    def test_unbounded_622_page_pdf_streaming_extraction(self):
+        """
+        Simulates a large 622-page PDF book and asserts that unbounded streaming
+        page-batch iteration extracts all 622 pages (1 through 622) without
+        artificially stopping at page 50.
+        """
+        spy_ocr = _SpyOCRProvider()
+        adapter = PyMuPDFVisualPDFAdapter(ocr_provider=spy_ocr)
+        
+        pdoc = pymupdf.open()
+        for i in range(622):
+            pg = pdoc.new_page()
+            pg.insert_text(
+                (72, 90),
+                f"Chapter Section {i + 1}: Deep learning model optimization and neural representations across enterprise systems.",
+            )
+        pdf_bytes = pdoc.tobytes()
+        pdoc.close()
+
+        t0 = time.time()
+        pages = adapter.process_pdf(pdf_bytes)
+        elapsed = time.time() - t0
+
+        assert len(pages) == 622, f"Expected exactly 622 pages, got {len(pages)}"
+        for idx, p in enumerate(pages):
+            assert p["page_number"] == idx + 1
+            assert p["extraction_type"] == "digital_pdf"
+            assert f"Chapter Section {idx + 1}" in p["text"]
+            assert p["status"] == "digital"
+            assert p["visual_metadata"]["ocr_triggered"] is False
+
+        assert spy_ocr.calls == 0
+        assert elapsed < 60.0, f"Extraction of 622 digital pages took {elapsed:.2f}s, expected < 60s"
+
 

@@ -608,7 +608,7 @@ class OCRRouter:
     def __init__(self, ocr_provider: Optional[BaseOCRProvider] = None):
         self.ocr_provider = ocr_provider or TesseractOCRProvider()
 
-    def process_pdf(self, file_path_or_bytes, max_pages: int = 50) -> List[Dict[str, Any]]:
+    def process_pdf(self, file_path_or_bytes, max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
         pages_out = []
         
         # 1. Try digital extraction via pdfplumber
@@ -616,7 +616,7 @@ class OCRRouter:
             try:
                 pdf_stream = io.BytesIO(file_path_or_bytes) if isinstance(file_path_or_bytes, (bytes, bytearray)) else file_path_or_bytes
                 with pdfplumber.open(pdf_stream) as pdf:
-                    total_pages = min(len(pdf.pages), max_pages)
+                    total_pages = min(len(pdf.pages), max_pages) if max_pages is not None else len(pdf.pages)
                     for idx in range(total_pages):
                         page_num = idx + 1
                         page = pdf.pages[idx]
@@ -688,7 +688,8 @@ class OCRRouter:
         # Fallback if pdfplumber fails: render all pages via pypdfium2 at 300 DPI
         if HAS_PYPDFIUM2:
             try:
-                for idx in range(max_pages):
+                loop_limit = max_pages if max_pages is not None else 10000
+                for idx in range(loop_limit):
                     img = PDFPageRenderer.render_single_page(file_path_or_bytes, idx, dpi=300)
                     if not img:
                         break

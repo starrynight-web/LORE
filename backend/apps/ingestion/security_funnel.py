@@ -19,7 +19,7 @@ PII_AND_SECRET_PATTERNS = {
     "GITHUB_PAT": re.compile(r"\b(ghp_[0-9a-zA-Z]{36})\b"),
     "JWT_TOKEN": re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]{10,}\.[A-Za-z0-9._-]{10,}\b"),
     "PRIVATE_KEY": re.compile(r"-----BEGIN\s+(?:RSA|EC|DSA|OPENSSH)?\s*PRIVATE\s+KEY-----"),
-    "PASSWORD_IN_URI": re.compile(r"://[^:]+:([^@]+)@"),
+    "PASSWORD_IN_URI": re.compile(r"://[^\s/:@]+:([^\s/:@]+)@"),
     "US_SSN": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     "CREDIT_CARD": re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b"),
     "EMAIL_ADDRESS": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),

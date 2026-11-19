@@ -45,6 +45,16 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     }
   }, [document]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   if (!document) return null;
 
   const handleReprocess = async () => {
@@ -64,25 +74,27 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm cursor-pointer"
       style={{ backgroundColor: 'var(--modal-overlay)' }}
+      onClick={onClose}
     >
       <div 
-        className="w-full max-w-5xl rounded-2xl border shadow-2xl flex flex-col h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-5xl rounded-2xl border shadow-2xl flex flex-col h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150 cursor-default"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-color)',
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div 
-          className="px-6 py-4 border-b flex items-center justify-between"
+          className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-shrink-0"
           style={{ 
             backgroundColor: 'var(--bg-surface)',
             borderColor: 'var(--border-color)' 
           }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div 
               className="w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0"
               style={{
@@ -93,13 +105,16 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             >
               <FileText className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-bold text-[var(--text-primary)] tracking-wide">
+                <h2 
+                  className="text-sm sm:text-base font-bold text-[var(--text-primary)] tracking-wide truncate"
+                  title={document.title}
+                >
                   {document.title}
                 </h2>
                 <span 
-                  className="text-[10px] font-bold px-2 py-0.5 rounded border uppercase"
+                  className="text-[10px] font-bold px-2 py-0.5 rounded border uppercase flex-shrink-0"
                   style={{
                     backgroundColor: 'var(--accent-light)',
                     borderColor: 'var(--border-color)',
@@ -109,7 +124,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                   {document.document_type}
                 </span>
               </div>
-              <div className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5 flex items-center gap-2">
+              <div className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5 flex items-center gap-2 truncate">
                 <span>SHA-256: {document.file_hash.substring(0, 20)}...</span>
                 <span>•</span>
                 <span>{(document.file_size / 1024).toFixed(1)} KB</span>
@@ -119,7 +134,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={handleReprocess}
               disabled={isReprocessing}
@@ -135,7 +150,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl border transition cursor-pointer hover:border-[var(--brand-accent)]"
+              aria-label="Close modal"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer hover:border-[var(--brand-accent)] hover:text-[var(--text-primary)] active:scale-95"
               style={{
                 backgroundColor: 'var(--bg-surface-soft)',
                 borderColor: 'var(--border-color)',
@@ -143,6 +159,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               }}
             >
               <X className="w-4 h-4" />
+              <span>Close</span>
             </button>
           </div>
         </div>
@@ -418,6 +435,30 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Footer */}
+        <div 
+          className="px-6 py-3 border-t flex items-center justify-between text-xs flex-shrink-0"
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          <div className="text-[var(--text-muted)] flex items-center gap-2">
+            <span>Press <kbd className="px-1.5 py-0.5 rounded border text-[10px] font-mono bg-[var(--bg-surface-soft)] border-[var(--border-color)] text-[var(--text-secondary)]">Esc</kbd> or click outside to dismiss</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer hover:border-[var(--brand-accent)] hover:text-[var(--text-primary)] active:scale-95"
+            style={{
+              backgroundColor: 'var(--bg-surface-soft)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
