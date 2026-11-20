@@ -7,6 +7,7 @@ import {
   DocsManifestResponse, 
   DocsConfig 
 } from '@/lib/api';
+import { getStandaloneDocsManifest } from '@/data/docsData';
 import { DocsHeader, DocsMode } from '@/components/docs/DocsHeader';
 import { DocsPitchDeckView } from '@/components/docs/DocsPitchDeckView';
 import { DocsWhitepaperView } from '@/components/docs/DocsWhitepaperView';
@@ -46,8 +47,9 @@ function DocsPageContent() {
     setIsLoading(true);
     setError(null);
     setUnlockError(null);
+    const activePasskey = customPasskey !== undefined ? customPasskey : passkey;
+
     try {
-      const activePasskey = customPasskey !== undefined ? customPasskey : passkey;
       const res = await api.getDocsManifest(activePasskey || undefined, urlAdminKey || undefined);
       setManifest(res);
       if (!res.is_open && customPasskey) {
@@ -59,8 +61,18 @@ function DocsPageContent() {
         setPasskey(customPasskey);
       }
     } catch (err: any) {
-      console.error("Error loading /docs manifest:", err);
-      setError(err?.message || 'Failed to connect to documentation service.');
+      console.warn("Backend /docs unavailable. Seamlessly activating standalone offline manifest:", err);
+      // 100% Zero-Backend Resilience: Fallback to bundled static manifest
+      const fallbackRes = getStandaloneDocsManifest(activePasskey || undefined, urlAdminKey || undefined);
+      setManifest(fallbackRes as any);
+      if (!fallbackRes.is_open && customPasskey) {
+        setUnlockError('Invalid passkey. Default judge passkey is: LORE2026');
+      } else if (fallbackRes.is_open && customPasskey) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('lore_judge_passkey', customPasskey);
+        }
+        setPasskey(customPasskey);
+      }
     } finally {
       setIsLoading(false);
     }
