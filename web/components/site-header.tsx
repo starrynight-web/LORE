@@ -47,20 +47,34 @@ export function SiteHeader() {
       <Link
         href="/"
         aria-label="Lore home"
-        className="flex size-9 shrink-0 items-center justify-center rounded-[10px] text-foreground transition-opacity hover:opacity-80"
+        className="flex size-10 shrink-0 items-center justify-center rounded-[10px] text-foreground transition-opacity hover:opacity-80"
       >
         <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
+          width="34"
+          height="34"
+          viewBox="2.5 2.5 19 19"
           fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
           aria-hidden="true"
         >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 3a9 9 0 0 0 0 18" />
-          <path d="M12 7a5 5 0 0 0 0 10" />
+          <path
+            d="M18.96 14.35A7.35 7.35 0 1 1 9.65 5.04"
+            className="stroke-muted-foreground/30"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+          />
+          <path
+            d="M12.3 4.66A7.35 7.35 0 0 1 19.34 11.7"
+            className="stroke-[#658f12] dark:stroke-[#c8eb5e]"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+          />
+          <path
+            d="M9.6 8.3V15.3H15.2"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </Link>
 

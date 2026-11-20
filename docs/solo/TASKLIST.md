@@ -22,7 +22,7 @@ Work these after the historical phases below. Check a box only when the exit lin
 
 ## Current shape
 
-The phases below are the historical build record. A few of their lines describe earlier iterations of the setup site. The running program (`v0.2.7`) matches this section and [HOW_IT_WORKS.md](HOW_IT_WORKS.md). The page layout is in [UI.md](UI.md).
+The phases below are the historical build record. A few of their lines describe earlier iterations of the setup site. The running program (`v0.2.8`) matches this section and [HOW_IT_WORKS.md](HOW_IT_WORKS.md). The page layout is in [UI.md](UI.md).
 
 - `lore-solo install` puts the command on this computer (`~/.lore/bin/lore-solo`). `lore-solo update` upgrades from PyPI and refreshes the cached setup site. `lore-solo setup` prints `http://127.0.0.1:3000/?key=...` and serves until Ctrl+C. `lore-solo uninstall` removes the command and leaves personas, skills, and editor registrations in place. The editor starts `lore-solo mcp` as a local process (5 coding tools by default: `get_context`, `get_skill` including batched `names=[...]`, `map_codebase`, `check_applied`, `log_decision`; 14 additional autonomous/admin tools under `lore-solo mcp --full`). Autonomous CLI commands (`lore-solo skill`, `persona`, `govern`, `stats`, `doctor`, `help`) expose the same operations from the terminal with `--json`. A container runtime is optional (`lore-solo container mcp|setup|map` against locally built `mcp`/`full` images, with only `/workspace` and `/library` writable).
 - Personas live in the operating system’s application-data folder, or in a project that already has `.lore`.

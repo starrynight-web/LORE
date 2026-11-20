@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.8 — 2026-11-20
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+### Changed
+
+- Updated Lore branding and app icons (`web/app/icon.svg`, `web/app/favicon.ico`,
+  `web/app/apple-icon.png`, `web/public/icons/`, and the `L` arc logo in
+  `AppSidebar` and `SiteHeader`).
+
 ## 0.2.7 — 2026-11-20
 
 GitHub release artifacts are produced by the tag-triggered release workflow
