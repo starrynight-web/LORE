@@ -209,12 +209,19 @@ export default function Home() {
 
   return (
     <div 
-      className="flex h-screen overflow-hidden transition-colors duration-200 select-none"
+      className="flex h-screen overflow-hidden transition-colors duration-200 select-none relative"
       style={{
-        backgroundColor: 'var(--canvas)',
+        backgroundColor: 'var(--bg-card)',
         color: 'var(--text-primary)',
       }}
     >
+      <a 
+        href="#main-content" 
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:px-3 focus:py-2 focus:bg-[var(--bg-card)] focus:text-[var(--text-primary)] focus:border focus:border-[var(--border)] focus:rounded-lg focus:shadow-md text-xs font-semibold"
+      >
+        Skip to main content
+      </a>
+
       {/* 1 · macOS Sonoma 264px Gradient Sidebar */}
       {isSidebarOpen && (
         <Sidebar
@@ -264,11 +271,12 @@ export default function Home() {
           onOpenWorkspaceSwitcher={() => setIsWorkspaceSwitcherOpen(true)}
         />
 
-        {/* 3 · Plain White Canvas Content Viewport */}
+        {/* 3 · Canvas Content Viewport with design.md atmosphere */}
         <main 
+          id="main-content"
           className="flex-1 overflow-y-auto p-6 md:p-8 transition-colors duration-200"
           style={{
-            backgroundColor: 'var(--canvas)',
+            background: 'var(--bg-canvas)',
           }}
         >
           {isLoading ? (
@@ -280,7 +288,7 @@ export default function Home() {
                   borderTopColor: 'transparent',
                 }}
               />
-              <div className="text-xs font-semibold text-[#6E6E73]">Connecting to LORE Enterprise Grid...</div>
+              <div className="text-xs font-semibold text-[var(--text-secondary)]">Connecting to LORE Enterprise Grid...</div>
             </div>
           ) : (
             <>

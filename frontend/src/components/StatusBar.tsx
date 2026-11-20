@@ -33,7 +33,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     <footer 
       className="h-6 w-full border-t px-4 flex items-center justify-between text-[10px] font-mono select-none shrink-0 transition-colors z-20"
       style={{
-        backgroundColor: 'var(--canvas)',
+        backgroundColor: 'var(--bg-card)',
         borderColor: 'var(--hairline)',
         color: 'var(--text-secondary)'
       }}
@@ -41,13 +41,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
       {/* Left cluster */}
       <div className="flex items-center gap-2">
         <span 
-          className={`w-1.5 h-1.5 rounded-full bg-[#34C759] ${isSyncing ? 'animate-ping' : ''}`}
+          className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'animate-ping' : ''}`}
           style={{
-            backgroundColor: isSyncing ? '#007AFF' : '#34C759'
+            backgroundColor: isSyncing ? 'var(--lavender-deep)' : 'var(--sage-deep)'
           }}
         />
         <span className="font-semibold text-[var(--text-primary)]">Connected</span>
-        <span className="text-[#86868B]">·</span>
+        <span className="text-[var(--text-muted)]">·</span>
         <span>Kùzu/SQLite ⇄ Neo4j/pgvector</span>
       </div>
 
@@ -56,9 +56,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         <span className="font-semibold text-[var(--text-primary)]">
           {layersCount}/{totalLayers} layers
         </span>
-        <span className="text-[#86868B]">·</span>
+        <span className="text-[var(--text-muted)]">·</span>
         <span>v3.0</span>
-        <span className="text-[#86868B]">·</span>
+        <span className="text-[var(--text-muted)]">·</span>
         <span className="tabular-nums">synced {timeStr || 'just now'}</span>
       </div>
     </footer>

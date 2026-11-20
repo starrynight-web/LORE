@@ -285,7 +285,7 @@ export const AuditView: React.FC<AuditViewProps> = ({
                       <XCircle className="w-5 h-5 text-red-500" />
                     )}
                     <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: verifyResult.verified ? '#22c55e' : '#ef4444' }}>
+                      <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: verifyResult.verified ? 'var(--sage-deep)' : 'var(--red)' }}>
                         {verifyResult.verified ? 'Cryptographic Attestation Verified' : 'Attestation Verification Failed'}
                       </h4>
                       <p className="text-[11px] text-[var(--text-muted)]">

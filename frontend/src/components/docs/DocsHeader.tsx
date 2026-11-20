@@ -75,8 +75,8 @@ export const DocsHeader: React.FC<DocsHeaderProps> = ({
             <a href="/" className="flex items-center gap-2 group">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-base shadow-lg transition-transform group-hover:scale-105"
                 style={{
-                  background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                  color: '#ffffff',
+                  background: 'linear-gradient(135deg, var(--lavender-deep) 0%, var(--lavender-active) 100%)',
+                  color: 'var(--accent-fg)',
                 }}
               >
                 <ShieldCheck className="w-5 h-5 text-white" />
@@ -86,7 +86,7 @@ export const DocsHeader: React.FC<DocsHeaderProps> = ({
                   <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-white">
                     LORE
                   </span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-blue-50 dark:bg-sky-500/15 text-blue-600 dark:text-sky-400 border border-blue-200 dark:border-sky-500/30">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-[var(--well-sky-bg)] text-[var(--well-sky-fg)] border border-[var(--well-sky-fg)]/20">
                     /docs
                   </span>
                 </div>
@@ -101,25 +101,25 @@ export const DocsHeader: React.FC<DocsHeaderProps> = ({
               <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border"
                 style={{
                   backgroundColor: config.admin_override
-                    ? 'rgba(16, 185, 129, 0.12)'
+                    ? 'var(--well-sage-bg)'
                     : config.is_currently_open
-                    ? 'rgba(16, 185, 129, 0.12)'
-                    : 'rgba(245, 158, 11, 0.12)',
+                    ? 'var(--well-sage-bg)'
+                    : 'var(--well-amber-bg)',
                   borderColor: config.admin_override
-                    ? 'rgba(16, 185, 129, 0.3)'
+                    ? 'var(--sage-soft)'
                     : config.is_currently_open
-                    ? 'rgba(16, 185, 129, 0.3)'
-                    : 'rgba(245, 158, 11, 0.3)',
+                    ? 'var(--sage-soft)'
+                    : 'var(--well-amber-bg)',
                   color: config.admin_override
-                    ? '#059669'
+                    ? 'var(--sage-deep)'
                     : config.is_currently_open
-                    ? '#059669'
-                    : '#d97706'
+                    ? 'var(--sage-deep)'
+                    : 'var(--well-amber-fg)'
                 }}
                 title={config.admin_override ? 'Admin Override Active' : `Schedule Window: June 10 - June 14`}
               >
                 <span className="w-2 h-2 rounded-full animate-pulse"
-                  style={{ backgroundColor: config.is_currently_open ? '#10b981' : '#f59e0b' }}
+                  style={{ backgroundColor: config.is_currently_open ? 'var(--sage-deep)' : 'var(--well-amber-fg)' }}
                 />
                 <span>
                   {config.admin_override 

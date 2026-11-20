@@ -8,15 +8,11 @@ import {
   Network, 
   Shield, 
   Upload, 
-  ArrowRight, 
   Building2, 
   Zap, 
-  Check, 
-  CornerDownLeft,
-  X
+  CornerDownLeft
 } from 'lucide-react';
 import { Workspace, SourceDocument } from '@/lib/api';
-import { useI18n } from '@/lib/i18n';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -39,7 +35,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onNavigate,
   onOpenUpload
 }) => {
-  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -100,10 +95,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       onClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % Math.max(1, allItems.length));
+      setSelectedIndex(prev => (prev < allItems.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + allItems.length) % Math.max(1, allItems.length));
+      setSelectedIndex(prev => (prev > 0 ? prev - 1 : allItems.length - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const current = allItems[selectedIndex];
@@ -132,30 +127,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       }}
     >
       <div 
-        className="w-full max-w-[560px] sonoma-card sonoma-elevation overflow-hidden border transition-all animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-[560px] sonoma-card sonoma-elevation overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         style={{
-          backgroundColor: 'var(--card)',
-          borderColor: 'var(--hairline)',
+          backgroundColor: 'var(--bg-card)',
+          borderColor: 'var(--border)',
         }}
         onKeyDown={handleKeyDown}
       >
         {/* Search Input Bar */}
         <div 
           className="flex items-center gap-3 px-4 py-3 border-b"
-          style={{ borderColor: 'var(--hairline)' }}
+          style={{ borderColor: 'var(--border)' }}
         >
-          <Search className="w-4 h-4 text-[#86868B] shrink-0" />
+          <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Type a command or search workspace, docs..."
-            className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder-[#86868B] focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none"
           />
           <kbd 
-            className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded border text-[#86868B] bg-[var(--inset)] shrink-0"
-            style={{ borderColor: 'var(--hairline)' }}
+            className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded border text-[var(--text-muted)] bg-[var(--bg-muted)] shrink-0"
+            style={{ borderColor: 'var(--border)' }}
           >
             ESC
           </kbd>
@@ -164,7 +159,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         {/* Results Body */}
         <div className="max-h-[380px] overflow-y-auto p-2 space-y-3">
           {allItems.length === 0 ? (
-            <div className="py-8 text-center text-xs text-[#86868B]">
+            <div className="py-8 text-center text-xs text-[var(--text-muted)]">
               No matching commands or documents found.
             </div>
           ) : (
@@ -172,7 +167,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               {/* Workspaces Group */}
               {filteredWorkspaces.length > 0 && (
                 <div>
-                  <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#86868B]">
+                  <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                     Workspaces
                   </div>
                   <div className="space-y-0.5">
@@ -193,20 +188,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                           }}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-6 h-6 rounded-md bg-[#007AFF] text-white flex items-center justify-center shrink-0">
+                            <div 
+                              className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
+                              style={{
+                                backgroundColor: 'var(--well-sky-bg)',
+                                color: 'var(--well-sky-fg)',
+                              }}
+                            >
                               <Building2 className="w-3.5 h-3.5" />
                             </div>
                             <div className="truncate">
                               <div className="font-semibold text-[var(--text-primary)] truncate">{ws.name}</div>
-                              <div className="text-[11px] text-[#6E6E73] truncate">{ws.organization_name} · {ws.role}</div>
+                              <div className="text-[11px] text-[var(--text-secondary)] truncate">{ws.organization_name} · {ws.role}</div>
                             </div>
                           </div>
                           {isCurrent ? (
-                            <span className="text-[10px] font-medium text-[#007AFF] px-2 py-0.5 rounded-full bg-[rgba(0,122,255,0.08)]">
+                            <span 
+                              className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                              style={{
+                                backgroundColor: 'var(--well-lavender-bg)',
+                                color: 'var(--well-lavender-fg)',
+                              }}
+                            >
                               Current
                             </span>
                           ) : (
-                            <CornerDownLeft className="w-3 h-3 text-[#86868B] opacity-0 group-hover:opacity-100" />
+                            <CornerDownLeft className="w-3 h-3 text-[var(--text-muted)] opacity-0 group-hover:opacity-100" />
                           )}
                         </div>
                       );
@@ -218,7 +225,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               {/* Documents Group */}
               {filteredDocuments.length > 0 && (
                 <div>
-                  <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#86868B]">
+                  <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                     Documents
                   </div>
                   <div className="space-y-0.5">
@@ -238,17 +245,23 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                           }}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-6 h-6 rounded-md bg-[#5E5CE6] text-white flex items-center justify-center shrink-0">
+                            <div 
+                              className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
+                              style={{
+                                backgroundColor: 'var(--well-lavender-bg)',
+                                color: 'var(--well-lavender-fg)',
+                              }}
+                            >
                               <FileText className="w-3.5 h-3.5" />
                             </div>
                             <div className="truncate">
                               <div className="font-semibold text-[var(--text-primary)] truncate">{doc.title}</div>
-                              <div className="text-[11px] text-[#6E6E73]">
+                              <div className="text-[11px] text-[var(--text-secondary)]">
                                 Rank {doc.authority_level} · {doc.status} · {doc.page_count} pg
                               </div>
                             </div>
                           </div>
-                          <span className="text-[10px] font-mono text-[#86868B]">
+                          <span className="text-[10px] font-mono text-[var(--text-muted)]">
                             {doc.document_type || 'doc'}
                           </span>
                         </div>
@@ -261,7 +274,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               {/* Actions Group */}
               {filteredActions.length > 0 && (
                 <div>
-                  <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#86868B]">
+                  <div className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                     Quick Actions
                   </div>
                   <div className="space-y-0.5">
@@ -282,14 +295,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                           }}
                         >
                           <div className="flex items-center gap-2.5">
-                            <div className="w-6 h-6 rounded-md bg-[#007AFF] text-white flex items-center justify-center shrink-0">
+                            <div 
+                              className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
+                              style={{
+                                backgroundColor: 'var(--well-sky-bg)',
+                                color: 'var(--well-sky-fg)',
+                              }}
+                            >
                               <Icon className="w-3.5 h-3.5" />
                             </div>
                             <span className="font-semibold text-[var(--text-primary)]">{act.label}</span>
                           </div>
                           <kbd 
-                            className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded border text-[#86868B] bg-[var(--inset)]"
-                            style={{ borderColor: 'var(--hairline)' }}
+                            className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded border text-[var(--text-muted)] bg-[var(--bg-muted)]"
+                            style={{ borderColor: 'var(--border)' }}
                           >
                             {act.hint}
                           </kbd>
@@ -305,18 +324,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         {/* Footer with Keyboard Hints */}
         <div 
-          className="px-4 py-2 bg-[var(--inset)] border-t flex items-center justify-between text-[11px] text-[#86868B]"
-          style={{ borderColor: 'var(--hairline)' }}
+          className="px-4 py-2 bg-[var(--bg-muted)] border-t flex items-center justify-between text-[11px] text-[var(--text-muted)]"
+          style={{ borderColor: 'var(--border)' }}
         >
           <div className="flex items-center gap-3">
             <span><kbd className="font-mono">↑↓</kbd> navigate</span>
             <span><kbd className="font-mono">↵</kbd> select</span>
             <span><kbd className="font-mono">esc</kbd> close</span>
           </div>
-          <span className="font-mono text-[10px]">macOS Sonoma System Settings DNA</span>
+          <span className="font-mono text-[10px]">LORE Governed Workspace</span>
         </div>
       </div>
     </div>
   );
 };
-

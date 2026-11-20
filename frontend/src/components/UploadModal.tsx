@@ -638,7 +638,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 onClick={() => {
                   navigator.clipboard.writeText(effectiveWorkspaceId);
                 }}
-                className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] text-[#86868B] hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/10 transition-colors cursor-pointer border border-[var(--border-color)]"
+                className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/10 transition-colors cursor-pointer border border-[var(--border-color)]"
                 title={`Workspace UUID: ${effectiveWorkspaceId} (Click to copy)`}
               >
                 <span>UUID: {effectiveWorkspaceId.slice(0, 8)}...</span>

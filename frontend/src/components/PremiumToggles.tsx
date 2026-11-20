@@ -55,9 +55,9 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false }) => 
           }}
         >
           {isDark ? (
-            <Moon className="w-3.5 h-3.5 text-[#22C55E]" />
+            <Moon className="w-3.5 h-3.5 text-[var(--well-lavender-fg)]" />
           ) : (
-            <Sun className="w-3.5 h-3.5 text-[#D97706]" />
+            <Sun className="w-3.5 h-3.5 text-[var(--well-amber-fg)]" />
           )}
         </div>
       </button>
@@ -105,9 +105,9 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false }) => 
         }}
       >
         {isDark ? (
-          <Moon className="w-4 h-4 text-[#22C55E]" />
+          <Moon className="w-4 h-4 text-[var(--well-lavender-fg)]" />
         ) : (
-          <Sun className="w-4 h-4 text-[#D97706]" />
+          <Sun className="w-4 h-4 text-[var(--well-amber-fg)]" />
         )}
       </div>
     </button>

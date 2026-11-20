@@ -323,7 +323,7 @@ export const GovernedMessageCard: React.FC<GovernedMessageCardProps> = ({
             <div 
               className="flex items-center gap-2.5 p-2 rounded-xl border text-xs font-mono shadow-2xs"
               style={{
-                backgroundColor: 'var(--bg-surface, #ffffff)',
+                backgroundColor: 'var(--bg-card)',
                 borderColor: 'var(--border-color)',
               }}
             >

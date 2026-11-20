@@ -1,13 +1,27 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Hind_Siliguri } from "next/font/google";
+import { Plus_Jakarta_Sans, Inter, IBM_Plex_Mono, Hind_Siliguri } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme";
 import { LanguageProvider } from "@/lib/i18n";
 
-const inter = Inter({
+const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
   display: "swap",
 });
 
@@ -38,7 +52,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FFFFFF",
+  themeColor: "#5f52c4",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -52,7 +66,7 @@ export default function RootLayout({
   return (
     <html
       lang="bn"
-      className={`${inter.variable} ${hindSiliguri.variable} h-full antialiased`}
+      className={`${plusJakartaSans.variable} ${inter.variable} ${ibmPlexMono.variable} ${hindSiliguri.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head suppressHydrationWarning>

@@ -6,8 +6,6 @@ import {
   ChevronDown, 
   Search, 
   LogOut, 
-  Check, 
-  Menu, 
   PanelLeft, 
   Sun, 
   Moon, 
@@ -15,11 +13,10 @@ import {
   Archive, 
   Globe, 
   Mail, 
-  User as UserIcon,
-  Sparkles
+  User as UserIcon
 } from 'lucide-react';
 import { Workspace, Organization, User as UserType } from '@/lib/api';
-import { useI18n, Language } from '@/lib/i18n';
+import { useI18n } from '@/lib/i18n';
 import { useTheme } from '@/lib/theme';
 
 interface HeaderProps {
@@ -101,18 +98,18 @@ export const Header: React.FC<HeaderProps> = ({
     <header 
       className="h-[52px] border-b flex items-center justify-between px-4 z-30 sticky top-0 transition-colors shrink-0"
       style={{
-        backgroundColor: isDark ? 'rgba(28, 28, 30, 0.72)' : 'rgba(255, 255, 255, 0.72)',
+        backgroundColor: isDark ? 'rgba(29, 31, 40, 0.75)' : 'rgba(255, 255, 255, 0.75)',
         backdropFilter: 'blur(20px) saturate(180%)',
         WebkitBackdropFilter: 'blur(20px) saturate(180%)',
         borderColor: 'var(--hairline)',
       }}
     >
-      {/* LEFT CLUSTER: Ghost sidebar-toggle · "LORE" 13/700 + "Knowledge Grid" 11 overline + quiet "· {workspace} ▾" pull-down */}
+      {/* LEFT CLUSTER */}
       <div className="flex items-center gap-2.5 min-w-0">
         {onToggleSidebar && (
           <button
             onClick={onToggleSidebar}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-[#6E6E73] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 transition-colors cursor-pointer shrink-0"
+            className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 transition-colors cursor-pointer shrink-0"
             title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
           >
             <PanelLeft className="w-4 h-4" />
@@ -123,44 +120,44 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-[13px] font-bold text-[var(--text-primary)] tracking-tight">
             LORE
           </span>
-          <span className="sonoma-overline text-[#86868B] text-[10px] hidden sm:inline">
+          <span className="sonoma-overline text-[var(--text-muted)] text-[10px] hidden sm:inline">
             Knowledge Grid
           </span>
         </div>
 
-        {/* Quiet workspace pull-down (no box) */}
+        {/* Quiet workspace pull-down */}
         <button
           onClick={onOpenWorkspaceSwitcher}
-          className="flex items-center gap-1.5 text-[12px] text-[#6E6E73] hover:text-[var(--text-primary)] px-1.5 py-0.5 rounded transition-colors cursor-pointer truncate max-w-[200px] sm:max-w-[320px]"
+          className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-1.5 py-0.5 rounded transition-colors cursor-pointer truncate max-w-[200px] sm:max-w-[320px]"
           title={`Active Workspace: ${currentWorkspace?.name || 'Default Workspace'}\nUUID: ${currentWorkspace?.id || 'default'}\nClick to switch`}
         >
-          <span className="text-[#86868B]">·</span>
+          <span className="text-[var(--text-muted)]">·</span>
           <span className="truncate font-medium">{currentWorkspace?.name || 'Default Workspace'}</span>
           {currentWorkspace?.id && (
-            <span className="font-mono text-[9px] text-[#86868B] bg-black/5 dark:bg-white/10 px-1 py-0.5 rounded shrink-0 hidden md:inline border border-[var(--hairline)]" title={`Workspace UUID: ${currentWorkspace.id}`}>
+            <span className="font-mono text-[9px] text-[var(--text-muted)] bg-black/5 dark:bg-white/10 px-1 py-0.5 rounded shrink-0 hidden md:inline border border-[var(--hairline)]" title={`Workspace UUID: ${currentWorkspace.id}`}>
               {currentWorkspace.id.slice(0, 8)}
             </span>
           )}
-          <ChevronDown className="w-3 h-3 text-[#86868B] shrink-0" />
+          <ChevronDown className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
         </button>
       </div>
 
-      {/* CENTER CLUSTER: Search 380×28, inset track, radius 8, magnifier + ⌘K keycap chip */}
+      {/* CENTER CLUSTER: Search */}
       <div className="flex-1 max-w-[380px] mx-4 hidden md:block">
         <button
           onClick={onSearchClick}
-          className="w-full h-7 px-2.5 rounded-lg border flex items-center justify-between text-xs text-[#6E6E73] cursor-pointer transition-colors hover:border-[#007AFF]/40"
+          className="w-full h-7 px-2.5 rounded-lg border flex items-center justify-between text-xs text-[var(--text-secondary)] cursor-pointer transition-colors hover:border-[var(--lavender-deep)]/40"
           style={{
             backgroundColor: 'var(--inset)',
             borderColor: 'var(--hairline)',
           }}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <Search className="w-3.5 h-3.5 text-[#86868B] shrink-0" />
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
             <span className="truncate text-[12px]">{t('header.search_placeholder') || 'Search workspace, rules, docs...'}</span>
           </div>
           <kbd 
-            className="px-1.5 py-0.5 text-[10px] font-mono rounded border text-[#86868B] bg-white/60 dark:bg-black/20 shrink-0"
+            className="px-1.5 py-0.5 text-[10px] font-mono rounded border text-[var(--text-muted)] bg-white/60 dark:bg-black/20 shrink-0"
             style={{ borderColor: 'var(--hairline)' }}
           >
             ⌘K
@@ -168,15 +165,18 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* RIGHT CLUSTER: Exactly ONE filled control: split [Upload Document ▾] filled blue · divider · EN|বাংলা · ghost theme · divider · avatar */}
+      {/* RIGHT CLUSTER: Upload CTA + Lang + Theme + Avatar */}
       <div className="flex items-center gap-2.5 shrink-0">
-        {/* Split [Upload Document ▾] Button (Filled blue #007AFF) */}
+        {/* Split [Upload Document ▾] Button (Theme CTA: --accent / --accent-fg) */}
         <div className="relative inline-flex items-center rounded-lg shadow-xs" ref={uploadMenuRef}>
           <button
             type="button"
             onClick={() => onOpenUpload('files')}
-            className="h-7 px-2.5 rounded-l-lg text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer active:brightness-95 transition-all"
-            style={{ backgroundColor: '#007AFF' }}
+            className="h-7 px-2.5 rounded-l-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer active:brightness-95 transition-all"
+            style={{ 
+              backgroundColor: 'var(--accent)',
+              color: 'var(--accent-fg)' 
+            }}
             title="Upload document"
           >
             <Upload className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -185,8 +185,11 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => setIsUploadMenuOpen(!isUploadMenuOpen)}
-            className="h-7 px-1.5 rounded-r-lg text-white border-l border-white/20 flex items-center justify-center cursor-pointer active:brightness-95 transition-all"
-            style={{ backgroundColor: '#007AFF' }}
+            className="h-7 px-1.5 rounded-r-lg border-l border-white/20 flex items-center justify-center cursor-pointer active:brightness-95 transition-all"
+            style={{ 
+              backgroundColor: 'var(--accent)',
+              color: 'var(--accent-fg)' 
+            }}
             title="Upload options"
           >
             <ChevronDown className="w-3 h-3 stroke-[2.5]" />
@@ -197,7 +200,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div 
               className="absolute right-0 top-8 w-48 sonoma-card sonoma-elevation py-1 z-50 animate-in fade-in zoom-in-95 duration-100"
               style={{
-                backgroundColor: 'var(--card)',
+                backgroundColor: 'var(--bg-card)',
                 borderColor: 'var(--hairline)',
               }}
             >
@@ -208,7 +211,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }}
                 className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
               >
-                <FileUp className="w-3.5 h-3.5 text-[#007AFF]" />
+                <FileUp className="w-3.5 h-3.5 text-[var(--well-sky-fg)]" />
                 <span>Files…</span>
               </button>
               <button
@@ -218,7 +221,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }}
                 className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
               >
-                <Archive className="w-3.5 h-3.5 text-[#5E5CE6]" />
+                <Archive className="w-3.5 h-3.5 text-[var(--well-lavender-fg)]" />
                 <span>ZIP Archive…</span>
               </button>
               <button
@@ -228,7 +231,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }}
                 className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
               >
-                <Globe className="w-3.5 h-3.5 text-[#FF9500]" />
+                <Globe className="w-3.5 h-3.5 text-[var(--well-peach-fg)]" />
                 <span>Web Source…</span>
               </button>
               <button
@@ -239,7 +242,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="w-full px-3 py-1.5 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer border-t"
                 style={{ borderColor: 'var(--hairline)' }}
               >
-                <Mail className="w-3.5 h-3.5 text-[#34C759]" />
+                <Mail className="w-3.5 h-3.5 text-[var(--well-sage-fg)]" />
                 <span>Email Sync (Gmail)…</span>
               </button>
             </div>
@@ -265,7 +268,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="h-6 px-2 text-[11px] font-semibold rounded-md transition-all cursor-pointer"
             style={{
               backgroundColor: language === 'en' ? 'var(--card)' : 'transparent',
-              color: language === 'en' ? 'var(--text-primary)' : '#86868B',
+              color: language === 'en' ? 'var(--text-primary)' : 'var(--text-muted)',
               boxShadow: language === 'en' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
             }}
           >
@@ -277,7 +280,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="h-6 px-2 text-[11px] font-semibold rounded-md transition-all cursor-pointer"
             style={{
               backgroundColor: language === 'bn' ? 'var(--card)' : 'transparent',
-              color: language === 'bn' ? 'var(--text-primary)' : '#86868B',
+              color: language === 'bn' ? 'var(--text-primary)' : 'var(--text-muted)',
               boxShadow: language === 'bn' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
             }}
           >
@@ -288,13 +291,13 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Ghost Theme Icon (28px) */}
         <button
           onClick={toggleTheme}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-[#6E6E73] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 transition-colors cursor-pointer"
+          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 transition-colors cursor-pointer"
           title={isDark ? "Switch to Light mode" : "Switch to Dark mode"}
         >
           {isDark ? (
-            <Moon className="w-3.5 h-3.5 text-[#0A84FF]" />
+            <Moon className="w-3.5 h-3.5 text-[var(--well-lavender-fg)]" />
           ) : (
-            <Sun className="w-3.5 h-3.5 text-[#FF9500]" />
+            <Sun className="w-3.5 h-3.5 text-[var(--well-amber-fg)]" />
           )}
         </button>
 
@@ -311,7 +314,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div 
               className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-2xs"
               style={{
-                backgroundColor: isGuestMode ? '#8E8E93' : '#007AFF',
+                backgroundColor: isGuestMode ? 'var(--well-muted-fg)' : 'var(--lavender-deep)',
               }}
             >
               {getInitials(currentUser)}
@@ -322,12 +325,12 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-[12px] font-semibold text-[var(--text-primary)] truncate max-w-[110px]">
                 {getDisplayName(currentUser)}
               </span>
-              <span className="text-[10px] font-medium text-[#6E6E73] capitalize truncate max-w-[110px]">
+              <span className="text-[10px] font-medium text-[var(--text-secondary)] capitalize truncate max-w-[110px]">
                 {currentRole}
               </span>
             </div>
 
-            <ChevronDown className="w-3 h-3 text-[#86868B] hidden lg:block" />
+            <ChevronDown className="w-3 h-3 text-[var(--text-muted)] hidden lg:block" />
           </button>
 
           {/* Profile Menu Dropdown */}
@@ -343,14 +346,20 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="text-xs font-bold text-[var(--text-primary)]">
                   {getDisplayName(currentUser)}
                 </div>
-                <div className="text-[11px] text-[#6E6E73] mt-0.5">
+                <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
                   {currentUser?.email || (isGuestMode ? 'admin@northstar.demo' : 'guest@lore.enterprise')}
                 </div>
                 <div className="flex items-center gap-1.5 mt-2">
                   <span className="text-[10px] font-semibold uppercase px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-[var(--text-primary)]">
                     {currentRole}
                   </span>
-                  <span className="text-[10px] font-bold text-[#007AFF] px-1.5 py-0.2 rounded bg-[#007AFF]/10">
+                  <span 
+                    className="text-[10px] font-bold px-1.5 py-0.2 rounded"
+                    style={{
+                      backgroundColor: 'var(--well-lavender-bg)',
+                      color: 'var(--well-lavender-fg)',
+                    }}
+                  >
                     Sovereign Grid
                   </span>
                 </div>
@@ -365,7 +374,7 @@ export const Header: React.FC<HeaderProps> = ({
                     }}
                     className="w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
                   >
-                    <UserIcon className="w-3.5 h-3.5 text-[#007AFF]" />
+                    <UserIcon className="w-3.5 h-3.5 text-[var(--well-lavender-fg)]" />
                     <span>Sign In to Account</span>
                   </button>
                 )
@@ -375,7 +384,7 @@ export const Header: React.FC<HeaderProps> = ({
                     setIsProfileMenuOpen(false);
                     onLogout();
                   }}
-                  className="w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-[#FF3B30] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
+                  className="w-full px-2.5 py-1.5 rounded-md text-xs font-medium text-[var(--red)] hover:bg-[var(--hover)] flex items-center gap-2 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Sign Out</span>

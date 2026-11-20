@@ -582,7 +582,7 @@ export const EmailConnectorView: React.FC<EmailConnectorViewProps> = ({
                 }}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center text-[#0078D4] font-bold">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--well-sky-bg)] border border-[var(--well-sky-fg)]/20 flex items-center justify-center text-[var(--well-sky-fg)] font-bold">
                     M
                   </div>
                   <div>

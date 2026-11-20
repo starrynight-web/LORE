@@ -3,92 +3,120 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* =========================================================================
-   macOS SONOMA SYSTEM SETTINGS DNA — EXACT TOKENS (FINAL v3)
+   DESIGN.MD SYSTEM TOKENS (LAVENDER + SAGE DESIGN SYSTEM)
    ========================================================================= */
 
 /* LIGHT THEME */
 :root,
 [data-theme="light"],
 html:not(.dark) {
-  /* Style Law & Fixed Palette */
-  --canvas: #FFFFFF;
-  --card: #FFFFFF;
-  --inset: #F5F5F7;
-  --hover: #ECECEE;
-  --hairline: #E5E5E7;
-  --inset-separator: rgba(0, 0, 0, 0.06);
+  /* Brand Accents */
+  --lavender: #a59bf3;
+  --lavender-deep: #7c6fd6;
+  --lavender-active: #5f52c4;
+  --sage: #8fbc8f;
+  --sage-deep: #5f8f6a;
+  --sage-soft: rgba(143, 188, 143, 0.28);
 
-  /* Typography Colors */
-  --text-primary: #1D1D1F;
-  --text-secondary: #6E6E73;
-  --text-overline: #86868B;
-  --text-muted: #86868B;
+  /* Surfaces & Canvas */
+  --bg-canvas: radial-gradient(circle at 8% 88%, rgba(165,155,243,0.42) 0%, transparent 42%), radial-gradient(circle at 94% 8%, rgba(143,188,143,0.28) 0%, transparent 44%), linear-gradient(135deg,#ececf2,#e6e8ef);
+  --bg-card: #ffffff;
+  --bg-muted: #f2f2f6;
+  --border: rgba(20, 22, 30, 0.08);
 
-  /* Single Interactive Accent */
-  --accent: #007AFF;
-  --accent-hover: #0066D6;
-  --accent-tint: rgba(0, 122, 255, 0.08);
+  /* Text Roles */
+  --text-primary: #18191d;
+  --text-secondary: #686b75;
+  --text-muted: #9295a0;
+  --text-overline: #9295a0;
 
-  /* Status Tokens (6px dots + text-tint pills) */
-  --green: #34C759;
-  --green-text: #1F7A33;
-  --green-tint: rgba(52, 199, 89, 0.12);
+  /* CTA & Interactive */
+  --accent: #1c1d21;
+  --accent-fg: #ffffff;
+  --accent-hover: #7c6fd6;
+  --accent-tint: rgba(165, 155, 243, 0.12);
 
-  --orange: #FF9500;
-  --orange-text: #B25000;
-  --orange-tint: rgba(255, 149, 0, 0.12);
+  /* Elevation */
+  --shadow-card: 0 10px 30px -10px rgba(20, 22, 30, 0.08), 0 2px 8px -2px rgba(20, 22, 30, 0.04);
 
-  --red: #FF3B30;
-  --red-text: #D70015;
-  --red-tint: rgba(255, 59, 48, 0.10);
+  /* Sidebar Gradient: Warm base peach -> lavender -> sage */
+  --sidebar-gradient: linear-gradient(180deg, rgba(255,176,140,0.35), rgba(165,155,243,0.30), rgba(143,188,143,0.22)), linear-gradient(180deg, #f7ede8 0%, #edeaf7 50%, #e8f0e9 100%);
 
-  /* Sidebar Gradient (Peach -> Lavender -> Soft Violet) */
-  --sidebar-gradient: linear-gradient(180deg, #F7D6C4 0%, #E8D5F5 50%, #D4C5F0 100%);
+  /* Icon Well Tokens (Tinted bg + colored glyph) */
+  --well-sky-bg: rgba(125, 184, 220, 0.32);
+  --well-sky-fg: #2a7aa8;
+  --well-lavender-bg: rgba(165, 155, 243, 0.28);
+  --well-lavender-fg: #6b5fd4;
+  --well-sage-bg: rgba(143, 188, 143, 0.32);
+  --well-sage-fg: #3f7a4a;
+  --well-peach-bg: rgba(255, 176, 140, 0.32);
+  --well-peach-fg: #c45f2e;
+  --well-amber-bg: rgba(240, 190, 110, 0.34);
+  --well-amber-fg: #a86b12;
+  --well-muted-bg: rgba(146, 149, 160, 0.24);
+  --well-muted-fg: #686b75;
 
-  /* Exactly SIX Tile Hues (Reused across product, never a seventh) */
-  --tile-blue: #007AFF;
-  --tile-indigo: #5E5CE6;
-  --tile-purple: #AF52DE;
-  --tile-green: #34C759;
-  --tile-orange: #FF9500;
-  --tile-gray: #8E8E93;
+  /* Semantic Status Tokens */
+  --green: #8fbc8f;
+  --green-text: #5f8f6a;
+  --green-tint: rgba(143, 188, 143, 0.28);
+  --orange: #a86b12;
+  --orange-text: #a86b12;
+  --orange-tint: rgba(240, 190, 110, 0.34);
+  --red: #d32f2f;
+  --red-text: #b71c1c;
+  --red-tint: rgba(211, 47, 47, 0.12);
 
-  /* Backward Compatibility Aliases for App Components */
-  --bg-primary: #FFFFFF;
-  --bg-surface: #FFFFFF;
-  --bg-surface-soft: #F5F5F7;
-  --border-color: #E5E5E7;
-  --border-focus: #007AFF;
-  --brand-accent: #007AFF;
-  --brand-accent-hover: #0066D6;
-  --accent-deep: #0056B3;
-  --accent-parrot: #007AFF;
-  --accent-cream: #FFFFFF;
-  --accent-cream-soft: #F5F5F7;
-  --accent-light: rgba(0, 122, 255, 0.08);
-  --cta-text: #FFFFFF;
-  --success: #34C759;
-  --success-bg: rgba(52, 199, 89, 0.12);
-  --warning: #FF9500;
-  --warning-bg: rgba(255, 149, 0, 0.12);
-  --error: #FF3B30;
-  --error-bg: rgba(255, 59, 48, 0.10);
+  /* Backward Compatibility Aliases */
+  --canvas: #ffffff;
+  --card: #ffffff;
+  --inset: #f2f2f6;
+  --hover: rgba(20, 22, 30, 0.04);
+  --hairline: rgba(20, 22, 30, 0.08);
+  --inset-separator: rgba(20, 22, 30, 0.06);
 
-  --input-bg: #F5F5F7;
-  --input-border: #E5E5E7;
-  --popover-bg: #FFFFFF;
-  --modal-overlay: rgba(0, 0, 0, 0.28);
-  --table-header-bg: #F5F5F7;
-  --table-row-hover: #ECECEE;
-  --table-row-selected: rgba(0, 122, 255, 0.08);
-  --disabled-bg: #F5F5F7;
-  --disabled-text: #86868B;
-  --tooltip-bg: #1D1D1F;
-  --tooltip-text: #FFFFFF;
-  --skeleton-bg: #F5F5F7;
-  --scrollbar-track: #F5F5F7;
-  --scrollbar-thumb: #D1D1D6;
-  --selection-bg: rgba(0, 122, 255, 0.18);
+  --tile-blue: var(--well-sky-fg);
+  --tile-indigo: var(--well-lavender-fg);
+  --tile-purple: var(--well-lavender-fg);
+  --tile-green: var(--well-sage-fg);
+  --tile-orange: var(--well-peach-fg);
+  --tile-gray: var(--well-muted-fg);
+
+  --bg-primary: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-soft: #f2f2f6;
+  --border-color: rgba(20, 22, 30, 0.08);
+  --border-focus: #7c6fd6;
+  --brand-accent: #7c6fd6;
+  --brand-accent-hover: #5f52c4;
+  --accent-deep: #5f52c4;
+  --accent-parrot: #a59bf3;
+  --accent-cream: #ffffff;
+  --accent-cream-soft: #f2f2f6;
+  --accent-light: rgba(143, 188, 143, 0.28);
+  --cta-text: #ffffff;
+  --success: #5f8f6a;
+  --success-bg: rgba(143, 188, 143, 0.28);
+  --warning: #a86b12;
+  --warning-bg: rgba(240, 190, 110, 0.34);
+  --error: #d32f2f;
+  --error-bg: rgba(211, 47, 47, 0.12);
+
+  --input-bg: #f2f2f6;
+  --input-border: rgba(20, 22, 30, 0.08);
+  --popover-bg: #ffffff;
+  --modal-overlay: rgba(20, 22, 30, 0.40);
+  --table-header-bg: #f2f2f6;
+  --table-row-hover: #f2f2f6;
+  --table-row-selected: rgba(165, 155, 243, 0.12);
+  --disabled-bg: #f2f2f6;
+  --disabled-text: #9295a0;
+  --tooltip-bg: #1c1d21;
+  --tooltip-text: #ffffff;
+  --skeleton-bg: #f2f2f6;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(20, 22, 30, 0.12);
+  --selection-bg: rgba(165, 155, 243, 0.25);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -104,85 +132,113 @@ html[data-theme="dark"],
 body.dark,
 body[data-theme="dark"],
 .dark {
-  /* Style Law & Fixed Palette */
-  --canvas: #1C1C1E;
-  --card: #2C2C2E;
-  --inset: #3A3A3C;
-  --hover: #48484A;
-  --hairline: rgba(255, 255, 255, 0.10);
-  --inset-separator: rgba(255, 255, 255, 0.06);
+  /* Brand Accents */
+  --lavender: #b4aaf7;
+  --lavender-deep: #8b7fe0;
+  --lavender-active: #5f52c4;
+  --sage: #8fbc8f;
+  --sage-deep: #a8d5a2;
+  --sage-soft: rgba(143, 188, 143, 0.22);
 
-  /* Typography Colors */
-  --text-primary: #F5F5F7;
-  --text-secondary: #98989D;
-  --text-overline: #86868B;
-  --text-muted: #98989D;
+  /* Surfaces & Canvas */
+  --bg-canvas: radial-gradient(circle at 8% 88%, rgba(124,108,210,0.28) 0%, transparent 45%), radial-gradient(circle at 94% 8%, rgba(95,143,106,0.18) 0%, transparent 44%), linear-gradient(135deg,#121319,#181a22);
+  --bg-card: #1d1f28;
+  --bg-muted: #252834;
+  --border: rgba(255, 255, 255, 0.08);
 
-  /* Interactive Accent */
-  --accent: #0A84FF;
-  --accent-hover: #007AFF;
-  --accent-tint: rgba(10, 132, 255, 0.12);
+  /* Text Roles */
+  --text-primary: #f3f4f8;
+  --text-secondary: #a1a5b4;
+  --text-muted: #727788;
+  --text-overline: #727788;
 
-  /* Status Tokens */
-  --green: #30D158;
-  --green-text: #30D158;
-  --green-tint: rgba(48, 209, 88, 0.16);
+  /* CTA & Interactive */
+  --accent: #f3f4f8;
+  --accent-fg: #14151a;
+  --accent-hover: #8b7fe0;
+  --accent-tint: rgba(180, 170, 247, 0.15);
 
-  --orange: #FF9F0A;
-  --orange-text: #FF9F0A;
-  --orange-tint: rgba(255, 159, 10, 0.16);
+  /* Elevation */
+  --shadow-card: 0 14px 36px -12px rgba(0, 0, 0, 0.45), 0 2px 10px -2px rgba(0, 0, 0, 0.30);
 
-  --red: #FF453A;
-  --red-text: #FF453A;
-  --red-tint: rgba(255, 69, 58, 0.16);
+  /* Sidebar Gradient: Muted plum -> violet -> forest charcoal */
+  --sidebar-gradient: linear-gradient(180deg, #241d2b 0%, #221f34 50%, #1b2420 100%);
 
-  /* Sidebar: peach->lavender hues at ~12% tint over #221E26 */
-  --sidebar-gradient: linear-gradient(180deg, #3A2E2C 0%, #2E2838 50%, #28243A 100%);
+  /* Icon Well Tokens (Tinted bg + lightened glyph) */
+  --well-sky-bg: rgba(125, 184, 220, 0.22);
+  --well-sky-fg: #6eb5dc;
+  --well-lavender-bg: rgba(165, 155, 243, 0.22);
+  --well-lavender-fg: #b4aaf7;
+  --well-sage-bg: rgba(143, 188, 143, 0.22);
+  --well-sage-fg: #a8d5a2;
+  --well-peach-bg: rgba(255, 176, 140, 0.22);
+  --well-peach-fg: #e88d67;
+  --well-amber-bg: rgba(240, 190, 110, 0.22);
+  --well-amber-fg: #e0a64e;
+  --well-muted-bg: rgba(114, 119, 136, 0.24);
+  --well-muted-fg: #a1a5b4;
 
-  /* Six Tile Hues */
-  --tile-blue: #0A84FF;
-  --tile-indigo: #5E5CE6;
-  --tile-purple: #BF5AF2;
-  --tile-green: #30D158;
-  --tile-orange: #FF9F0A;
-  --tile-gray: #8E8E93;
+  /* Semantic Status Tokens */
+  --green: #8fbc8f;
+  --green-text: #a8d5a2;
+  --green-tint: rgba(143, 188, 143, 0.22);
+  --orange: #e0a64e;
+  --orange-text: #e0a64e;
+  --orange-tint: rgba(240, 190, 110, 0.22);
+  --red: #ef5350;
+  --red-text: #ef5350;
+  --red-tint: rgba(239, 83, 80, 0.18);
 
   /* Backward Compatibility Aliases */
-  --bg-primary: #1C1C1E;
-  --bg-surface: #2C2C2E;
-  --bg-surface-soft: #3A3A3C;
-  --border-color: rgba(255, 255, 255, 0.10);
-  --border-focus: #0A84FF;
-  --brand-accent: #0A84FF;
-  --brand-accent-hover: #007AFF;
-  --accent-deep: #0A84FF;
-  --accent-parrot: #0A84FF;
-  --accent-cream: #F5F5F7;
-  --accent-cream-soft: #3A3A3C;
-  --accent-light: rgba(10, 132, 255, 0.12);
-  --cta-text: #FFFFFF;
-  --success: #30D158;
-  --success-bg: rgba(48, 209, 88, 0.16);
-  --warning: #FF9F0A;
-  --warning-bg: rgba(255, 159, 10, 0.16);
-  --error: #FF453A;
-  --error-bg: rgba(255, 69, 58, 0.16);
+  --canvas: #1d1f28;
+  --card: #1d1f28;
+  --inset: #252834;
+  --hover: rgba(255, 255, 255, 0.06);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --inset-separator: rgba(255, 255, 255, 0.06);
 
-  --input-bg: #3A3A3C;
-  --input-border: rgba(255, 255, 255, 0.10);
-  --popover-bg: #2C2C2E;
-  --modal-overlay: rgba(0, 0, 0, 0.60);
-  --table-header-bg: #3A3A3C;
-  --table-row-hover: #48484A;
-  --table-row-selected: rgba(10, 132, 255, 0.12);
-  --disabled-bg: #3A3A3C;
-  --disabled-text: #98989D;
-  --tooltip-bg: #F5F5F7;
-  --tooltip-text: #1C1C1E;
-  --skeleton-bg: #3A3A3C;
-  --scrollbar-track: #2C2C2E;
-  --scrollbar-thumb: #48484A;
-  --selection-bg: rgba(10, 132, 255, 0.30);
+  --tile-blue: var(--well-sky-fg);
+  --tile-indigo: var(--well-lavender-fg);
+  --tile-purple: var(--well-lavender-fg);
+  --tile-green: var(--well-sage-fg);
+  --tile-orange: var(--well-peach-fg);
+  --tile-gray: var(--well-muted-fg);
+
+  --bg-primary: #1d1f28;
+  --bg-surface: #1d1f28;
+  --bg-surface-soft: #252834;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-focus: #8b7fe0;
+  --brand-accent: #8b7fe0;
+  --brand-accent-hover: #5f52c4;
+  --accent-deep: #5f52c4;
+  --accent-parrot: #b4aaf7;
+  --accent-cream: #f3f4f8;
+  --accent-cream-soft: #252834;
+  --accent-light: rgba(143, 188, 143, 0.22);
+  --cta-text: #14151a;
+  --success: #a8d5a2;
+  --success-bg: rgba(143, 188, 143, 0.22);
+  --warning: #e0a64e;
+  --warning-bg: rgba(240, 190, 110, 0.22);
+  --error: #ef5350;
+  --error-bg: rgba(239, 83, 80, 0.18);
+
+  --input-bg: #252834;
+  --input-border: rgba(255, 255, 255, 0.08);
+  --popover-bg: #1d1f28;
+  --modal-overlay: rgba(0, 0, 0, 0.65);
+  --table-header-bg: #252834;
+  --table-row-hover: #252834;
+  --table-row-selected: rgba(180, 170, 247, 0.15);
+  --disabled-bg: #252834;
+  --disabled-text: #727788;
+  --tooltip-bg: #f3f4f8;
+  --tooltip-text: #14151a;
+  --skeleton-bg: #252834;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --selection-bg: rgba(180, 170, 247, 0.30);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -191,23 +247,23 @@ body[data-theme="dark"],
 }
 
 /* =========================================================================
-   PLAIN WHITE LAW & TYPOGRAPHY SYSTEM
+   BASE SYSTEM & TYPOGRAPHY
    ========================================================================= */
 *, *::before, *::after {
   box-sizing: border-box;
 }
 
 html {
-  background-color: var(--canvas) !important;
-  color: var(--text-primary) !important;
+  background-color: var(--bg-card);
+  color: var(--text-primary);
   transition: background-color 200ms ease, color 200ms ease;
   overflow-x: hidden;
 }
 
 body {
-  background-color: var(--canvas) !important;
-  color: var(--text-primary) !important;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-sans, "Inter"), system-ui, sans-serif;
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  font-family: var(--font-sans), var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -216,20 +272,20 @@ body {
   overflow-x: hidden;
 }
 
-/* Bangla Typography: Hind Siliguri, line-height 1.62, overlines stay Latin */
+/* Bangla Typography: Hind Siliguri, line-height 1.62 */
 html[lang="bn"] body,
 [lang="bn"] {
-  font-family: var(--font-bangla, "Hind Siliguri"), "Noto Sans Bengali", system-ui, sans-serif;
+  font-family: var(--font-bangla, "Hind Siliguri"), "Noto Sans Bengali", var(--font-sans), system-ui, sans-serif;
   line-height: 1.62;
 }
 
-/* Monospace: SF Mono first */
+/* Monospace: IBM Plex Mono first */
 .font-mono,
 code,
 pre,
 kbd,
 .sonoma-mono {
-  font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono), "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-feature-settings: "tnum" 1;
 }
 
@@ -238,8 +294,9 @@ kbd,
   font-variant-numeric: tabular-nums;
 }
 
-/* Apple Sonoma Specific Typography Utilities */
-.sonoma-kpi {
+/* Design System Typography Utilities */
+.sonoma-kpi,
+.lore-kpi {
   font-size: 34px;
   line-height: 1.1;
   font-weight: 700;
@@ -247,61 +304,79 @@ kbd,
   font-variant-numeric: tabular-nums;
 }
 
-.sonoma-title {
-  font-size: 24px;
+.sonoma-title,
+.lore-title {
+  font-size: 30px;
   line-height: 1.25;
   font-weight: 700;
+  letter-spacing: -0.03em;
 }
 
-.sonoma-section {
+.sonoma-section,
+.lore-card-title {
   font-size: 15px;
   line-height: 1.35;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.sonoma-overline {
-  font-size: 11px;
+.sonoma-helper,
+.lore-helper {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.sonoma-overline,
+.lore-section-label {
+  font-size: 10px;
   line-height: 1.2;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-overline);
+  color: var(--text-muted);
 }
 
-.sonoma-row-primary {
-  font-size: 13px;
+.sonoma-row-primary,
+.lore-nav-primary {
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.sonoma-row-secondary {
+.sonoma-row-secondary,
+.lore-nav-secondary {
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 
-.sonoma-control {
+.sonoma-control,
+.lore-control {
   font-size: 13px;
   font-weight: 590;
 }
 
-/* Sonoma System Settings Elevation & Cards */
-.sonoma-card {
-  background-color: var(--card);
-  border: 1px solid var(--hairline);
+/* Cards & Inset Surfaces */
+.sonoma-card,
+.lore-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.sonoma-inset-card,
+.lore-inset-card {
+  background-color: var(--bg-muted);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: none;
 }
 
-.sonoma-inset-card {
-  background-color: var(--inset);
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
-}
-
-/* Elevation (soft shadow + blur overlay) ONLY on sheets, popovers, menus, toasts */
-.sonoma-elevation {
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.06);
+/* Elevation on sheets, popovers, menus, toasts */
+.sonoma-elevation,
+.lore-elevation {
+  box-shadow: var(--shadow-card);
 }
 
 /* Custom Scrollbars */
@@ -313,16 +388,16 @@ kbd,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--hairline);
+  background: var(--border);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
 
-/* Focus ring: 2px #007AFF offset 2 */
+/* Focus ring: >= 3:1 ratio using lavender-deep with offset */
 *:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--lavender-deep);
   outline-offset: 2px;
 }
 

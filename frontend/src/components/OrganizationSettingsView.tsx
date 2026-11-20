@@ -2244,32 +2244,32 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
         >
           <div className="border-b pb-3 flex items-center justify-between" style={{ borderColor: 'var(--hairline)' }}>
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[rgba(255,59,48,0.10)] text-[#FF3B30] flex items-center justify-center font-bold">
+              <div className="w-8 h-8 rounded-lg bg-[var(--red-tint)] text-[var(--red)] flex items-center justify-center font-bold">
                 <Trash2 className="w-4 h-4" />
               </div>
               <div>
                 <h2 className="sonoma-section text-[var(--text-primary)]">
                   Workspace Database & Storage Maintenance
                 </h2>
-                <p className="sonoma-row-secondary text-[#6E6E73] text-[12px] mt-0.5">
+                <p className="sonoma-row-secondary text-[var(--text-secondary)] text-[12px] mt-0.5">
                   Manage data retention, purge vectors and graph stores, or reset this workspace partition.
                 </p>
               </div>
             </div>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[rgba(255,59,48,0.10)] text-[#D70015] border border-[#FF3B30]/20">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--red-tint)] text-[var(--red-text)] border border-[var(--red)]/20">
               Danger Zone
             </span>
           </div>
 
           {purgeSuccessMsg && (
-            <div className="p-3.5 rounded-xl border flex items-center gap-2 text-xs bg-[rgba(52,199,89,0.12)] text-[#1F7A33] border-[#34C759]/20">
+            <div className="p-3.5 rounded-xl border flex items-center gap-2 text-xs bg-[var(--well-sage-bg)] text-[var(--well-sage-fg)] border-[var(--well-sage-fg)]/20">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{purgeSuccessMsg}</span>
             </div>
           )}
 
           {purgeError && (
-            <div className="p-3.5 rounded-xl border flex items-center gap-2 text-xs bg-[rgba(255,59,48,0.10)] text-[#D70015] border-[#FF3B30]/20">
+            <div className="p-3.5 rounded-xl border flex items-center gap-2 text-xs bg-[var(--red-tint)] text-[var(--red-text)] border border-[var(--red)]/20">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{purgeError}</span>
             </div>
@@ -2279,26 +2279,26 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
           <div className="p-4 rounded-xl border bg-[var(--inset)] space-y-2" style={{ borderColor: 'var(--hairline)' }}>
             <div className="flex items-center justify-between text-xs font-semibold text-[var(--text-primary)]">
               <span>Target Workspace:</span>
-              <span className="font-mono text-[#007AFF]">{currentWorkspace?.name || 'Active Workspace'}</span>
+              <span className="font-mono text-[var(--lavender-deep)]">{currentWorkspace?.name || 'Active Workspace'}</span>
             </div>
-            <div className="flex items-center justify-between text-[11px] font-mono text-[#6E6E73]">
+            <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-secondary)]">
               <span>Partition UUID:</span>
               <span>{currentWorkspace?.id || 'default-partition'}</span>
             </div>
-            <div className="flex items-center justify-between text-[11px] font-mono text-[#6E6E73]">
+            <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-secondary)]">
               <span>Role:</span>
               <span className="capitalize">{currentWorkspace?.role || userRole || 'workspace_admin'}</span>
             </div>
           </div>
 
           {/* Purge Card */}
-          <div className="p-5 rounded-xl border border-[#FF3B30]/30 bg-[rgba(255,59,48,0.03)] space-y-4">
+          <div className="p-5 rounded-xl border border-[var(--red)]/30 bg-[var(--red-tint)]/25 space-y-4">
             <div className="space-y-1">
-              <h3 className="text-xs font-bold text-[#D70015] flex items-center gap-1.5 uppercase tracking-wide">
+              <h3 className="text-xs font-bold text-[var(--red-text)] flex items-center gap-1.5 uppercase tracking-wide">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>Delete Workspace Database & Purge All Knowledge</span>
               </h3>
-              <p className="text-xs text-[#6E6E73] leading-relaxed">
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 By default, this will permanently wipe <strong>all documents, OCR extracts, dense vector embeddings (Qdrant & pgvector), and Knowledge Graph entities/edges</strong> from <strong>{currentWorkspace?.name || 'this workspace'}</strong>.
               </p>
             </div>
@@ -2309,7 +2309,7 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
                   type="checkbox"
                   checked={purgeUnderstood}
                   onChange={(e) => setPurgeUnderstood(e.target.checked)}
-                  className="mt-0.5 rounded border-[#E5E5E7] text-[#FF3B30] focus:ring-[#FF3B30]"
+                  className="mt-0.5 rounded border-[var(--border)] text-[var(--red)] focus:ring-[var(--red)]"
                 />
                 <span className="text-[var(--text-primary)]">
                   I understand this action is permanent and will completely clear the documents, graph entities, and embeddings in this specific workspace.
@@ -2317,15 +2317,15 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
               </label>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#6E6E73] mb-1">
-                  Type <span className="font-mono text-[#D70015] font-bold">DELETE</span> to confirm:
+                <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                  Type <span className="font-mono text-[var(--red-text)] font-bold">DELETE</span> to confirm:
                 </label>
                 <input
                   type="text"
                   placeholder="Type DELETE"
                   value={purgeConfirmText}
                   onChange={(e) => setPurgeConfirmText(e.target.value)}
-                  className="w-full max-w-xs px-3 py-1.5 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#FF3B30]"
+                  className="w-full max-w-xs px-3 py-1.5 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--red)]"
                   style={{
                     backgroundColor: 'var(--card)',
                     borderColor: 'var(--hairline)',
@@ -2339,7 +2339,7 @@ export const OrganizationSettingsView: React.FC<OrgSettingsProps> = ({
                   type="button"
                   disabled={!purgeUnderstood || purgeConfirmText.trim() !== 'DELETE' || isPurging || !currentWorkspace}
                   onClick={handlePurgeDatabase}
-                  className="h-8 px-4 rounded-lg text-xs font-semibold text-white flex items-center gap-2 bg-[#FF3B30] hover:bg-[#D70015] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-xs active:scale-95"
+                  className="h-8 px-4 rounded-lg text-xs font-semibold text-white flex items-center gap-2 bg-[var(--red)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-xs active:scale-95"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>{isPurging ? 'Purging Database...' : 'Delete Workspace Database'}</span>

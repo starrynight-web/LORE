@@ -75,10 +75,10 @@ const GitHubLogo: React.FC<{ className?: string }> = ({ className = "w-6 h-6" })
 
 const WebScraperLogo: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
   <svg viewBox="0 0 32 32" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="16" cy="16" r="13" stroke="#007AFF" strokeWidth="2" strokeDasharray="3 3" />
-    <circle cx="16" cy="16" r="7.5" fill="#007AFF" />
-    <path d="M16 3v4M16 25v4M3 16h4M25 16h4M6.8 6.8l2.8 2.8M22.4 22.4l2.8 2.8M6.8 25.2l2.8-2.8M22.4 9.6l2.8-2.8" stroke="#0066D6" strokeWidth="2" strokeLinecap="round" />
-    <circle cx="16" cy="16" r="3" fill="#FFFFFF" />
+    <circle cx="16" cy="16" r="13" stroke="var(--lavender-deep)" strokeWidth="2" strokeDasharray="3 3" />
+    <circle cx="16" cy="16" r="7.5" fill="var(--lavender-deep)" />
+    <path d="M16 3v4M16 25v4M3 16h4M25 16h4M6.8 6.8l2.8 2.8M22.4 22.4l2.8 2.8M6.8 25.2l2.8-2.8M22.4 9.6l2.8-2.8" stroke="var(--lavender-active)" strokeWidth="2" strokeLinecap="round" />
+    <circle cx="16" cy="16" r="3" fill="#ffffff" />
   </svg>
 );
 
@@ -86,13 +86,13 @@ const LiveEvidenceLogo: React.FC<{ className?: string }> = ({ className = "w-6 h
   <svg viewBox="0 0 32 32" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
       d="M16 4.5l8.5 3.8v7.2c0 5.8-3.6 11.2-8.5 12.5-4.9-1.3-8.5-6.7-8.5-12.5V8.3L16 4.5z"
-      fill="#8054FF"
+      fill="var(--lavender)"
     />
     <path
       d="M16 10a5 5 0 00-5 5c0 2.2 1.4 4.1 3.5 4.7v-2.2a2.8 2.8 0 01-1.3-2.5 2.8 2.8 0 015.6 0c0 1.1-.6 2.1-1.5 2.5v2.2c2.1-.6 3.7-2.5 3.7-4.7a5 5 0 00-5-5z"
-      fill="#81B5A1"
+      fill="var(--sage)"
     />
-    <circle cx="16" cy="21.5" r="1.3" fill="#FFFFFF" />
+    <circle cx="16" cy="21.5" r="1.3" fill="#ffffff" />
   </svg>
 );
 

@@ -863,19 +863,19 @@ export const KnowledgeGridView: React.FC<KnowledgeGridViewProps> = ({
             {/* Directed Edge Arrow Definitions */}
             <defs>
               <marker id="arrow-blue" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#007AFF" />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--lavender-deep)" />
               </marker>
               <marker id="arrow-emerald" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#34C759" />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--sage-deep)" />
               </marker>
               <marker id="arrow-purple" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#AF52DE" />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--lavender)" />
               </marker>
               <marker id="arrow-red" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#FF3B30" />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--red)" />
               </marker>
               <marker id="arrow-indigo" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#5E5CE6" />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--lavender-active)" />
               </marker>
             </defs>
 
@@ -895,14 +895,14 @@ export const KnowledgeGridView: React.FC<KnowledgeGridViewProps> = ({
                 const isApplies = relType === 'APPLIES_TO';
 
                 const strokeColor = isConflict 
-                  ? '#FF3B30' 
+                  ? 'var(--red)' 
                   : isSupersedes 
-                  ? '#AF52DE' 
+                  ? 'var(--lavender)' 
                   : isMember 
-                  ? '#5E5CE6' 
+                  ? 'var(--lavender-active)' 
                   : isApplies 
-                  ? '#34C759' 
-                  : '#007AFF';
+                  ? 'var(--sage-deep)' 
+                  : 'var(--lavender-deep)';
 
                 const markerId = isConflict 
                   ? 'arrow-red' 
@@ -953,10 +953,10 @@ export const KnowledgeGridView: React.FC<KnowledgeGridViewProps> = ({
                 const nodeOpacity = activeNeighborhood ? (isNodeInNeighborhood ? 1.0 : 0.22) : 1.0;
 
                 // Colors
-                const communityColor = n.level === 1 ? '#AF52DE' : '#5E5CE6';
-                const docColor = '#007AFF';
-                const entityColor = n.type === 'regulation' ? '#007AFF' : n.type === 'system' ? '#34C759' : '#30D158';
-                const ruleColor = '#FF9500';
+                const communityColor = n.level === 1 ? 'var(--lavender)' : 'var(--lavender-active)';
+                const docColor = 'var(--lavender-deep)';
+                const entityColor = n.type === 'regulation' ? 'var(--lavender-deep)' : n.type === 'system' ? 'var(--sage-deep)' : 'var(--sage)';
+                const ruleColor = 'var(--well-amber-fg)';
 
                 const mainColor = isCommunity 
                   ? communityColor 
@@ -1006,7 +1006,7 @@ export const KnowledgeGridView: React.FC<KnowledgeGridViewProps> = ({
                           cx={n.x + n.radius - 4}
                           cy={n.y - n.radius + 4}
                           r={6}
-                          fill="#34C759"
+                          fill="var(--sage-deep)"
                           stroke="#ffffff"
                           strokeWidth={1.5}
                         />
