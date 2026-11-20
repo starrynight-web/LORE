@@ -29,3 +29,10 @@ Thumbs.db
 # Secrets
 .env
 .env.*
+
+# Next.js marketing site
+web/node_modules/
+web/.next/
+web/out/
+web/.env*
+web/.turbo/
