@@ -72,6 +72,14 @@ class QueryAnalysis:
     # Paired required documents for cross-document questions
     required_companion_docs: List[str] = field(default_factory=list)
 
+    # Phase 2 & 3: Salience, Quoted Phrases, Acronym Expansions & Comparison Entities
+    quoted_phrases: List[str] = field(default_factory=list)
+    technical_terms: List[str] = field(default_factory=list)
+    high_salience_terms: List[str] = field(default_factory=list)
+    expanded_acronyms: Dict[str, str] = field(default_factory=dict)
+    focused_lexical_query: str = ""
+    compared_entities: List[str] = field(default_factory=list)
+
     @property
     def domain(self) -> str:
         return self.subject_domain
@@ -95,6 +103,12 @@ class QueryAnalysis:
             'is_cross_document': self.is_cross_document,
             'is_negative_query': self.is_negative_query,
             'required_companion_docs': self.required_companion_docs,
+            'quoted_phrases': self.quoted_phrases,
+            'technical_terms': self.technical_terms,
+            'high_salience_terms': self.high_salience_terms,
+            'expanded_acronyms': self.expanded_acronyms,
+            'focused_lexical_query': self.focused_lexical_query,
+            'compared_entities': self.compared_entities,
         }
 
 
@@ -125,6 +139,36 @@ class QueryUnderstandingService:
         'doc-019': ['procurement review meeting minutes', 'procurement review minutes', 'procurement minutes', 'meridian industrial'],
         'doc-020': ['master document register', 'document register'],
         'doc-021': ['travel & expense policy (2025)', 'travel & expense policy 2025', '2025 travel policy', 'replaced the 2024 policy'],
+    }
+
+    GENERIC_FILLER_WORDS = {
+        'book', 'books', 'according', 'exact', 'steps', 'step', 'machine', 'learning',
+        'models', 'model', 'data', 'approach', 'explain', 'compare', 'chapters', 'chapter',
+        'what', 'which', 'who', 'how', 'when', 'where', 'why', 'is', 'are', 'was', 'were',
+        'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of', 'and', 'or', 'by', 'with',
+        'from', 'as', 'be', 'can', 'could', 'would', 'should', 'tell', 'show', 'please',
+        'describe', 'detail', 'details', 'following', 'based', 'using', 'build', 'building',
+        'products', 'product', 'system', 'systems', 'text', 'passage', 'passages', 'page',
+        'pages', 'section', 'sections', 'provide', 'provided', 'discuss', 'discussed',
+        'difference', 'between', 'versus', 'vs'
+    }
+
+    TECHNICAL_ACRONYMS = {
+        'tta': 'test-time augmentation',
+        'sgd': 'stochastic gradient descent',
+        'ood': 'out-of-domain',
+        'nlp': 'natural language processing',
+        'cnn': 'convolutional neural network',
+        'rnn': 'recurrent neural network',
+        'lr': 'learning rate',
+        'gan': 'generative adversarial network',
+        'bert': 'bidirectional encoder representations from transformers',
+        'llm': 'large language model',
+        'cv': 'computer vision',
+        'sota': 'state of the art',
+        'rag': 'retrieval augmented generation',
+        '1cycle': 'one cycle policy',
+        'ulmfit': 'universal language model fine-tuning',
     }
 
     MONTH_MAP = {
@@ -394,6 +438,67 @@ class QueryUnderstandingService:
         else:
             intent = QueryIntent.POLICY_INTERPRETATION
 
+        # -------------------------------------------------------------
+        # 7. High-Salience Rare Term, Acronym & Quoted Phrase Extraction
+        # -------------------------------------------------------------
+        quoted_phrases = [p.strip() for p in re.findall(r'["\']([^"\']{2,})["\']', raw_q) if p.strip()]
+        technical_terms = [h.strip() for h in re.findall(r'\b[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)+\b', q_clean) if len(h.strip()) > 3]
+
+        # Bidirectional technical acronym expansion
+        expanded_acronyms: Dict[str, str] = {}
+        q_words = re.findall(r'\b[a-zA-Z0-9-]+\b', q_lower)
+        for w in q_words:
+            if w in cls.TECHNICAL_ACRONYMS:
+                expanded_acronyms[w] = cls.TECHNICAL_ACRONYMS[w]
+
+        for acr, full_term in cls.TECHNICAL_ACRONYMS.items():
+            norm_term = full_term.replace('-', ' ')
+            if full_term in q_lower or norm_term in q_lower:
+                expanded_acronyms[full_term] = acr.upper()
+
+        # High-salience non-generic content tokens
+        high_salience_terms = []
+        for w in q_words:
+            if w not in cls.GENERIC_FILLER_WORDS and len(w) >= 3 and not w.isdigit():
+                if w not in high_salience_terms:
+                    high_salience_terms.append(w)
+
+        # Extract compared entities
+        compared_entities = []
+        m_compare = re.search(r'\b(?:compare|difference\s+between)\s+(.+?)(?:\s+in\s+|\s+for\s+|\s+based\s+on\s+|\?|$)', q_clean, re.IGNORECASE)
+        if m_compare:
+            ent_text = m_compare.group(1).strip()
+            parts = re.split(r',\s*(?:and\s+)?|\s+and\s+|\s+vs\.?\s+|\s+versus\s+', ent_text, flags=re.IGNORECASE)
+            for p in parts:
+                clean_p = re.sub(r'\(.*?\)', '', p).strip(" '\"`.,")
+                if clean_p and clean_p.lower() not in cls.GENERIC_FILLER_WORDS and len(clean_p) > 2:
+                    compared_entities.append(clean_p)
+        elif re.search(r'\b(?:vs\.?|versus)\b', q_clean, re.IGNORECASE):
+            parts = re.split(r'\s+(?:vs\.?|versus)\s+', q_clean, flags=re.IGNORECASE)
+            for p in parts:
+                clean_p = re.sub(r'\(.*?\)', '', p).strip(" '\"`.,")
+                words_p = [w for w in re.findall(r'\b[a-zA-Z0-9-]+\b', clean_p) if w.lower() not in cls.GENERIC_FILLER_WORDS]
+                if words_p:
+                    compared_entities.append(" ".join(words_p[-3:]))
+
+        # Generate focused lexical query
+        lex_parts = []
+        for qp in quoted_phrases:
+            lex_parts.append(f'"{qp}"')
+        for tt in technical_terms:
+            if f'"{tt}"' not in lex_parts and tt not in lex_parts:
+                lex_parts.append(f'"{tt}"')
+        for acr, exp in expanded_acronyms.items():
+            if len(acr) <= 6 and acr not in lex_parts:
+                lex_parts.append(acr)
+            if f'"{exp}"' not in lex_parts:
+                lex_parts.append(f'"{exp}"')
+        for hst in high_salience_terms:
+            if hst not in lex_parts and not any(hst in lp for lp in lex_parts):
+                lex_parts.append(hst)
+
+        focused_lexical_query = " ".join(lex_parts).strip()
+
         return QueryAnalysis(
             raw_query=raw_q,
             clean_query=q_clean,
@@ -420,5 +525,11 @@ class QueryUnderstandingService:
             is_leave_query=is_leave,
             is_procurement_query=is_procurement,
             is_access_query=is_access,
-            required_companion_docs=companion_docs
+            required_companion_docs=companion_docs,
+            quoted_phrases=quoted_phrases,
+            technical_terms=technical_terms,
+            high_salience_terms=high_salience_terms,
+            expanded_acronyms=expanded_acronyms,
+            focused_lexical_query=focused_lexical_query,
+            compared_entities=compared_entities
         )

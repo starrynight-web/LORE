@@ -114,6 +114,8 @@ class HybridRetrievalService:
         user=None,
         user_role: str = 'member',
         as_of=None,
+        deep_context: bool = False,
+        synthesis_mode: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         t_start = time.time()
         self.last_diagnostics = {}
@@ -151,7 +153,12 @@ class HybridRetrievalService:
             except Exception:
                 pass
 
-        budget = context_budget_tokens or getattr(settings, 'RETRIEVAL_CONTEXT_BUDGET_TOKENS', 800)
+        if deep_context or synthesis_mode == 'generative':
+            budget = context_budget_tokens or 2400
+            if limit == 8:
+                limit = 12
+        else:
+            budget = context_budget_tokens or getattr(settings, 'RETRIEVAL_CONTEXT_BUDGET_TOKENS', 800)
         candidate_budget = min(24, max(16, limit * 2))
         query_clean = query.strip()
         q_tokens = [w.lower() for w in re.findall(r'\w+', query_clean) if len(w) > 1]
@@ -211,6 +218,43 @@ class HybridRetrievalService:
         lexical_ranks = {}
         for rank, (lex_score, chk) in enumerate(lexical_pairs):
             lexical_ranks[str(chk.id)] = rank + 1
+
+        # Phase 2 Focused Lexical BM25 Sub-Query:
+        # Fuse hits for rare domain terms / quoted phrases without generic filler dilution
+        if getattr(analysis, 'focused_lexical_query', None) and analysis.focused_lexical_query.strip().lower() != query_clean.lower():
+            focused_pairs = self.lexical_service.search_chunks(
+                query=analysis.focused_lexical_query,
+                workspace_id=workspace_id,
+                organization_id=organization_id,
+                collection_id=collection_id,
+                document_id=document_id,
+                limit=candidate_budget
+            )
+            for f_rank, (f_score, f_chk) in enumerate(focused_pairs):
+                f_cid = str(f_chk.id)
+                if f_cid in lexical_ranks:
+                    lexical_ranks[f_cid] = min(lexical_ranks[f_cid], f_rank + 1)
+                else:
+                    lexical_ranks[f_cid] = f_rank + 1
+
+        # Phase 3 Comparison Entity Sub-Queries & Quotas:
+        # Guarantee at least 2 top-scoring chunks per compared entity enter candidate pool
+        if getattr(analysis, 'compared_entities', None) and len(analysis.compared_entities) >= 2:
+            for entity in analysis.compared_entities:
+                entity_clean = entity.strip()
+                if not entity_clean:
+                    continue
+                ent_pairs = self.lexical_service.search_chunks(
+                    query=entity_clean,
+                    workspace_id=workspace_id,
+                    organization_id=organization_id,
+                    collection_id=collection_id,
+                    document_id=document_id,
+                    limit=4
+                )
+                for e_rank, (e_score, e_chk) in enumerate(ent_pairs[:2]):
+                    e_cid = str(e_chk.id)
+                    lexical_ranks[e_cid] = min(lexical_ranks.get(e_cid, 999), e_rank + 1)
 
         # ---------------- Stage 2b: Multi-Document Companion Guarantees (Requirement 3) ----------------
         all_candidate_ids = set(vector_ranks.keys()) | set(lexical_ranks.keys())
@@ -582,10 +626,19 @@ class HybridRetrievalService:
                             it['metadata']['is_toc_or_frontmatter'] = True
                         it['is_toc_or_frontmatter'] = True
                     adjusted_reranked.append(it)
-            if adjusted_reranked and isinstance(adjusted_reranked[0], tuple):
-                adjusted_reranked.sort(key=lambda x: x[0], reverse=True)
-            elif adjusted_reranked:
-                adjusted_reranked.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+            def _tiebreak_key(item):
+                if isinstance(item, tuple):
+                    sc = item[0]
+                    meta = item[2] if len(item) > 2 and isinstance(item[2], dict) else {}
+                    hits = meta.get('exact_salience_hits', 0)
+                    auth = meta.get('authority_level', getattr(getattr(item[1], 'document', None), 'authority_level', 3))
+                else:
+                    sc = item.get('score', 0.0)
+                    hits = item.get('exact_salience_hits', item.get('reranking_scores', {}).get('exact_salience_hits', 0))
+                    auth = item.get('authority_level', 3)
+                return (round(sc, 3), hits, sc, auth)
+
+            adjusted_reranked.sort(key=_tiebreak_key, reverse=True)
             reranked_candidates = adjusted_reranked
 
         # Prepend missing boundary items for negative retrieval
@@ -607,6 +660,96 @@ class HybridRetrievalService:
                 )
             except Exception as se:
                 logger.debug(f"[ShadowReranker] Shadow evaluation skipped: {se}")
+
+        # ---------------- Stage 4b: 1-Hop Sibling Chunk Window Expansion (Phase 3) ----------------
+        # When deep_context=True, synthesis_mode == 'generative', or context budget > 800 tokens,
+        # fetch immediate adjacent sibling chunks (chunk_index - 1, chunk_index + 1) for top chunks
+        # to prevent split definitions/numbered steps/code blocks from being fragmented across chunks.
+        if (deep_context or synthesis_mode == 'generative' or budget > 800) and reranked_candidates:
+            expanded_with_siblings = []
+            seen_cand_cids = {
+                str(c[1].id if isinstance(c, tuple) else c.get('chunk_id'))
+                for c in reranked_candidates
+            }
+            top_for_expansion = reranked_candidates[:6]
+            for cand_item in top_for_expansion:
+                chk_obj = cand_item[1] if isinstance(cand_item, tuple) else None
+                cand_dict = cand_item if isinstance(cand_item, dict) else None
+                c_id = str(getattr(chk_obj, 'id', '') or (cand_dict.get('chunk_id', '') if cand_dict else ''))
+                c_doc_id = str(getattr(getattr(chk_obj, 'document', None), 'id', '') or (cand_dict.get('document_id', '') if cand_dict else ''))
+                c_idx = getattr(chk_obj, 'chunk_index', None)
+                if c_idx is None and cand_dict:
+                    c_idx = cand_dict.get('chunk_index')
+                if c_idx is None and c_id and not c_id.startswith('missing-'):
+                    db_chunk = DocumentChunk.objects.filter(id=c_id).first()
+                    if db_chunk:
+                        c_idx = db_chunk.chunk_index
+                if c_idx is not None and c_doc_id:
+                    parent_score = cand_item[0] if isinstance(cand_item, tuple) else (cand_dict.get('score', 0.5) if cand_dict else 0.5)
+                    sibling_chunks = DocumentChunk.objects.filter(
+                        document_id=c_doc_id,
+                        chunk_index__in=[c_idx - 1, c_idx + 1]
+                    ).exclude(
+                        document__status__in=['quarantined', 'failed', 'deleted', 'uploaded', 'needs_review', 'queued']
+                    ).select_related('document', 'document_version')
+
+                    for sib in sibling_chunks:
+                        sib_id = str(sib.id)
+                        if sib_id not in seen_cand_cids:
+                            seen_cand_cids.add(sib_id)
+                            ver_num = sib.document_version.version_number if sib.document_version else sib.document.current_version_number
+                            sib_tokens = sib.token_count or len((sib.text or '').split())
+                            sib_score = round(float(parent_score) * 0.95, 4)
+                            expanded_with_siblings.append({
+                                'chunk_id': sib_id,
+                                'chunk_index': sib.chunk_index,
+                                'document_id': str(sib.document_id),
+                                'document_title': sib.document.canonical_title or sib.document.title,
+                                'document_code': sib.document.document_code or "",
+                                'document_type': sib.document.document_type,
+                                'document_version': ver_num,
+                                'page_number': sib.page_number,
+                                'heading_path': sib.heading_path,
+                                'section_identifier': sib.section_identifier or "",
+                                'governance_status': sib.document.governance_status or sib.document.status or "ready",
+                                'effective_from': sib.document.effective_from.isoformat() if sib.document.effective_from else "",
+                                'effective_to': sib.document.effective_to.isoformat() if sib.document.effective_to else "",
+                                'text': sib.text,
+                                'contextual_header': sib.contextual_header,
+                                'authority_level': sib.document.authority_level,
+                                'rrf_score': round(float(parent_score) * 0.90, 4),
+                                'score': sib_score,
+                                'token_count': sib_tokens,
+                                'graph_expanded': False,
+                                'is_sibling_expansion': True,
+                                'sibling_of_chunk_id': c_id,
+                                'candidate_ranks': {'vector_rank': 999, 'lexical_rank': 999},
+                                'fusion_params': {'k': float(rrf_k), 'rrf_score': round(float(parent_score) * 0.90, 4)},
+                                'retrieval_status': 'sibling_expanded'
+                            })
+            if expanded_with_siblings:
+                reranked_candidates = list(reranked_candidates) + expanded_with_siblings
+
+        # Phase 3 Per-Entity Quota Prioritization for Comparison Queries:
+        # Guarantee each compared entity gets its top chunks evaluated first into final_results
+        if getattr(analysis, 'compared_entities', None) and len(analysis.compared_entities) >= 2 and reranked_candidates:
+            entity_prioritized = []
+            remaining_cands = []
+            entity_chunk_counts = {e.lower().strip(): 0 for e in analysis.compared_entities}
+            for cand in reranked_candidates:
+                c_text = (cand.get('text') if isinstance(cand, dict) else getattr(cand[1], 'text', '') or '').lower()
+                c_heading = (cand.get('heading_path') if isinstance(cand, dict) else getattr(cand[1], 'heading_path', '') or '').lower()
+                matched_ent = None
+                for e_str, cnt in entity_chunk_counts.items():
+                    if cnt < 2 and (e_str in c_text or e_str in c_heading):
+                        matched_ent = e_str
+                        break
+                if matched_ent:
+                    entity_chunk_counts[matched_ent] += 1
+                    entity_prioritized.append(cand)
+                else:
+                    remaining_cands.append(cand)
+            reranked_candidates = entity_prioritized + remaining_cands
 
         # ---------------- Stage 5: Configurable Context Budgeting ----------------
         accumulated_tokens = 0
@@ -673,40 +816,57 @@ class HybridRetrievalService:
                 r_vec = c_ranks.get('vector_rank')
                 r_lex = c_ranks.get('lexical_rank')
 
-            # Requirement 4: Deduplicate identical and overlapping chunks while retaining strongest provenance
+            # Requirement 4 & Phase 3: Deduplicate identical and overlapping same-page chunks (e.g. SLANet table vs OCR text)
+            # keeping the richer/higher-scoring chunk while retaining strongest provenance
             clean_text_cand = re.sub(r'\s+', ' ', (text or '').lower().strip())
             cand_tokens = set(re.findall(r'\b\w{4,}\b', clean_text_cand))
             is_dup = False
-            for existing in final_results:
+            dup_existing_idx = None
+            for idx, existing in enumerate(final_results):
                 if existing.get('document_id') == doc_id or existing.get('document_title') == doc_title:
                     ex_clean = re.sub(r'\s+', ' ', (existing.get('text') or '').lower().strip())
                     # Distinct pages from the same document represent different sections/chapters
                     if existing.get('page_number') and page_num and existing.get('page_number') != page_num:
                         if clean_text_cand == ex_clean:
                             is_dup = True
+                            dup_existing_idx = idx
                             break
                         continue
                     if clean_text_cand[:60] == ex_clean[:60] and len(clean_text_cand) > 30:
                         is_dup = True
+                        dup_existing_idx = idx
+                        break
                     elif cand_tokens and len(cand_tokens) >= 5:
                         ex_tokens = set(re.findall(r'\b\w{4,}\b', ex_clean))
                         if ex_tokens:
                             inter = len(cand_tokens.intersection(ex_tokens))
                             union = len(cand_tokens.union(ex_tokens))
-                            if union > 0 and (inter / union) >= 0.75:
+                            min_len = min(len(cand_tokens), len(ex_tokens))
+                            norm_jaccard = (inter / union) if union > 0 else 0.0
+                            overlap_coeff = (inter / min_len) if min_len > 0 else 0.0
+                            if norm_jaccard >= 0.75 or overlap_coeff >= 0.75:
                                 is_dup = True
-                    if is_dup:
-                        # Retain the strongest source location and provenance (Requirement 4)
-                        if (existing.get('page_number') is None or existing.get('page_number') == 0) and page_num:
-                            existing['page_number'] = page_num
-                        if (not existing.get('heading_path') or existing.get('heading_path') == 'General') and heading_path:
-                            existing['heading_path'] = heading_path
-                        if auth_level > existing.get('authority_level', 0):
-                            existing['authority_level'] = auth_level
-                        break
-            if is_dup:
-                filtered_candidates[cid] = 'FILTERED_REDUNDANT_CHUNK_DEDUPLICATION'
-                continue
+                                dup_existing_idx = idx
+                                break
+
+            if is_dup and dup_existing_idx is not None:
+                existing = final_results[dup_existing_idx]
+                ex_score = existing.get('score', 0.0)
+                ex_tokens_cnt = existing.get('token_count', 0)
+                if (final_score > ex_score) or (final_score == ex_score and chk_tokens > ex_tokens_cnt):
+                    # Replace existing with richer/higher-scoring candidate
+                    accumulated_tokens = max(0, accumulated_tokens - ex_tokens_cnt)
+                    final_results.pop(dup_existing_idx)
+                else:
+                    # Retain the strongest source location and provenance (Requirement 4)
+                    if (existing.get('page_number') is None or existing.get('page_number') == 0) and page_num:
+                        existing['page_number'] = page_num
+                    if (not existing.get('heading_path') or existing.get('heading_path') == 'General') and heading_path:
+                        existing['heading_path'] = heading_path
+                    if auth_level > existing.get('authority_level', 0):
+                        existing['authority_level'] = auth_level
+                    filtered_candidates[cid] = 'FILTERED_REDUNDANT_CHUNK_DEDUPLICATION'
+                    continue
 
             if accumulated_tokens + chk_tokens > budget and final_results:
                 truncated_count += 1
@@ -1015,30 +1175,24 @@ class HybridRetrievalService:
             f"{[sq.id for sq in sub_queries]}"
         )
 
-        # Step 4: Execute sub-queries in parallel
+        # Step 4: Execute sub-queries in parallel (or synchronously in SQLite test environments)
         sub_results: List[MultiHopResult] = []
         sq_budget = max(4, limit // max(1, len(sub_queries)))
 
-        with ThreadPoolExecutor(max_workers=min(len(sub_queries), 4)) as executor:
-            future_to_sq = {}
+        from django.db import connection
+        if getattr(connection, 'vendor', '') == 'sqlite':
             for sq in sub_queries:
-                future = executor.submit(
-                    self._execute_sub_query,
-                    sq=sq,
-                    workspace_id=workspace_id,
-                    organization_id=organization_id,
-                    limit=sq_budget,
-                    user=user,
-                    user_role=user_role,
-                    as_of=as_of,
-                    **kwargs
-                )
-                future_to_sq[future] = sq
-
-            for future in as_completed(future_to_sq):
-                sq = future_to_sq[future]
                 try:
-                    chunks, mode, elapsed = future.result()
+                    chunks, mode, elapsed = self._execute_sub_query(
+                        sq=sq,
+                        workspace_id=workspace_id,
+                        organization_id=organization_id,
+                        limit=sq_budget,
+                        user=user,
+                        user_role=user_role,
+                        as_of=as_of,
+                        **kwargs
+                    )
                     sub_results.append(MultiHopResult(
                         sub_query=sq,
                         chunks=chunks,
@@ -1047,6 +1201,35 @@ class HybridRetrievalService:
                     ))
                 except Exception as e:
                     logger.warning(f"[MultiHop] Sub-query {sq.id} failed: {e}")
+        else:
+            with ThreadPoolExecutor(max_workers=min(len(sub_queries), 4)) as executor:
+                future_to_sq = {}
+                for sq in sub_queries:
+                    future = executor.submit(
+                        self._execute_sub_query,
+                        sq=sq,
+                        workspace_id=workspace_id,
+                        organization_id=organization_id,
+                        limit=sq_budget,
+                        user=user,
+                        user_role=user_role,
+                        as_of=as_of,
+                        **kwargs
+                    )
+                    future_to_sq[future] = sq
+
+                for future in as_completed(future_to_sq):
+                    sq = future_to_sq[future]
+                    try:
+                        chunks, mode, elapsed = future.result()
+                        sub_results.append(MultiHopResult(
+                            sub_query=sq,
+                            chunks=chunks,
+                            retrieval_mode=mode,
+                            total_ms=elapsed
+                        ))
+                    except Exception as e:
+                        logger.warning(f"[MultiHop] Sub-query {sq.id} failed: {e}")
 
         # Step 5: Fuse results with provenance tagging
         fused = self._fuse_multi_hop_results(sub_results, limit)

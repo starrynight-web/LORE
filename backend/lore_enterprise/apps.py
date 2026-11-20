@@ -37,10 +37,12 @@ class LoreEnterpriseConfig(AppConfig):
                 logger.debug(f"[PreWarm] Embedding pre-warm skipped/handled: {e}")
 
             try:
-                from apps.retrieval.reranking.neural import NeuralCrossEncoderReranker
-                reranker = NeuralCrossEncoderReranker()
-                reranker._ensure_loaded()
-                logger.info("[PreWarm] Neural cross-encoder reranker pre-warmed successfully.")
+                from django.conf import settings
+                if getattr(settings, 'RERANKER_BACKEND', 'heuristic') == 'neural' or getattr(settings, 'RERANKER_FORCE_CPU_NEURAL', False):
+                    from apps.retrieval.reranking.neural import NeuralCrossEncoderReranker
+                    reranker = NeuralCrossEncoderReranker()
+                    reranker._ensure_loaded()
+                    logger.info("[PreWarm] Neural cross-encoder reranker pre-warmed successfully.")
             except Exception as e:
                 logger.debug(f"[PreWarm] Neural reranker pre-warm skipped/handled: {e}")
 

@@ -38,7 +38,7 @@ class StructureAwareChunker:
             return False
 
         # Signal 1: Header/Footer or Heading contains explicit Table of Contents, Contents, or Index
-        for line in lines[:8] + (lines[-5:] if len(lines) > 8 else []):
+        for line in lines[:10] + (lines[-6:] if len(lines) > 10 else []):
             clean_l = re.sub(r'^[#\s*|_-]+', '', line).strip()
             if re.match(r'^(?:table of contents|contents|index)\b', clean_l, re.IGNORECASE):
                 return True
@@ -46,7 +46,10 @@ class StructureAwareChunker:
                 return True
 
         for line in lines:
-            if line.startswith('#') and re.search(r'\btable of contents\b', line, re.IGNORECASE):
+            clean_line = line.strip().lower()
+            if clean_line.startswith('#') and ('table of contents' in clean_line or 'contents' in clean_line):
+                return True
+            if 'table of contents' in clean_line:
                 return True
 
         # Signal 2: Standard dot-leader lines scanning
@@ -120,10 +123,13 @@ class StructureAwareChunker:
                 table_entry_count += 1
                 table_arabic_pages.append(found_num)
 
-        if table_entry_count >= 4 and len(table_arabic_pages) >= 4:
-            is_monotonic = all(table_arabic_pages[i] <= table_arabic_pages[i + 1] for i in range(len(table_arabic_pages) - 1))
-            has_progression = table_arabic_pages[-1] > table_arabic_pages[0] or (table_arabic_pages[-1] >= 1 and len(set(table_arabic_pages)) >= 2)
-            if is_monotonic and has_progression:
+        if table_entry_count >= 4:
+            if len(table_arabic_pages) >= 4:
+                inversions = sum(1 for i in range(len(table_arabic_pages) - 1) if table_arabic_pages[i] > table_arabic_pages[i+1])
+                has_progression = (table_arabic_pages[-1] >= table_arabic_pages[0]) or len(set(table_arabic_pages)) >= 2
+                if inversions <= 1 and has_progression:
+                    return True
+            else:
                 return True
 
         return False

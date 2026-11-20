@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Globe, 
-  RotateCw, 
-  CheckCircle2, 
-  AlertCircle, 
-  Server, 
-  Database, 
-  GitBranch, 
-  FileText, 
-  ShieldCheck, 
+import {
+  Globe,
+  RotateCw,
+  CheckCircle2,
+  AlertCircle,
+  Server,
+  Database,
+  GitBranch,
+  FileText,
+  ShieldCheck,
   ExternalLink,
   Layers,
   ArrowRight,
@@ -205,7 +205,7 @@ export const EnterpriseConnectorsView: React.FC<EnterpriseConnectorsViewProps> =
       </div>
 
       {statusMessage && (
-        <div 
+        <div
           className="p-3.5 rounded-xl border text-xs font-medium flex items-center gap-2"
           style={{
             backgroundColor: 'var(--accent-light)',
@@ -233,7 +233,7 @@ export const EnterpriseConnectorsView: React.FC<EnterpriseConnectorsViewProps> =
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div 
+                  <div
                     className="w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 bg-white dark:bg-zinc-900 shadow-xs"
                     style={{
                       borderColor: 'var(--border-color)',
@@ -242,20 +242,18 @@ export const EnterpriseConnectorsView: React.FC<EnterpriseConnectorsViewProps> =
                     {getConnectorLogo(c.id)}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span 
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        c.status === 'ONLINE' || c.status === 'CONNECTED'
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${c.status === 'ONLINE' || c.status === 'CONNECTED'
                           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                           : 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/20'
-                      }`}
+                        }`}
                     >
                       {c.status}
                     </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      c.freshness === 'FRESH' || c.freshness === 'ACTIVE'
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${c.freshness === 'FRESH' || c.freshness === 'ACTIVE'
                         ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
                         : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-                    }`}>
+                      }`}>
                       {c.freshness}
                     </span>
                   </div>
@@ -266,7 +264,7 @@ export const EnterpriseConnectorsView: React.FC<EnterpriseConnectorsViewProps> =
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">{c.category}</p>
                 </div>
 
-                <div 
+                <div
                   className="p-3 rounded-xl border text-xs space-y-1.5"
                   style={{
                     backgroundColor: 'var(--bg-surface-soft)',

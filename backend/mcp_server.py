@@ -110,27 +110,73 @@ def make_error_response(
 
 
 def resolve_workspace(
-    workspace_id: Optional[str] = None,
-    organization_id: Optional[str] = None
+    workspace_id: Optional[Union[str, uuid.UUID]] = None,
+    organization_id: Optional[Union[str, uuid.UUID]] = None,
+    workspace_name: Optional[str] = None
 ) -> Tuple[Optional[Workspace], Optional[str]]:
     """
     Validates tenant boundary and resolves target workspace.
+    Supports workspace_id (UUID or str), workspace_name, and smart default resolution
+    to the workspace with the highest count of stable/approved documents.
     Fails closed with structured error JSON if invalid or cross-tenant.
     """
+    ws = None
     if workspace_id:
+        ws_id_str = str(workspace_id).strip()
         try:
-            ws = Workspace.objects.filter(id=workspace_id).select_related('organization').first()
-        except Exception as ex:
-            return None, make_error_response("INVALID_ARGUMENT", f"Malformed workspace_id: '{workspace_id}' ({ex})", reason_code="INVALID_WORKSPACE_ID")
+            ws = Workspace.objects.filter(id=ws_id_str).select_related('organization').first()
+        except Exception:
+            # If workspace_id was not a valid UUID format, try lookup by name
+            ws = Workspace.objects.filter(name__iexact=ws_id_str).select_related('organization').first()
+            if not ws:
+                ws = Workspace.objects.filter(name__icontains=ws_id_str).select_related('organization').first()
         if not ws:
-            return None, make_error_response("RESOURCE_NOT_FOUND", f"Workspace with ID '{workspace_id}' does not exist.", reason_code="WORKSPACE_NOT_FOUND")
+            # In case UUID query returned None, also attempt lookup by name
+            ws = Workspace.objects.filter(name__iexact=ws_id_str).select_related('organization').first()
+            if not ws:
+                ws = Workspace.objects.filter(name__icontains=ws_id_str).select_related('organization').first()
+        if not ws:
+            return None, make_error_response("RESOURCE_NOT_FOUND", f"Workspace with ID or name '{workspace_id}' does not exist.", reason_code="WORKSPACE_NOT_FOUND")
+    elif workspace_name:
+        ws_name_str = str(workspace_name).strip()
+        ws = Workspace.objects.filter(name__iexact=ws_name_str).select_related('organization').first()
+        if not ws:
+            ws = Workspace.objects.filter(name__icontains=ws_name_str).select_related('organization').first()
+        if not ws:
+            return None, make_error_response("RESOURCE_NOT_FOUND", f"Workspace with name '{workspace_name}' does not exist.", reason_code="WORKSPACE_NOT_FOUND")
     else:
-        ws = Workspace.objects.filter(is_default=True).select_related('organization').first() or Workspace.objects.select_related('organization').first()
+        # Smart Default Workspace Resolution:
+        # Resolve to the workspace with highest count of stable/approved documents (ordered by most recent document update)
+        try:
+            from django.db.models import Count, Max, Q
+            candidate_ws = (
+                Workspace.objects.annotate(
+                    doc_count=Count(
+                        'documents',
+                        filter=Q(documents__status__in=['approved', 'ready', 'active', 'stable']) |
+                               Q(documents__governance_status__in=['approved', 'ready', 'active', 'stable'])
+                    ),
+                    latest_doc_update=Max('documents__updated_at')
+                )
+                .filter(doc_count__gt=0)
+                .order_by('-doc_count', '-latest_doc_update')
+                .select_related('organization')
+                .first()
+            )
+            ws = candidate_ws
+        except Exception as ws_ex:
+            logger.warning(f"Smart workspace resolution fallback: {ws_ex}")
+            ws = None
+
+        if not ws:
+            ws = Workspace.objects.filter(is_default=True).select_related('organization').first() or Workspace.objects.select_related('organization').first()
+
         if not ws:
             return None, make_error_response("RESOURCE_NOT_FOUND", "No active workspace found in LORE.", reason_code="WORKSPACE_NOT_FOUND")
 
     if organization_id and ws.organization:
-        if str(getattr(ws.organization, "id", "")) != organization_id:
+        org_id_str = str(organization_id).strip()
+        if str(getattr(ws.organization, "id", "")) != org_id_str:
             return None, make_error_response(
                 "PERMISSION_DENIED",
                 f"Workspace '{ws.id}' does not belong to organization '{organization_id}'. Cross-tenant access denied.",
@@ -190,6 +236,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "organization_id": {
                     "type": "string",
@@ -267,6 +317,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "organization_id": {
                     "type": "string",
                     "description": "Optional UUID of target organization."
@@ -331,6 +385,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "organization_id": {
                     "type": "string",
                     "description": "Optional UUID of target organization."
@@ -368,6 +426,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "scope": {
                     "type": "string",
@@ -433,6 +495,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "notes": {
                     "type": "string",
@@ -580,6 +646,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Maximum passages to retrieve (default: 6).",
@@ -610,6 +680,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "rule_code": {
                     "type": "string",
@@ -649,6 +723,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "context": {
                     "type": "object",
                     "description": "Optional dictionary of context, candidate citations, or notes."
@@ -672,6 +750,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "phase": {
                     "type": "string",
@@ -717,6 +799,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "organization_id": {
                     "type": "string",
@@ -793,6 +879,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "organization_id": {
                     "type": "string",
@@ -1044,6 +1134,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "organization_id": {
                     "type": "string",
                     "description": "Optional UUID of target organization."
@@ -1120,6 +1214,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "organization_id": {
                     "type": "string",
@@ -1205,6 +1303,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "organization_id": {
                     "type": "string",
                     "description": "Optional UUID of target organization."
@@ -1242,6 +1344,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "scope": {
                     "type": "string",
@@ -1307,6 +1413,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "notes": {
                     "type": "string",
@@ -1454,6 +1564,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Maximum passages to retrieve (default: 6).",
@@ -1484,6 +1598,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "rule_code": {
                     "type": "string",
@@ -1523,6 +1641,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional UUID of target workspace."
                 },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
+                },
                 "context": {
                     "type": "object",
                     "description": "Optional dictionary of context, candidate citations, or notes."
@@ -1546,6 +1668,10 @@ TOOLS_MANIFEST: List[Dict[str, Any]] = [
                 "workspace_id": {
                     "type": "string",
                     "description": "Optional UUID of target workspace."
+                },
+                "workspace_name": {
+                    "type": "string",
+                    "description": "Optional name of target workspace."
                 },
                 "phase": {
                     "type": "string",
@@ -1656,194 +1782,211 @@ def estimate_tokens(text: str) -> int:
 
 def handle_get_context(args: Dict[str, Any]) -> str:
     """Flagship governed context retrieval and 9-layer adjudication (lore.md §4 & §11)."""
-    raw_query = args.get("query") or args.get("intent") or args.get("task_intent") or ""
-    file_path = args.get("file_path", "")
+    try:
+        raw_query = args.get("query") or args.get("intent") or args.get("task_intent") or ""
+        file_path = args.get("file_path", "")
 
-    if not raw_query and file_path:
-        query = f"Rules and compliance requirements for {file_path}"
-    elif file_path and raw_query:
-        query = f"{raw_query} (file: {file_path})"
-    else:
-        query = str(raw_query).strip()
+        if not raw_query and file_path:
+            query = f"Rules and compliance requirements for {file_path}"
+        elif file_path and raw_query:
+            query = f"{raw_query} (file: {file_path})"
+        else:
+            query = str(raw_query).strip()
 
-    if not query:
-        return make_error_response("INVALID_ARGUMENT", "Either 'query' or 'file_path' and 'intent' must be provided.")
+        if not query:
+            return make_error_response("INVALID_ARGUMENT", "Either 'query' or 'file_path' and 'intent' must be provided.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
-    if err or not ws:
-        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+        ws, err = resolve_workspace(
+            workspace_id=args.get("workspace_id"),
+            organization_id=args.get("organization_id"),
+            workspace_name=args.get("workspace_name")
+        )
+        if err or not ws:
+            return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
-    limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=10)
+        limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=10)
 
-    groq_api_key = args.get("groq_api_key")
-    llm_model = args.get("llm_model", "gpt-oss-120B")
-    doc_id = args.get("document_id")
-    doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
-    if not doc_id and doc_title:
-        from apps.knowledge.models import SourceDocument
-        from django.db.models import Q
-        matched_doc = SourceDocument.objects.filter(
-            workspace=ws
-        ).filter(
-            Q(title__icontains=str(doc_title).strip()) |
-            Q(canonical_title__icontains=str(doc_title).strip()) |
-            Q(original_filename__icontains=str(doc_title).strip()) |
-            Q(document_code__iexact=str(doc_title).strip())
-        ).first()
-        if matched_doc:
-            doc_id = str(matched_doc.id)
+        groq_api_key = args.get("groq_api_key")
+        llm_model = args.get("llm_model", "gpt-oss-120B")
+        doc_id = args.get("document_id")
+        if doc_id is not None:
+            doc_id = str(doc_id).strip()
+        doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
+        if not doc_id and doc_title:
+            from apps.knowledge.models import SourceDocument
+            from django.db.models import Q
+            matched_doc = SourceDocument.objects.filter(
+                workspace=ws
+            ).filter(
+                Q(title__icontains=str(doc_title).strip()) |
+                Q(canonical_title__icontains=str(doc_title).strip()) |
+                Q(original_filename__icontains=str(doc_title).strip()) |
+                Q(document_code__iexact=str(doc_title).strip())
+            ).first()
+            if matched_doc:
+                doc_id = str(matched_doc.id)
 
-    as_of = args.get("as_of")
-    user_role = args.get("user_role", "member")
-    execution_mode = args.get("execution_mode")
-    synthesis_mode = args.get("synthesis_mode")
+        as_of = args.get("as_of")
+        user_role = args.get("user_role", "member")
+        execution_mode = args.get("execution_mode")
+        synthesis_mode = args.get("synthesis_mode")
 
-    # 1. Hybrid Retrieval through canonical service
-    retriever = HybridRetrievalService()
-    candidate_chunks = retriever.search(
-        query=query,
-        workspace_id=str(ws.id),
-        organization_id=get_organization_id(ws),
-        document_id=doc_id,
-        limit=limit,
-        context_budget_tokens=effective_max_tokens
-    )
+        # 1. Hybrid Retrieval through canonical service
+        retriever = HybridRetrievalService()
+        candidate_chunks = retriever.search(
+            query=query,
+            workspace_id=str(ws.id),
+            organization_id=get_organization_id(ws),
+            document_id=doc_id,
+            limit=limit,
+            context_budget_tokens=effective_max_tokens
+        )
 
-    # 2. Canonical 9-Layer Governance Adjudication
-    policy_context = {
-        "max_context_tokens": effective_max_tokens,
-        "deep_context": is_expanded,
-        "limit": limit,
-        "document_id": doc_id
-    }
-    envelope = EnterpriseGovernanceEngine.evaluate(
-        query=query,
-        retrieved_chunks=candidate_chunks,
-        workspace=ws,
-        user=None,
-        user_role=user_role,
-        as_of=as_of,
-        groq_api_key=groq_api_key,
-        llm_model=llm_model,
-        execution_mode=execution_mode,
-        synthesis_mode=synthesis_mode,
-        policy_context=policy_context,
-        zk_attestation=bool(args.get("zk_attestation", False))
-    )
+        # 2. Canonical 9-Layer Governance Adjudication
+        policy_context = {
+            "max_context_tokens": effective_max_tokens,
+            "deep_context": is_expanded,
+            "limit": limit,
+            "document_id": doc_id
+        }
+        envelope = EnterpriseGovernanceEngine.evaluate(
+            query=query,
+            retrieved_chunks=candidate_chunks,
+            workspace=ws,
+            user=None,
+            user_role=user_role,
+            as_of=as_of,
+            groq_api_key=groq_api_key,
+            llm_model=llm_model,
+            execution_mode=execution_mode,
+            synthesis_mode=synthesis_mode,
+            policy_context=policy_context,
+            zk_attestation=bool(args.get("zk_attestation", False))
+        )
 
-    envelope = sanitize_sensitive_data(envelope)
+        envelope = sanitize_sensitive_data(envelope)
 
-    max_passage_chars = 1200 if is_expanded else 400
-    envelope_citations = envelope.get("citations", [])
-    if doc_id:
-        envelope_citations = [
-            c for c in envelope_citations
-            if str(c.get("document_id") or "") == str(doc_id)
-        ]
-    max_citations_count = min(limit, 12) if is_expanded else 6
+        max_passage_chars = 1200 if is_expanded else 400
+        envelope_citations = envelope.get("citations", [])
+        if doc_id:
+            envelope_citations = [
+                c for c in envelope_citations
+                if str(c.get("document_id") or "") == str(doc_id)
+            ]
+        max_citations_count = min(limit, 12) if is_expanded else 6
 
-    citations_list = []
-    for c in envelope_citations[:max_citations_count]:
-        raw_p = c.get("passage") or c.get("shortest_passage") or ""
-        trunc_p = truncate_sentence_safe(raw_p, max_chars=max_passage_chars)
-        citations_list.append({
-            "document": c.get("document_title"),
-            "document_code": c.get("document_code"),
-            "page": c.get("page_number"),
-            "section": c.get("section") or c.get("heading_path"),
-            "passage": trunc_p,
-            "authority_rank": c.get("authority_level")
-        })
+        citations_list = []
+        for c in envelope_citations[:max_citations_count]:
+            raw_p = c.get("passage") or c.get("shortest_passage") or ""
+            trunc_p = truncate_sentence_safe(raw_p, max_chars=max_passage_chars)
+            citations_list.append({
+                "document": str(c.get("document_title") or ""),
+                "document_code": str(c.get("document_code") or ""),
+                "page": int(c.get("page_number") or 1),
+                "page_number": int(c.get("page_number") or 1),
+                "section": str(c.get("section") or c.get("heading_path") or ""),
+                "passage": trunc_p,
+                "authority_rank": int(c.get("authority_level") or 4)
+            })
 
-    # Pack evidence_passages greedily up to effective_max_tokens
-    evidence_passages = []
-    actual_packed_tokens = 0
+        # Pack evidence_passages greedily up to effective_max_tokens
+        evidence_passages = []
+        actual_packed_tokens = 0
 
-    potential_items = []
-    for c in envelope_citations:
-        potential_items.append({
-            "document": c.get("document_title"),
-            "page": c.get("page_number"),
-            "section": c.get("section") or c.get("heading_path"),
-            "authority_rank": c.get("authority_level"),
-            "score": float(c.get("score") or 1.0),
-            "text": c.get("passage") or c.get("shortest_passage") or ""
-        })
+        potential_items = []
+        for c in envelope_citations:
+            potential_items.append({
+                "document": str(c.get("document_title") or ""),
+                "page": int(c.get("page_number") or 1),
+                "page_number": int(c.get("page_number") or 1),
+                "section": str(c.get("section") or c.get("heading_path") or ""),
+                "authority_rank": int(c.get("authority_level") or 4),
+                "score": float(c.get("score") or 1.0),
+                "text": str(c.get("passage") or c.get("shortest_passage") or "")
+            })
 
-    if is_expanded:
-        for chk in candidate_chunks:
-            if chk.get("governance_status") in ("draft", "quarantined") or chk.get("status") in ("draft", "quarantined"):
+        if is_expanded:
+            for chk in candidate_chunks:
+                if chk.get("governance_status") in ("draft", "quarantined") or chk.get("status") in ("draft", "quarantined"):
+                    continue
+                if doc_id and str(chk.get("document_id")) != str(doc_id):
+                    continue
+                t = str(chk.get("document_title") or "")
+                p = int(chk.get("page_number") or 1)
+                s = str(chk.get("section") or chk.get("heading_path") or "")
+                if not any(it["document"] == t and it["page"] == p and it["section"] == s for it in potential_items):
+                    potential_items.append({
+                        "document": t,
+                        "page": p,
+                        "page_number": p,
+                        "section": s,
+                        "authority_rank": int(chk.get("authority_level") or 4),
+                        "score": float(chk.get("score") or 0.0),
+                        "text": str(chk.get("text") or chk.get("content") or "")
+                    })
+
+        for item in potential_items:
+            raw_text = item["text"]
+            clean_text = truncate_sentence_safe(raw_text, max_chars=max_passage_chars)
+            if not clean_text:
                 continue
-            if doc_id and str(chk.get("document_id")) != str(doc_id):
-                continue
-            t = chk.get("document_title")
-            p = chk.get("page_number")
-            s = chk.get("section") or chk.get("heading_path")
-            if not any(it["document"] == t and it["page"] == p and it["section"] == s for it in potential_items):
-                potential_items.append({
-                    "document": t,
-                    "page": p,
-                    "section": s,
-                    "authority_rank": chk.get("authority_level", 4),
-                    "score": float(chk.get("score") or 0.0),
-                    "text": chk.get("text") or chk.get("content") or ""
-                })
-
-    for item in potential_items:
-        raw_text = item["text"]
-        clean_text = truncate_sentence_safe(raw_text, max_chars=max_passage_chars)
-        if not clean_text:
-            continue
-        toks = estimate_tokens(clean_text)
-        if evidence_passages and (actual_packed_tokens + toks > effective_max_tokens):
-            if not is_expanded or actual_packed_tokens + 20 > effective_max_tokens:
-                break
-            continue
-        if not evidence_passages and toks > effective_max_tokens:
-            clean_text = truncate_sentence_safe(clean_text, max_chars=effective_max_tokens * 3)
             toks = estimate_tokens(clean_text)
+            if evidence_passages and (actual_packed_tokens + toks > effective_max_tokens):
+                if not is_expanded or actual_packed_tokens + 20 > effective_max_tokens:
+                    break
+                continue
+            if not evidence_passages and toks > effective_max_tokens:
+                clean_text = truncate_sentence_safe(clean_text, max_chars=effective_max_tokens * 3)
+                toks = estimate_tokens(clean_text)
 
-        evidence_passages.append({
-            "document": item["document"],
-            "page": item["page"],
-            "section": item["section"],
-            "authority_rank": item["authority_rank"],
-            "score": item["score"],
-            "text": clean_text
-        })
-        actual_packed_tokens += toks
-        if actual_packed_tokens >= effective_max_tokens:
-            break
+            evidence_passages.append({
+                "document": item["document"],
+                "page": item["page"],
+                "section": item["section"],
+                "authority_rank": item["authority_rank"],
+                "score": item["score"],
+                "text": clean_text
+            })
+            actual_packed_tokens += toks
+            if actual_packed_tokens >= effective_max_tokens:
+                break
 
-    result_json = {
-        "schema": envelope.get("schema", "lore.result/2"),
-        "status": envelope.get("state"),
-        "directive": envelope.get("directive"),
-        "answer": envelope.get("answer"),
-        "decision_type": envelope.get("decision_type"),
-        "escalation_target": envelope.get("escalation_target"),
-        "evidence_missing": envelope.get("evidence_missing", []),
-        "conflicts_resolved": envelope.get("conflicts_resolved", []),
-        "exceptions_applied": envelope.get("exceptions_applied", []),
-        "layers_breakdown": envelope.get("layers_breakdown", {}),
-        "llm_provider": envelope.get("llm_provider"),
-        "llm_model": envelope.get("llm_model"),
-        "anti_hallucination_active": True,
-        "citations_count": len(citations_list),
-        "retrieval_degraded": envelope.get("retrieval_degraded", False),
-        "execution_mode": envelope.get("execution_mode"),
-        "was_deterministic": envelope.get("was_deterministic", True),
-        "bundle_hash": envelope.get("bundle_hash"),
-        "zk_attestation": envelope.get("zk_attestation"),
-        "token_budget_applied": effective_max_tokens,
-        "tokens_returned": actual_packed_tokens,
-        "context_mode": "expanded" if is_expanded else "standard",
-        "evidence_passages": evidence_passages,
-        "citations": citations_list,
-        "trace_id": envelope.get("trace_id")
-    }
+        result_json = {
+            "schema": str(envelope.get("schema", "lore.result/2")),
+            "status": str(envelope.get("state") or ""),
+            "directive": str(envelope.get("directive") or ""),
+            "answer": str(envelope.get("answer") or ""),
+            "decision_type": str(envelope.get("decision_type") or ""),
+            "escalation_target": envelope.get("escalation_target"),
+            "evidence_missing": envelope.get("evidence_missing", []),
+            "conflicts_resolved": envelope.get("conflicts_resolved", []),
+            "exceptions_applied": envelope.get("exceptions_applied", []),
+            "layers_breakdown": envelope.get("layers_breakdown", {}),
+            "llm_provider": envelope.get("llm_provider"),
+            "llm_model": envelope.get("llm_model"),
+            "anti_hallucination_active": True,
+            "citations_count": int(len(citations_list)),
+            "retrieval_degraded": bool(envelope.get("retrieval_degraded", False)),
+            "execution_mode": envelope.get("execution_mode"),
+            "was_deterministic": bool(envelope.get("was_deterministic", True)),
+            "bundle_hash": envelope.get("bundle_hash"),
+            "zk_attestation": envelope.get("zk_attestation"),
+            "token_budget_applied": int(effective_max_tokens),
+            "tokens_returned": int(actual_packed_tokens),
+            "context_mode": "expanded" if is_expanded else "standard",
+            "evidence_passages": evidence_passages,
+            "citations": citations_list,
+            "trace_id": str(envelope.get("trace_id") or "")
+        }
 
-    return json.dumps(result_json, indent=2, ensure_ascii=False)
+        return json.dumps(result_json, indent=2, ensure_ascii=False, default=str)
+    except Exception as ex:
+        logger.error(f"Error executing handle_get_context: {ex}\n{traceback.format_exc()}")
+        return make_error_response(
+            "INTERNAL_ERROR",
+            f"Error executing lore.get_context: {ex}",
+            reason_code="CONTEXT_EXECUTION_EXCEPTION"
+        )
 
 
 def handle_search(args: Dict[str, Any]) -> str:
@@ -1851,122 +1994,140 @@ def handle_search(args: Dict[str, Any]) -> str:
     Hybrid vector + lexical search across enterprise knowledge.
     Distinguishes raw un-adjudicated candidate passages from governed decisions.
     """
-    raw_query = args.get("query") or args.get("intent") or args.get("task_intent") or ""
-    query = str(raw_query).strip()
-    if not query:
-        return make_error_response("INVALID_ARGUMENT", "The 'query' parameter cannot be empty.")
+    try:
+        raw_query = args.get("query") or args.get("intent") or args.get("task_intent") or ""
+        query = str(raw_query).strip()
+        if not query:
+            return make_error_response("INVALID_ARGUMENT", "The 'query' parameter cannot be empty.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
-    if err or not ws:
-        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+        ws, err = resolve_workspace(
+            workspace_id=args.get("workspace_id"),
+            organization_id=args.get("organization_id"),
+            workspace_name=args.get("workspace_name")
+        )
+        if err or not ws:
+            return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
-    limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=6)
+        limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=6)
 
-    doc_id = args.get("document_id")
-    doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
-    if not doc_id and doc_title:
-        from apps.knowledge.models import SourceDocument
-        from django.db.models import Q
-        matched_doc = SourceDocument.objects.filter(
-            workspace=ws
-        ).filter(
-            Q(title__icontains=str(doc_title).strip()) |
-            Q(canonical_title__icontains=str(doc_title).strip()) |
-            Q(original_filename__icontains=str(doc_title).strip()) |
-            Q(document_code__iexact=str(doc_title).strip())
-        ).first()
-        if matched_doc:
-            doc_id = str(matched_doc.id)
+        doc_id = args.get("document_id")
+        if doc_id is not None:
+            doc_id = str(doc_id).strip()
+        doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
+        if not doc_id and doc_title:
+            from apps.knowledge.models import SourceDocument
+            from django.db.models import Q
+            matched_doc = SourceDocument.objects.filter(
+                workspace=ws
+            ).filter(
+                Q(title__icontains=str(doc_title).strip()) |
+                Q(canonical_title__icontains=str(doc_title).strip()) |
+                Q(original_filename__icontains=str(doc_title).strip()) |
+                Q(document_code__iexact=str(doc_title).strip())
+            ).first()
+            if matched_doc:
+                doc_id = str(matched_doc.id)
 
-    unverified = bool(args.get("unverified", False))
-    output_format = args.get("output_format", "text").lower()
+        unverified = bool(args.get("unverified", False))
+        output_format = str(args.get("output_format", "text")).lower()
 
-    retriever = HybridRetrievalService()
-    results = retriever.search(
-        query=query,
-        workspace_id=str(ws.id),
-        organization_id=get_organization_id(ws),
-        document_id=doc_id,
-        limit=limit,
-        context_budget_tokens=effective_max_tokens
-    )
-
-    # Exclude quarantined or draft documents unless specifically requested
-    if not unverified:
-        results = [
-            r for r in results
-            if r.get("status") not in ("quarantined", "draft")
-        ]
-
-    # Clean any secrets from text
-    results = sanitize_sensitive_data(results)
-
-    max_chars_per_passage = min(1400, max(350, (effective_max_tokens * 4) // max(1, len(results)))) if results else 350
-
-    if output_format == "json":
-        passages_list = []
-        actual_returned_tokens = 0
-        for i, r in enumerate(results, 1):
-            clean_text = truncate_sentence_safe(r.get("text") or "", max_chars=max_chars_per_passage)
-            toks = estimate_tokens(clean_text)
-            actual_returned_tokens += toks
-            passages_list.append({
-                "rank": i,
-                "document_title": r.get("document_title"),
-                "page_number": r.get("page_number"),
-                "score": r.get("score"),
-                "authority_level": r.get("authority_level"),
-                "text": clean_text
-            })
-
-        payload = {
-            "schema": "lore.search_results/1",
-            "is_governed_decision": False,
-            "governance_status": "ungoverned_informational_retrieval",
-            "warning": (
-                "Raw search results are un-adjudicated candidate passages and CANNOT be used as an "
-                "authoritative governance decision. For governed decisions, evaluate with lore.get_context "
-                "or lore.check_compliance."
-            ),
-            "query": query,
-            "workspace_id": str(ws.id),
-            "workspace_name": ws.name,
-            "token_budget_applied": effective_max_tokens,
-            "tokens_returned": actual_returned_tokens,
-            "context_mode": "expanded" if is_expanded else "standard",
-            "total_passages": len(results),
-            "passages": passages_list
-        }
-        return json.dumps(payload, indent=2, ensure_ascii=False)
-
-    # Default Text output (Preserves backward compatibility with CLI/agents)
-    if not results:
-        diag = retriever.last_diagnostics
-        mode_note = f" (retrieval mode: {diag.get('retrieval_mode', 'hybrid')})" if diag else ""
-        return sanitize_sensitive_data(f"Zero passages found matching '{query}' in workspace '{ws.name}'{mode_note}.")
-
-    output_lines = [
-        f"### LORE Hybrid Search Results ({len(results)} passages reranked)",
-        f"Workspace: {ws.name} ({ws.id})",
-        "> [!] **Ungoverned Informational Retrieval**: Raw search results are candidate passages only "
-        "and have not undergone 9-layer governance verification (permissions, temporal validity, "
-        "conflict resolution, evidence sufficiency). Do not execute high-impact actions without "
-        "evaluating through `lore.get_context` or `lore.check_compliance`.\n"
-    ]
-
-    diag = retriever.last_diagnostics
-    if diag and diag.get('retrieval_mode') == 'degraded_lexical_only':
-        output_lines.append("> [!] **Degraded Mode**: Vector store is unavailable. Operating under lexical-only fallback.\n")
-
-    for i, r in enumerate(results, 1):
-        clean_text = truncate_sentence_safe(r.get('text', ''), max_chars=max_chars_per_passage)
-        output_lines.append(
-            f"**[{i}] {r.get('document_title')}** (Page {r.get('page_number')}, Score: {r.get('score')}, Auth Rank: {r.get('authority_level')})\n"
-            f"> {clean_text}...\n"
+        retriever = HybridRetrievalService()
+        results = retriever.search(
+            query=query,
+            workspace_id=str(ws.id),
+            organization_id=get_organization_id(ws),
+            document_id=doc_id,
+            limit=limit,
+            context_budget_tokens=effective_max_tokens,
+            deep_context=is_expanded
         )
 
-    return sanitize_sensitive_data("\n".join(output_lines))
+        # Exclude quarantined or draft documents unless specifically requested
+        if not unverified:
+            results = [
+                r for r in results
+                if r.get("status") not in ("quarantined", "draft") and
+                   r.get("governance_status") not in ("quarantined", "draft")
+            ]
 
+        # Clean any secrets from text
+        results = sanitize_sensitive_data(results)
+
+        max_chars_per_passage = min(1400, max(350, (effective_max_tokens * 4) // max(1, len(results)))) if results else 350
+
+        if output_format == "json":
+            passages_list = []
+            actual_returned_tokens = 0
+            for i, r in enumerate(results, 1):
+                clean_text = truncate_sentence_safe(r.get("text") or "", max_chars=max_chars_per_passage)
+                toks = estimate_tokens(clean_text)
+                actual_returned_tokens += toks
+                passages_list.append({
+                    "rank": int(i),
+                    "document_id": str(r.get("document_id") or ""),
+                    "chunk_id": str(r.get("chunk_id") or r.get("id") or ""),
+                    "rule_id": str(r.get("rule_id") or ""),
+                    "document_title": str(r.get("document_title") or ""),
+                    "page_number": int(r.get("page_number") or 1),
+                    "score": float(r.get("score") or 0.0),
+                    "authority_level": int(r.get("authority_level") or 4),
+                    "text": clean_text
+                })
+
+            payload = {
+                "schema": "lore.search_results/1",
+                "is_governed_decision": False,
+                "governance_status": "ungoverned_informational_retrieval",
+                "warning": (
+                    "Raw search results are un-adjudicated candidate passages and CANNOT be used as an "
+                    "authoritative governance decision. For governed decisions, evaluate with lore.get_context "
+                    "or lore.check_compliance."
+                ),
+                "query": query,
+                "workspace_id": str(ws.id),
+                "workspace_name": ws.name,
+                "token_budget_applied": int(effective_max_tokens),
+                "tokens_returned": int(actual_returned_tokens),
+                "context_mode": "expanded" if is_expanded else "standard",
+                "total_passages": int(len(results)),
+                "passages": passages_list
+            }
+            return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+
+        # Default Text output (Preserves backward compatibility with CLI/agents)
+        if not results:
+            diag = retriever.last_diagnostics
+            mode_note = f" (retrieval mode: {diag.get('retrieval_mode', 'hybrid')})" if diag else ""
+            return sanitize_sensitive_data(f"Zero passages found matching '{query}' in workspace '{ws.name}'{mode_note}.")
+
+        output_lines = [
+            f"### LORE Hybrid Search Results ({len(results)} passages reranked)",
+            f"Workspace: {ws.name} ({ws.id})",
+            "> [!] **Ungoverned Informational Retrieval**: Raw search results are candidate passages only "
+            "and have not undergone 9-layer governance verification (permissions, temporal validity, "
+            "conflict resolution, evidence sufficiency). Do not execute high-impact actions without "
+            "evaluating through `lore.get_context` or `lore.check_compliance`.\n"
+        ]
+
+        diag = retriever.last_diagnostics
+        if diag and diag.get('retrieval_mode') == 'degraded_lexical_only':
+            output_lines.append("> [!] **Degraded Mode**: Vector store is unavailable. Operating under lexical-only fallback.\n")
+
+        for i, r in enumerate(results, 1):
+            clean_text = truncate_sentence_safe(r.get('text', ''), max_chars=max_chars_per_passage)
+            output_lines.append(
+                f"**[{i}] {r.get('document_title')}** (Page {r.get('page_number')}, Score: {r.get('score')}, Auth Rank: {r.get('authority_level')})\n"
+                f"> {clean_text}...\n"
+            )
+
+        return sanitize_sensitive_data("\n".join(output_lines))
+    except Exception as ex:
+        logger.error(f"Error executing handle_search: {ex}\n{traceback.format_exc()}")
+        return make_error_response(
+            "INTERNAL_ERROR",
+            f"Error executing lore.search: {ex}",
+            reason_code="SEARCH_EXECUTION_EXCEPTION"
+        )
 
 
 def handle_standard_search(args: Dict[str, Any]) -> str:
@@ -1974,80 +2135,98 @@ def handle_standard_search(args: Dict[str, Any]) -> str:
     ChatGPT Deep Research & Pro Connector standard search tool.
     Returns JSON structure: {"results": [{"id": ..., "title": ..., "text": ..., "url": ...}]}
     """
-    raw_query = args.get("query") or args.get("intent") or ""
-    query = str(raw_query).strip()
-    if not query:
-        return make_error_response("INVALID_ARGUMENT", "The 'query' parameter cannot be empty.")
+    try:
+        raw_query = args.get("query") or args.get("intent") or ""
+        query = str(raw_query).strip()
+        if not query:
+            return make_error_response("INVALID_ARGUMENT", "The 'query' parameter cannot be empty.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
-    if err or not ws:
-        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+        ws, err = resolve_workspace(
+            workspace_id=args.get("workspace_id"),
+            organization_id=args.get("organization_id"),
+            workspace_name=args.get("workspace_name")
+        )
+        if err or not ws:
+            return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
-    limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=6)
+        limit, effective_max_tokens, is_expanded = resolve_mcp_token_budget(args, default_limit=6)
 
-    doc_id = args.get("document_id")
-    doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
-    if not doc_id and doc_title:
-        from apps.knowledge.models import SourceDocument
-        from django.db.models import Q
-        matched_doc = SourceDocument.objects.filter(
-            workspace=ws
-        ).filter(
-            Q(title__icontains=str(doc_title).strip()) |
-            Q(canonical_title__icontains=str(doc_title).strip()) |
-            Q(original_filename__icontains=str(doc_title).strip()) |
-            Q(document_code__iexact=str(doc_title).strip())
-        ).first()
-        if matched_doc:
-            doc_id = str(matched_doc.id)
+        doc_id = args.get("document_id")
+        if doc_id is not None:
+            doc_id = str(doc_id).strip()
+        doc_title = args.get("document_title") or args.get("focus_files") or args.get("focus_file")
+        if not doc_id and doc_title:
+            from apps.knowledge.models import SourceDocument
+            from django.db.models import Q
+            matched_doc = SourceDocument.objects.filter(
+                workspace=ws
+            ).filter(
+                Q(title__icontains=str(doc_title).strip()) |
+                Q(canonical_title__icontains=str(doc_title).strip()) |
+                Q(original_filename__icontains=str(doc_title).strip()) |
+                Q(document_code__iexact=str(doc_title).strip())
+            ).first()
+            if matched_doc:
+                doc_id = str(matched_doc.id)
 
-    retriever = HybridRetrievalService()
-    results = retriever.search(
-        query=query,
-        workspace_id=str(ws.id),
-        organization_id=get_organization_id(ws),
-        document_id=doc_id,
-        limit=limit,
-        context_budget_tokens=effective_max_tokens
-    )
-    # Exclude quarantined or draft documents
-    results = [
-        r for r in results
-        if r.get("status") not in ("quarantined", "draft")
-    ]
-    results = sanitize_sensitive_data(results)
+        retriever = HybridRetrievalService()
+        results = retriever.search(
+            query=query,
+            workspace_id=str(ws.id),
+            organization_id=get_organization_id(ws),
+            document_id=doc_id,
+            limit=limit,
+            context_budget_tokens=effective_max_tokens,
+            deep_context=is_expanded
+        )
+        # Exclude quarantined or draft documents
+        results = [
+            r for r in results
+            if r.get("status") not in ("quarantined", "draft") and
+               r.get("governance_status") not in ("quarantined", "draft")
+        ]
+        results = sanitize_sensitive_data(results)
 
-    max_chars_per_passage = min(1400, max(350, (effective_max_tokens * 4) // max(1, len(results)))) if results else 350
+        max_chars_per_passage = min(1400, max(350, (effective_max_tokens * 4) // max(1, len(results)))) if results else 350
 
-    standard_results = []
-    actual_returned_tokens = 0
-    for r in results:
-        r_id = str(r.get("chunk_id") or r.get("document_id") or r.get("id") or "")
-        title = r.get("document_title") or r.get("title") or "LORE Document"
-        raw_text = r.get("content") or r.get("text") or ""
-        clean_text = truncate_sentence_safe(raw_text, max_chars=max_chars_per_passage)
-        url = f"lore://document/{r.get('document_id', r_id)}"
-        toks = estimate_tokens(clean_text)
-        actual_returned_tokens += toks
-        standard_results.append({
-            "id": r_id,
-            "title": title,
-            "text": clean_text,
-            "url": url,
-            "metadata": {
-                "authority_level": r.get("authority_level", 4),
-                "score": r.get("score", 1.0),
-                "page_number": r.get("page_number", 1)
-            }
-        })
+        standard_results = []
+        actual_returned_tokens = 0
+        for r in results:
+            r_id = str(r.get("chunk_id") or r.get("document_id") or r.get("id") or "")
+            title = str(r.get("document_title") or r.get("title") or "LORE Document")
+            raw_text = r.get("content") or r.get("text") or ""
+            clean_text = truncate_sentence_safe(raw_text, max_chars=max_chars_per_passage)
+            url = f"lore://document/{r.get('document_id', r_id)}"
+            toks = estimate_tokens(clean_text)
+            actual_returned_tokens += toks
+            standard_results.append({
+                "id": str(r_id),
+                "title": title,
+                "text": clean_text,
+                "url": url,
+                "metadata": {
+                    "document_id": str(r.get("document_id") or ""),
+                    "chunk_id": str(r.get("chunk_id") or r_id),
+                    "authority_level": int(r.get("authority_level") or 4),
+                    "score": float(r.get("score") or 1.0),
+                    "page_number": int(r.get("page_number") or 1)
+                }
+            })
 
-    payload = {
-        "results": standard_results,
-        "token_budget_applied": effective_max_tokens,
-        "tokens_returned": actual_returned_tokens,
-        "context_mode": "expanded" if is_expanded else "standard"
-    }
-    return json.dumps(payload, indent=2, ensure_ascii=False)
+        payload = {
+            "results": standard_results,
+            "token_budget_applied": int(effective_max_tokens),
+            "tokens_returned": int(actual_returned_tokens),
+            "context_mode": "expanded" if is_expanded else "standard"
+        }
+        return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+    except Exception as ex:
+        logger.error(f"Error executing handle_standard_search: {ex}\n{traceback.format_exc()}")
+        return make_error_response(
+            "INTERNAL_ERROR",
+            f"Error executing search: {ex}",
+            reason_code="SEARCH_EXECUTION_EXCEPTION"
+        )
 
 
 def handle_fetch(args: Dict[str, Any]) -> str:
@@ -2958,36 +3137,48 @@ def handle_get_skill(args: Dict[str, Any]) -> str:
 
 def handle_list_documents(args: Dict[str, Any]) -> str:
     """Lists all accessible workspace documents (lore.md §11)."""
-    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
-    if err or not ws:
-        return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
+    try:
+        ws, err = resolve_workspace(
+            workspace_id=args.get("workspace_id"),
+            organization_id=args.get("organization_id"),
+            workspace_name=args.get("workspace_name")
+        )
+        if err or not ws:
+            return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
-    from apps.knowledge.models import SourceDocument
-    docs = SourceDocument.objects.filter(workspace=ws).exclude(
-        status__in=['quarantined', 'failed', 'deleted']
-    ).order_by('-authority_level', 'title')
+        from apps.knowledge.models import SourceDocument
+        docs = SourceDocument.objects.filter(workspace=ws).exclude(
+            status__in=['quarantined', 'failed', 'deleted']
+        ).order_by('-authority_level', 'title')
 
-    doc_list = []
-    for d in docs:
-        doc_list.append({
-            "document_id": str(d.id),
-            "title": d.canonical_title or d.title,
-            "document_code": d.document_code or "",
-            "document_type": d.document_type,
-            "page_count": getattr(d, 'page_count', 0) or 0,
-            "status": d.status,
-            "governance_status": d.governance_status or d.status,
-            "authority_level": d.authority_level
-        })
+        doc_list = []
+        for d in docs:
+            doc_list.append({
+                "document_id": str(d.id),
+                "title": str(d.canonical_title or d.title or ""),
+                "document_code": str(d.document_code or ""),
+                "document_type": str(d.document_type or ""),
+                "page_count": int(getattr(d, 'page_count', 0) or 0),
+                "status": str(d.status or ""),
+                "governance_status": str(d.governance_status or d.status or ""),
+                "authority_level": int(d.authority_level or 4)
+            })
 
-    payload = {
-        "schema": "lore.documents/1",
-        "workspace_id": str(ws.id),
-        "workspace_name": ws.name,
-        "count": len(doc_list),
-        "documents": doc_list
-    }
-    return json.dumps(payload, indent=2, ensure_ascii=False)
+        payload = {
+            "schema": "lore.documents/1",
+            "workspace_id": str(ws.id),
+            "workspace_name": ws.name,
+            "count": len(doc_list),
+            "documents": doc_list
+        }
+        return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+    except Exception as ex:
+        logger.error(f"Error executing handle_list_documents: {ex}\n{traceback.format_exc()}")
+        return make_error_response(
+            "INTERNAL_ERROR",
+            f"Error executing lore.list_documents: {ex}",
+            reason_code="LIST_DOCUMENTS_EXCEPTION"
+        )
 
 
 def handle_get_document(args: Dict[str, Any]) -> str:
@@ -3338,6 +3529,9 @@ def execute_tool(name: str, arguments: Dict[str, Any]) -> str:
         )
 
 
+call_tool = execute_tool
+
+
 def dispatch_jsonrpc_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Core JSON-RPC 2.0 message dispatcher shared across stdio and Streamable HTTP.
@@ -3374,7 +3568,11 @@ def dispatch_jsonrpc_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         elif method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
-            tool_result = execute_tool(tool_name, tool_args)
+            try:
+                tool_result = execute_tool(tool_name, tool_args)
+            except Exception as e_call:
+                logger.error(f"Error executing {tool_name}: {e_call}\n{traceback.format_exc()}")
+                tool_result = make_error_response("INTERNAL_ERROR", f"Error executing {tool_name}: {e_call}")
 
             # Check if tool_result represents an error envelope
             is_err = False

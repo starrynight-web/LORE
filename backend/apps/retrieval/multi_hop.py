@@ -79,9 +79,13 @@ class QueryDecomposer:
     
     @classmethod
     def is_compound_query(cls, query: str) -> bool:
-        """Detect if a query contains multiple independent sub-questions."""
+        """Detect if a query contains multiple independent sub-questions or comparison entities."""
         q_lower = query.lower()
         
+        # Check for comparison queries with multiple entities
+        if any(w in q_lower for w in ['compare', 'difference between', ' vs ', ' versus ', ' vs. ']):
+            return True
+
         # Check compound patterns
         for pattern in cls.COMPOUND_PATTERNS:
             if re.search(pattern, q_lower):
@@ -136,6 +140,31 @@ class QueryDecomposer:
                 role_label="primary"
             )]
         
+        # Strategy 0: Comparison query decomposition by entity
+        if base_analysis.compared_entities and len(base_analysis.compared_entities) >= 2:
+            comp_sub_queries = []
+            for i, ent in enumerate(base_analysis.compared_entities):
+                ent_clean = ent.strip()
+                ent_text = ent_clean
+                for acr, full_exp in QueryUnderstandingService.TECHNICAL_ACRONYMS.items():
+                    if acr == ent_clean.lower():
+                        ent_text = f"{ent_clean} {full_exp}"
+                        break
+                    elif full_exp == ent_clean.lower():
+                        ent_text = f"{ent_clean} {acr.upper()}"
+                        break
+
+                comp_sub_queries.append(SubQuery(
+                    id=f"sub_{chr(65+i)}_comp_{ent_clean[:12].replace(' ', '_')}",
+                    text=ent_text,
+                    domain="comparison",
+                    target_doc_codes=base_analysis.all_target_doc_codes,
+                    companion_docs=base_analysis.required_companion_docs,
+                    role_label=ent_clean
+                ))
+            if comp_sub_queries:
+                return comp_sub_queries
+
         sub_queries = []
         q_lower = query.lower()
         

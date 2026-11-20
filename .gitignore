@@ -35,10 +35,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.sqlite3
-graphify-out/cache/
+sqlite_storage/
+kuzu_data/
 backend/media/
+media/
 backend/staticfiles/
 backend/qdrant_storage/
+qdrant_storage/
 backend/backups/
 backend/distillation_data/
 backend/release_gate_failure_report.md
@@ -48,6 +51,11 @@ backend/.venv/
 .pytest_cache/
 .coverage
 htmlcov/
+*.log
+
+# Graphify
+graphify-out/cache/
+graphify-out/
 
 # Node & Next.js
 node_modules/

@@ -182,6 +182,42 @@ class HeuristicReranker(BaseReranker):
             if sec_id and any(t in sec_id for t in eval_q_tokens):
                 header_bonus += 0.15
 
+            # 4b. Phase 2 High-Salience Rare Term, Technical Identifier, and Quoted Phrase Boost
+            salience_heading_bonus = 0.0
+            salience_text_bonus = 0.0
+            exact_salience_hits = 0
+
+            salience_targets = set()
+            if getattr(analysis, 'quoted_phrases', None):
+                for qp in analysis.quoted_phrases:
+                    if len(qp.strip()) > 2:
+                        salience_targets.add(qp.lower().strip())
+            if getattr(analysis, 'technical_terms', None):
+                for tt in analysis.technical_terms:
+                    if len(tt.strip()) > 2:
+                        salience_targets.add(tt.lower().strip())
+            if getattr(analysis, 'high_salience_terms', None):
+                for st in analysis.high_salience_terms:
+                    if len(st.strip()) > 2:
+                        salience_targets.add(st.lower().strip())
+
+            # Heading boost: +0.35 when heading_path, contextual_header or section_identifier contains rare/quoted term
+            chunk_headings = f"{heading} {sec_id} {header}".lower()
+            for st in salience_targets:
+                if st in chunk_headings:
+                    salience_heading_bonus = 0.35
+                    exact_salience_hits += 2
+                    break
+
+            # Text boost: +0.25 per distinct rare/quoted term matched in chunk text (capped at +0.50)
+            distinct_text_matches = 0
+            for st in salience_targets:
+                if st in text:
+                    distinct_text_matches += 1
+                    exact_salience_hits += 1
+            if distinct_text_matches > 0:
+                salience_text_bonus = min(0.50, round(distinct_text_matches * 0.25, 2))
+
             # 5. Document Target alignment bonus
             doc_match_bonus = 0.0
             if doc_code_targets:
@@ -300,6 +336,8 @@ class HeuristicReranker(BaseReranker):
                 (0.30 * token_coverage) +
                 phrase_bonus +
                 header_bonus +
+                salience_heading_bonus +
+                salience_text_bonus +
                 doc_match_bonus +
                 section_bonus +
                 version_bonus +
@@ -322,6 +360,9 @@ class HeuristicReranker(BaseReranker):
                 'phrase_match': phrase_bonus > 0,
                 'phrase_bonus': round(phrase_bonus, 2),
                 'header_bonus': round(header_bonus, 2),
+                'salience_heading_bonus': round(salience_heading_bonus, 2),
+                'salience_text_bonus': round(salience_text_bonus, 2),
+                'exact_salience_hits': exact_salience_hits,
                 'doc_match_bonus': round(doc_match_bonus, 2),
                 'section_bonus': round(section_bonus, 2),
                 'version_bonus': round(version_bonus, 2),
@@ -339,15 +380,25 @@ class HeuristicReranker(BaseReranker):
             else:
                 res_dict = dict(item)
                 res_dict['score'] = round(relevance_score, 4)
+                res_dict['exact_salience_hits'] = exact_salience_hits
                 res_dict['reranking_scores'] = meta
                 res_dict.update(meta)
                 scored_candidates.append(res_dict)
 
-        # Sort descending by relevance score
-        if scored_candidates and isinstance(scored_candidates[0], tuple):
-            scored_candidates.sort(key=lambda x: x[0], reverse=True)
-        else:
-            scored_candidates.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+        # Sort descending by relevance score with deterministic exact salience tie-breaking
+        def _candidate_sort_key(item):
+            if isinstance(item, tuple):
+                sc = item[0]
+                m = item[2] if len(item) > 2 and isinstance(item[2], dict) else {}
+                hits = m.get('exact_salience_hits', 0)
+                auth = m.get('authority_level', getattr(getattr(item[1], 'document', None), 'authority_level', 3))
+            else:
+                sc = item.get('score', 0.0)
+                hits = item.get('exact_salience_hits', item.get('reranking_scores', {}).get('exact_salience_hits', 0))
+                auth = item.get('authority_level', 3)
+            return (round(sc, 3), hits, sc, auth)
+
+        scored_candidates.sort(key=_candidate_sort_key, reverse=True)
 
         # Multi-document preservation (Requirement 3 & 4)
         # If cross-document query, ensure top-k has at least 1 candidate from EACH companion document
