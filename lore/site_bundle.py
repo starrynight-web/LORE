@@ -349,15 +349,23 @@ def _marker_ok(dest: Path, *, sha256: str, build_id: str) -> bool:
     return bool(data.get("sha256") == sha256 and data.get("build_id") == build_id)
 
 
+def _norm_resolved(path: Path) -> Path:
+    resolved = path.resolve()
+    text = str(resolved)
+    if os.name == "nt" and text.startswith("\\\\?\\"):
+        return Path(text[4:])
+    return resolved
+
+
 def _platform_dir(root: Path, version: str, build_id: str, platform_key: str) -> Path:
     _component(version, "version")
     _component(platform_key, "platform")
     if not is_hex64(build_id):
         raise SiteError("The site bundle has an invalid build id.")
-    base = root.resolve()
+    base = _norm_resolved(root)
     target = base / version / build_id / platform_key
     try:
-        target.resolve().relative_to(base)
+        _norm_resolved(target).relative_to(base)
     except (OSError, ValueError) as exc:
         raise SiteError("The site bundle cache path escapes its root.") from exc
     return target
