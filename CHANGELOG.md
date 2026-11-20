@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.6 — 2026-11-20
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+Rolls up the user-visible changes of 0.2.4 and 0.2.5, which this release
+builds on:
+
+- From 0.2.5: token telemetry on the dashboard, autonomous
+  `lore-solo skill|persona|stats|govern approve` subcommands and `--full` MCP
+  tools, the Intellecta setup UI and Connect onboarding step, and cleaner
+  `setup`/`connect` behaviour.
+- From 0.2.4: Windows-safe `lore-solo update` / `install` handoff.
+
+### Fixed
+
+- CI: `test_killed_worker_recovers_as_interrupted` could fail on slow runners
+  (the retry build reported the stale `interrupted` status), which turned the
+  0.2.5 docs commit red. The test now retries until the new build is accepted.
+  No runtime code changed.
+- Lint: `scripts/build_site_bundle.py` is now executable, resolving ruff
+  `EXE001`.
+
 ## 0.2.5 — 2026-11-18
 
 GitHub release artifacts are produced by the tag-triggered release workflow

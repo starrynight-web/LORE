@@ -272,7 +272,14 @@ def test_killed_worker_recovers_as_interrupted(
     _wait_for(lambda: read_status(project)["state"] == "interrupted")
     assert read_status(project)["state"] == "interrupted"
     monkeypatch.delenv("LORE_FAKE_GRAPHIFY_SLEEP")
+    # On slow runners the killed worker's lock can linger briefly, in which case
+    # start_build reports the stale status; retry until a new build is accepted.
     retry = start_build(project, force=True)
+    for _ in range(40):
+        if retry["state"] in {"running", "ready"}:
+            break
+        time.sleep(0.25)
+        retry = start_build(project, force=True)
     assert retry["state"] in {"running", "ready"}
     _wait_for(lambda: read_status(project)["state"] == "ready")
 

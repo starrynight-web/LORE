@@ -1,6 +1,6 @@
 [project]
 name = "lore-solo"
-version = "0.2.5"
+version = "0.2.6"
 description = "Governed persona and skill context for a solo developer’s coding agent."
 readme = "README.md"
 license = "MIT"
