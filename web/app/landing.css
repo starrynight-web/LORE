@@ -154,6 +154,50 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .nav-menu-toggle {
+      display: none;
+    }
+
+    .mobile-nav {
+      display: none;
+      border-top: 1px solid var(--border);
+      background: var(--lore-shell);
+      padding: 12px 24px 18px;
+    }
+    .mobile-nav.open {
+      display: block;
+    }
+    .mobile-nav-links {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .mobile-nav-links a {
+      display: block;
+      padding: 12px 10px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--foreground);
+    }
+    .mobile-nav-links a:hover,
+    .mobile-nav-links a:focus-visible {
+      background: var(--secondary);
+    }
+    .mobile-nav-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .mobile-nav-actions .btn {
+      flex: 1 1 140px;
+      justify-content: center;
     }
 
     .announcement-bar {
@@ -1085,13 +1129,91 @@
     .doc-meta .icon-box { margin: 0; }
 
     @media (max-width: 900px) {
-      .nav-links { display: none; }
-      .split-header, .workflow-card, .proof-grid, .bento-grid-3, .footer-grid {
+      .nav-links,
+      .nav-desktop-cta {
+        display: none;
+      }
+      .nav-menu-toggle {
+        display: grid;
+      }
+      .nav-inner {
+        height: 60px;
+        gap: 12px;
+      }
+      .brand {
+        min-width: 0;
+      }
+      .brand span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .container {
+        padding: 0 16px;
+      }
+      .hero {
+        padding: 48px 0 28px;
+      }
+      .hero-sub {
+        font-size: 1rem;
+      }
+      .dot-matrix-stage {
+        padding: 12px;
+        border-radius: 20px;
+      }
+      .code-window {
+        border-radius: 16px;
+      }
+      .code-body {
+        padding: 16px;
+        font-size: 0.78rem;
+      }
+      .split-header,
+      .workflow-card,
+      .proof-grid,
+      .bento-grid-3,
+      .footer-grid {
         grid-template-columns: 1fr;
       }
-      .dot-matrix-stage { padding: 14px; }
+      .section {
+        padding-block: 56px;
+      }
+      .doc-hero {
+        padding: 36px 0 24px;
+      }
+      .doc-hero h1 {
+        font-size: clamp(1.75rem, 7vw, 2.4rem);
+      }
+      .footer-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
     }
+
     @media (max-width: 520px) {
-      .nav-actions .btn-outline { display: none; }
-      .nav-actions .btn-lavender { padding: 8px 14px; font-size: 0.82rem; }
+      .hero-ctas {
+        width: 100%;
+      }
+      .hero-ctas .btn {
+        width: 100%;
+      }
+      .announcement-bar {
+        padding: 10px 12px;
+        font-size: 0.78rem;
+        gap: 8px;
+      }
+      .ide-strip {
+        gap: 8px;
+      }
+      .ide-chip {
+        font-size: 0.78rem;
+        padding: 7px 10px;
+      }
+      .code-tabs {
+        padding: 10px 12px;
+      }
+      .mobile-nav {
+        padding: 10px 16px 16px;
+      }
     }

@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils"
 
 const CODE_SNIPPETS = {
   solo: `# 1. Verify toolchain & install Lore Solo (Python 3.12 binary wheels)
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.8 doctor
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.8 install
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.9 doctor
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.9 install
 
 # 2. Launch the local Bento setup dashboard & auto-connect your IDEs
 lore-solo setup

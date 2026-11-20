@@ -24,7 +24,7 @@ export default function IdeMcpPage() {
       <h2>Lore Solo</h2>
       <ul>
         <li>
-          Install: <code>uvx --managed-python --python 3.12 --no-build lore-solo==0.2.8 install</code>
+          Install: <code>uvx --managed-python --python 3.12 --no-build lore-solo==0.2.9 install</code>
         </li>
         <li>
           Auto-connect: <code>lore-solo connect</code>
