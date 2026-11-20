@@ -2,6 +2,12 @@
 
 > "Your lore, structured. Your AI, grounded."
 
+> [!NOTE]
+> **Delivery Status Update (2026-11-20):**
+> - **Phase 1 (Personal Grid / Lore Solo):** Implemented on the [`solo`](https://github.com/starrynight-web/LORE/tree/solo) branch (Python 3.12 CLI, `lore-solo` MCP server, `.lore/` OKF store, Next.js setup dashboard, Graphify map).
+> - **Phase 3 (Enterprise Grid / LORE Enterprise):** Implemented on the [`enterprise`](https://github.com/starrynight-web/LORE/tree/enterprise) branch (Django 4.2, Next.js 16, Qdrant Hybrid RRF + Bounded GraphRAG, 9-layer deterministic governance, dual-stream OCR + Bengali repair, `lore-enterprise-mcp`).
+> - **Phase 2 (Team Grid):** Could not be finalized in this release; it will be **showcased on Event Day at the International AI Builders Congress 2026 by CloudCamp BD**.
+
 | Field | Value |
 | --- | --- |
 | Project | Lore — a Knowledge Grid engine for developers and enterprises |

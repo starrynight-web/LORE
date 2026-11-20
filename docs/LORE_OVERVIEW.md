@@ -2,50 +2,47 @@
 
 | Field | Value |
 | --- | --- |
-| Snapshot date | 2026-10-10 |
-| Based on | `README.md`, [`PROJECT_CHARTER.md`](PROJECT_CHARTER.md) v1.0, [`LORE_ARCHITECTURE.md`](LORE_ARCHITECTURE.md) v2.0, [`PROJECT_REQUIREMENTS.md`](PROJECT_REQUIREMENTS.md) v1.0, the original project brief, [`docs/ide/`](ide/README.md), and the Go source in `cmd/` and `internal/` |
-| Status legend used below | **Built** = works in the code today · **Partial** = a simpler stand-in exists · **Planned** = only in the design documents |
+| Snapshot date | 2026-11-20 |
+| Based on | `README.md`, [`PROJECT_CHARTER.md`](PROJECT_CHARTER.md) v1.0, [`LORE_ARCHITECTURE.md`](LORE_ARCHITECTURE.md) v2.0, [`PROJECT_REQUIREMENTS.md`](PROJECT_REQUIREMENTS.md) v1.0, [`docs/ide/`](ide/README.md), and the active [`solo`](https://github.com/starrynight-web/LORE/tree/solo) and [`enterprise`](https://github.com/starrynight-web/LORE/tree/enterprise) implementations |
+| Status legend used below | **Built** = works in `solo` or `enterprise` today · **Showcase** = Team slice planned for Event Day · **Historical** = earlier Go-era design reference |
 
 ---
 
 ## 1. What is Lore?
 
-Lore is a **governed knowledge server for AI coding agents**. It stores a team's rules, skills, procedures and the recorded conflicts between them as plain Markdown files in a `.lore/` folder. It serves them to any AI IDE through the **Model Context Protocol (MCP)**.
+Lore is a **governed knowledge platform and Model Context Protocol (MCP) suite** for AI coding agents and enterprise engineering teams. Today it ships as two distinct, complementary branches—**Lore Solo** (`solo` branch) for individual developers and **LORE Enterprise** (`enterprise` branch) for regulated organizations—while the **Lore Team** slice is scheduled to be showcased live on **Event Day at the International AI Builders Congress 2026 by CloudCamp BD**.
 
-Before an agent edits a file, it asks Lore what applies. Lore does not return a pile of text. It returns a small, typed result:
+Before an agent edits a file or answers a policy question, it asks Lore what applies. Lore does not return a pile of unverified text. It returns a small, typed result:
 
-- a **verdict** (is the knowledge consistent, conflicting, uncertain, or absent?)
+- a **verdict** (is the knowledge consistent, conflicting, uncertain, or denied?)
 - a **directive** (what the agent must do next)
-- the **rule IDs** it relied on, with sources and confidence
+- the **rule or skill IDs** it relied on, with sources and citations
 - a **decision record** that can be traced later
 
-Lore never settles a contradiction between rules on its own. It sends the question to a person.
+Lore never settles a contradiction between rules on its own. It surfaces the conflict and routes it to a person.
 
 > Tagline: *"Your lore, structured. Your AI, grounded."*
-> Built for the International AI Builders Congress 2026 · InfraSphere AI · Knowledge Grid track.
+> Built for the International AI Builders Congress 2026 by CloudCamp BD · InfraSphere AI · Knowledge Grid track.
 
 ```mermaid
 flowchart LR
-  dev["Developer"] -->|asks for a change| agent["AI agent in the IDE<br/>Cursor, VS Code, Antigravity, Claude"]
-  agent -->|"MCP: get_context(file_path, intent)"| lore["Lore server<br/>lore serve"]
-  lore -->|reads| bundle[(".lore/ bundle<br/>rules, skills, components,<br/>sources, conflicts")]
-  lore -->|"verdict + directive + cited rule IDs"| agent
-  lore -->|writes| rec[("decisions/dec-NNNN.md<br/>audit.log")]
-  owner["Knowledge owner"] -->|"edits files, lore promote"| bundle
+  dev["Developer / Team"] -->|asks for a change| agent["AI agent in the IDE<br/>Cursor, VS Code, Antigravity, Claude"]
+  agent -->|"MCP: lore-solo"| solo["Lore Solo (solo branch)<br/>.lore/ OKF + Graphify map"]
+  agent -->|"MCP: lore-enterprise-mcp"| ent["LORE Enterprise (enterprise branch)<br/>9-layer governance + Qdrant + GraphRAG"]
+  solo -->|"skill summaries + decision receipt"| agent
+  ent -->|"verdict + directive + trace_id citations"| agent
   agent -->|"explains, asks, or proceeds"| dev
 ```
 
 ### Lore at a glance
 
-| Aspect | Description |
-| --- | --- |
-| Product type | MCP server and CLI (single Go binary, `lore`) |
-| Source of truth | OKF v0.2 bundle: Markdown files with YAML frontmatter in `.lore/` |
-| Main question it answers | "Which governed rules apply to this file for this change, and do any of them disagree?" |
-| Output contract | `lore.result/1` JSON envelope ([schema](https://github.com/starrynight-web/LORE/blob/dev/schemas/lore.result.v1.json), on the `dev` branch) plus a `<lore>` text block for agents |
-| Token budget | At most 800 tokens and 8 items per result |
-| Who decides conflicts | Always a person; never the LLM, never Lore |
-| Roadmap | Personal Grid → Team Grid → Enterprise Grid |
+| Aspect | Lore Solo (`solo` branch) | Lore Team (Event Day Showcase) | LORE Enterprise (`enterprise` branch) |
+| --- | --- | --- | --- |
+| Status | **Built** | **In progress — Event Day Showcase** | **Built** |
+| Product type | Python 3.12 CLI (`lore-solo`), MCP server, Next.js setup site | Git/PR adapter + team activity feed | Django 4.2 + DRF, Next.js 16 console, Qdrant, Celery, MCP server (`lore-enterprise-mcp`) |
+| Source of truth | `.lore/` Markdown/OKF + OS persona library + optional Graphify map | Shared `.lore/` + `git_derived` drafts | PostgreSQL + Qdrant Hybrid RRF + Bounded 2-Hop GraphRAG + MinIO |
+| Output contract | `lore.result/1` JSON envelope + decision receipts | Shared conflict & decision records | `lore.result/2` canonical contract + immutable `DecisionRecord` & `AuditEvent` |
+| Who decides conflicts | Always a person; drafts stay unapproved until promoted | Team reviewers | Human-in-the-loop Review Queue + 7-rank authority ladder |
 
 ### Shared vocabulary
 

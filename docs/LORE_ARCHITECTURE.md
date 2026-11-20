@@ -1,5 +1,14 @@
 # Lore — Complete Architecture, System Design, Tech Stack, Requirements
 
+> [!NOTE]
+> **Current Implementation Status (Updated 2026-11-20):**
+> The original v2.0 Go-era architecture specification below served as the blueprint for the International AI Builders Congress 2026. In practice, Lore has been implemented across two specialized branches:
+> - **Lore Solo (`solo` branch):** Python 3.12 (`lore-solo` CLI & MCP server) + Next.js setup dashboard + `.lore/` Markdown/OKF store + optional Graphify (`tree-sitter`) codebase map.
+> - **LORE Enterprise (`enterprise` branch):** Django 4.2 + DRF + Next.js 16 + Qdrant Hybrid RRF + Bounded 2-Hop GraphRAG + Celery/Redis + MinIO + 9-layer deterministic governance engine + dual-stream OCR with Bengali font repair (`lore-enterprise-mcp`).
+> - **Lore Team (Phase 2):** The Team Grid slice (Git/PR-derived rule & decision drafts and shared team activity feed) was deferred from this release and **will be showcased on Event Day at the International AI Builders Congress 2026 by CloudCamp BD**.
+>
+> The remainder of this document preserves the original locked v2.0 Congress specification for reference.
+
 Single locked plan for Lore under the International AI Builders Congress 2026, InfraSphere AI / Knowledge Grid track.
 
 | Field | Value |

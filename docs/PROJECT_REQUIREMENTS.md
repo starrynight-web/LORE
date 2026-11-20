@@ -1,5 +1,11 @@
 # Lore — Project Requirements Document
 
+> [!NOTE]
+> **Delivery Status Update (2026-11-20):**
+> - **P1 (Personal Grid / Lore Solo):** Implemented on [`solo`](https://github.com/starrynight-web/LORE/tree/solo).
+> - **P3 (Enterprise Grid / LORE Enterprise):** Implemented on [`enterprise`](https://github.com/starrynight-web/LORE/tree/enterprise).
+> - **P2 (Team Grid slice):** Deferred from the current release and **scheduled for showcase on Event Day at the International AI Builders Congress 2026 by CloudCamp BD**.
+
 | Field | Value |
 | --- | --- |
 | Project | Lore — a Knowledge Grid engine for developers and enterprises |

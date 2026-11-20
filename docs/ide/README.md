@@ -1,16 +1,54 @@
 # Connecting Lore to your IDE
 
-Lore runs as a local MCP server over stdio: the IDE starts `lore serve --root <project>` and talks to it over stdin/stdout. Nothing listens on a port.
+Lore runs as a local MCP server over stdio: the IDE starts the Lore server process and talks to it over stdin/stdout.
 
-## Before you start
+> **Important compatibility rule:** Always register distinct MCP server keys (**`lore-solo`** vs **`lore-enterprise-mcp`**) so IDE schema caches never collide. The earlier Go `lore` binary on `dev` is deprecated.
 
-1. Install the binary: `go install github.com/starrynight-web/LORE/cmd/lore@dev` (use `@latest` once the code is merged into `main`), or from a checkout of `dev`, `go install ./cmd/lore`. It lands in `~/go/bin/lore`.
-2. In your project, run `lore init` (or `lore init --demo` for the sample auth rules). It creates `.lore/` and prints a ready-to-paste config for each IDE with absolute paths filled in.
-3. Check the server by hand first: `npx @modelcontextprotocol/inspector ~/go/bin/lore serve --root /path/to/project`.
+## Option 1: Lore Solo (`solo` branch)
 
-Use an absolute path to the binary in configs. IDEs started from a desktop launcher often don't see your shell `PATH`.
+1. Install with `uv`:
+   ```bash
+   uvx --managed-python --python 3.12 --no-build lore-solo==0.2.8 install
+   ```
+2. Run auto-connect to register installed IDEs and standing rules:
+   ```bash
+   lore-solo connect
+   ```
+3. Or add `.cursor/mcp.json` / `.mcp.json` manually:
+   ```json
+   {
+     "mcpServers": {
+       "lore-solo": {
+         "command": "uvx",
+         "args": ["lore-solo", "mcp"]
+       }
+     }
+   }
+   ```
 
-If a client passes `${workspaceFolder}` through without expanding it, `lore serve` ignores it and finds `.lore/` by walking up from the working directory.
+## Option 2: LORE Enterprise (`enterprise` branch)
+
+1. Clone the `enterprise` branch and install `backend/requirements.txt`.
+2. Verify the server directly:
+   ```bash
+   cd backend
+   python mcp_server.py --list-tools
+   python mcp_server.py --test
+   ```
+3. Register `lore-enterprise-mcp` in your IDE's MCP config:
+   ```json
+   {
+     "mcpServers": {
+       "lore-enterprise-mcp": {
+         "command": "python",
+         "args": ["/path/to/lore-enterprise/backend/mcp_server.py"],
+         "env": {
+           "PYTHONIOENCODING": "utf-8"
+         }
+       }
+     }
+   }
+   ```
 
 ## Clients
 
@@ -30,7 +68,7 @@ Results go in [compat-matrix.md](compat-matrix.md); the test script is [smoke-te
 
 ## Making agents call Lore on their own
 
-Server instructions are sent at connect time, but not every client shows them to the model. Add a short rule file as well; [`examples/demo-app`](https://github.com/starrynight-web/LORE/tree/dev/examples/demo-app) (on the `dev` branch for now) has one for each client:
+Server instructions are sent at connect time, but not every client shows them to the model. Add a short standing rule file so the agent calls Lore unprompted (`lore-solo connect` writes these automatically for Solo):
 
 - `AGENTS.md`, read by Codex, Antigravity, Devin, Zed, Cursor and others
 - `.cursor/rules/lore.mdc` (Cursor)
