@@ -246,7 +246,7 @@ function DocsPageContent() {
 export default function DocsPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400">
         <RotateCw className="w-8 h-8 text-blue-500 animate-spin mb-2" />
         <span className="text-xs font-mono">Initializing /docs...</span>
       </div>

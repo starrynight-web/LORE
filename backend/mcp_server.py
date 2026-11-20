@@ -112,6 +112,9 @@ def make_error_response(
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+IGNORE_WORKSPACE_SENTINELS = {"", "null", "none", "undefined", "false", "true", "0", "nil"}
+
+
 def resolve_workspace(
     workspace_id: Optional[Union[str, uuid.UUID]] = None,
     organization_id: Optional[Union[str, uuid.UUID]] = None,
@@ -124,8 +127,26 @@ def resolve_workspace(
     Fails closed with structured error JSON if invalid or cross-tenant.
     """
     ws = None
-    if workspace_id:
-        ws_id_str = str(workspace_id).strip()
+
+    # Normalize input strings and filter out agent sentinel strings
+    ws_id_str = str(workspace_id).strip() if workspace_id is not None else None
+    if ws_id_str and ws_id_str.lower() in IGNORE_WORKSPACE_SENTINELS:
+        ws_id_str = None
+
+    ws_name_str = str(workspace_name).strip() if workspace_name is not None else None
+    if ws_name_str and ws_name_str.lower() in IGNORE_WORKSPACE_SENTINELS:
+        ws_name_str = None
+
+    # Check for explicit "default" keyword
+    force_default = False
+    if ws_id_str and ws_id_str.lower() == "default":
+        ws_id_str = None
+        force_default = True
+    if ws_name_str and ws_name_str.lower() == "default":
+        ws_name_str = None
+        force_default = True
+
+    if ws_id_str and not force_default:
         try:
             ws = Workspace.objects.filter(id=ws_id_str).select_related('organization').first()
         except Exception:
@@ -138,16 +159,17 @@ def resolve_workspace(
             ws = Workspace.objects.filter(name__iexact=ws_id_str).select_related('organization').first()
             if not ws:
                 ws = Workspace.objects.filter(name__icontains=ws_id_str).select_related('organization').first()
-        if not ws:
+        if not ws and not ws_name_str:
             return None, make_error_response("RESOURCE_NOT_FOUND", f"Workspace with ID or name '{workspace_id}' does not exist.", reason_code="WORKSPACE_NOT_FOUND")
-    elif workspace_name:
-        ws_name_str = str(workspace_name).strip()
+
+    if not ws and ws_name_str and not force_default:
         ws = Workspace.objects.filter(name__iexact=ws_name_str).select_related('organization').first()
         if not ws:
             ws = Workspace.objects.filter(name__icontains=ws_name_str).select_related('organization').first()
         if not ws:
             return None, make_error_response("RESOURCE_NOT_FOUND", f"Workspace with name '{workspace_name}' does not exist.", reason_code="WORKSPACE_NOT_FOUND")
-    else:
+
+    if not ws:
         # Smart Default Workspace Resolution:
         # Resolve to the workspace with highest count of stable/approved documents (ordered by most recent document update)
         try:
@@ -179,14 +201,24 @@ def resolve_workspace(
 
     if organization_id and ws.organization:
         org_id_str = str(organization_id).strip()
-        if str(getattr(ws.organization, "id", "")) != org_id_str:
-            return None, make_error_response(
-                "PERMISSION_DENIED",
-                f"Workspace '{ws.id}' does not belong to organization '{organization_id}'. Cross-tenant access denied.",
-                reason_code="TENANT_ISOLATION_VIOLATION"
-            )
+        if org_id_str.lower() not in IGNORE_WORKSPACE_SENTINELS and org_id_str.lower() != "default":
+            if str(getattr(ws.organization, "id", "")) != org_id_str:
+                return None, make_error_response(
+                    "PERMISSION_DENIED",
+                    f"Workspace '{ws.id}' does not belong to organization '{organization_id}'. Cross-tenant access denied.",
+                    reason_code="TENANT_ISOLATION_VIOLATION"
+                )
 
     return ws, None
+
+
+def resolve_workspace_from_args(args: Dict[str, Any]) -> Tuple[Optional[Workspace], Optional[str]]:
+    """Resolves workspace from MCP arguments dict supporting workspace_id, workspace_name, and organization_id."""
+    return resolve_workspace(
+        workspace_id=args.get("workspace_id"),
+        organization_id=args.get("organization_id"),
+        workspace_name=args.get("workspace_name")
+    )
 
 
 def get_organization_id(ws: Workspace) -> str:
@@ -1799,11 +1831,7 @@ def handle_get_context(args: Dict[str, Any]) -> str:
         if not query:
             return make_error_response("INVALID_ARGUMENT", "Either 'query' or 'file_path' and 'intent' must be provided.")
 
-        ws, err = resolve_workspace(
-            workspace_id=args.get("workspace_id"),
-            organization_id=args.get("organization_id"),
-            workspace_name=args.get("workspace_name")
-        )
+        ws, err = resolve_workspace_from_args(args)
         if err or not ws:
             return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2003,11 +2031,7 @@ def handle_search(args: Dict[str, Any]) -> str:
         if not query:
             return make_error_response("INVALID_ARGUMENT", "The 'query' parameter cannot be empty.")
 
-        ws, err = resolve_workspace(
-            workspace_id=args.get("workspace_id"),
-            organization_id=args.get("organization_id"),
-            workspace_name=args.get("workspace_name")
-        )
+        ws, err = resolve_workspace_from_args(args)
         if err or not ws:
             return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2144,11 +2168,7 @@ def handle_standard_search(args: Dict[str, Any]) -> str:
         if not query:
             return make_error_response("INVALID_ARGUMENT", "The 'query' parameter cannot be empty.")
 
-        ws, err = resolve_workspace(
-            workspace_id=args.get("workspace_id"),
-            organization_id=args.get("organization_id"),
-            workspace_name=args.get("workspace_name")
-        )
+        ws, err = resolve_workspace_from_args(args)
         if err or not ws:
             return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2241,7 +2261,7 @@ def handle_fetch(args: Dict[str, Any]) -> str:
     if not item_id:
         return make_error_response("INVALID_ARGUMENT", "The 'id' parameter cannot be empty.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2321,7 +2341,7 @@ def handle_check_compliance(args: Dict[str, Any]) -> str:
     if not diff:
         return make_error_response("INVALID_ARGUMENT", "The 'diff' parameter is required.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2453,7 +2473,7 @@ def handle_check_compliance(args: Dict[str, Any]) -> str:
 
 def handle_detect_conflicts(args: Dict[str, Any]) -> str:
     """Detects and reports contradictions, cross-document conflicts, and authority resolutions (L6)."""
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2592,7 +2612,7 @@ def handle_log_decision(args: Dict[str, Any]) -> str:
     if not outcome:
         return make_error_response("INVALID_ARGUMENT", "The 'outcome' parameter is required.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2662,7 +2682,7 @@ def handle_get_history(args: Dict[str, Any]) -> str:
     if not file_query:
         return make_error_response("INVALID_ARGUMENT", "The 'file' parameter (document id, filename, or title) is required.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2729,7 +2749,7 @@ def handle_get_history(args: Dict[str, Any]) -> str:
 
 def handle_stats(args: Dict[str, Any]) -> str:
     """Computes comprehensive knowledge graph and governance metrics (L0)."""
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2783,7 +2803,7 @@ def handle_check_evidence_sufficiency(args: Dict[str, Any]) -> str:
     if not decision_type:
         return make_error_response("INVALID_ARGUMENT", "The 'decision_type' parameter is required.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2848,7 +2868,7 @@ def handle_get_authority_info(args: Dict[str, Any]) -> str:
     if not source_id:
         return make_error_response("INVALID_ARGUMENT", "The 'source_id' parameter is required.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2901,7 +2921,7 @@ def handle_query_as_of(args: Dict[str, Any]) -> str:
     if not as_of:
         return make_error_response("INVALID_ARGUMENT", "The 'as_of' parameter is required (e.g. '2026-03-15').")
 
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2935,7 +2955,7 @@ def handle_query_as_of(args: Dict[str, Any]) -> str:
 
 def handle_get_active_exceptions(args: Dict[str, Any]) -> str:
     """Lists active scoped exceptions applying to the current context (L4)."""
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -2980,7 +3000,7 @@ def handle_escalate_to_human(args: Dict[str, Any]) -> str:
     if not query:
         return make_error_response("INVALID_ARGUMENT", "The 'query' parameter is required.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -3025,7 +3045,7 @@ def handle_escalate_to_human(args: Dict[str, Any]) -> str:
 
 def handle_bootstrap(args: Dict[str, Any]) -> str:
     """Serves the constitution (agent.md) and phase policy on connect (lore.md §11 & §12.2)."""
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -3062,7 +3082,7 @@ def handle_get_skill(args: Dict[str, Any]) -> str:
     if not name:
         return make_error_response("INVALID_ARGUMENT", "The 'name' parameter is required.")
 
-    ws, err = resolve_workspace(args.get("workspace_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -3142,11 +3162,7 @@ def handle_get_skill(args: Dict[str, Any]) -> str:
 def handle_list_documents(args: Dict[str, Any]) -> str:
     """Lists all accessible workspace documents (lore.md §11)."""
     try:
-        ws, err = resolve_workspace(
-            workspace_id=args.get("workspace_id"),
-            organization_id=args.get("organization_id"),
-            workspace_name=args.get("workspace_name")
-        )
+        ws, err = resolve_workspace_from_args(args)
         if err or not ws:
             return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -3193,9 +3209,10 @@ def handle_get_document(args: Dict[str, Any]) -> str:
 
     ws_arg = args.get("workspace_id")
     org_arg = args.get("organization_id")
+    ws_name_arg = args.get("workspace_name")
     ws = None
-    if ws_arg or org_arg:
-        ws, err = resolve_workspace(ws_arg, org_arg)
+    if ws_arg or org_arg or ws_name_arg:
+        ws, err = resolve_workspace_from_args(args)
         if err or not ws:
             return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -3284,7 +3301,7 @@ def handle_attest_compliance(args: Dict[str, Any]) -> str:
     authority_floor = int(args.get("required_authority_floor", 4))
     backend = args.get("backend", "auto")
 
-    ws, err = resolve_workspace(args.get("workspace_id"), args.get("organization_id"))
+    ws, err = resolve_workspace_from_args(args)
     if err or not ws:
         return err or make_error_response("RESOURCE_NOT_FOUND", "Workspace not found.", reason_code="WORKSPACE_NOT_FOUND")
 
@@ -3637,15 +3654,17 @@ class MCPHttpHandler(BaseHTTPRequestHandler):
         accept = self.headers.get("Accept", "")
 
         if clean_path in ("/health", "/healthz"):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps({
+            body = json.dumps({
                 "status": "ready",
                 "transport": "streamable-http",
                 "server": SERVER_INFO
-            }).encode("utf-8"))
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if clean_path in ("/mcp", "/sse", "/"):
@@ -3662,10 +3681,6 @@ class MCPHttpHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
                 return
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
             payload = {
                 "status": "ready",
                 "protocolVersion": PROTOCOL_VERSION,
@@ -3676,49 +3691,63 @@ class MCPHttpHandler(BaseHTTPRequestHandler):
                     "sse": "/sse"
                 }
             }
-            self.wfile.write(json.dumps(payload, indent=2).encode("utf-8"))
+            body = json.dumps(payload, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
             return
 
+        not_found = b'{"error": "Not Found"}'
         self.send_response(404)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(not_found)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(b'{"error": "Not Found"}')
+        self.wfile.write(not_found)
 
     def do_POST(self):
         """Processes JSON-RPC 2.0 messages over Streamable HTTP."""
         clean_path = self.path.split("?")[0]
         if clean_path not in ("/mcp", "/"):
+            not_found = b'{"error": "Not Found"}'
             self.send_response(404)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(not_found)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(b'{"error": "Not Found"}')
+            self.wfile.write(not_found)
             return
 
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length <= 0:
+            bad_req = b'{"error": "Missing or invalid Content-Length"}'
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(bad_req)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(b'{"error": "Missing or invalid Content-Length"}')
+            self.wfile.write(bad_req)
             return
 
         body_raw = self.rfile.read(content_length).decode("utf-8")
         try:
             req = json.loads(body_raw)
         except json.JSONDecodeError as jde:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
             err_resp = {
                 "jsonrpc": "2.0",
                 "id": None,
                 "error": {"code": -32700, "message": f"Parse error: {jde}"}
             }
-            self.wfile.write(json.dumps(err_resp).encode("utf-8"))
+            err_bytes = json.dumps(err_resp).encode("utf-8")
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(err_bytes)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(err_bytes)
             return
 
         # Handle notifications (e.g. notifications/initialized) -> 202 Accepted
@@ -3739,6 +3768,7 @@ class MCPHttpHandler(BaseHTTPRequestHandler):
 
         if is_notification or resp is None:
             self.send_response(202)
+            self.send_header("Content-Length", "0")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Mcp-Session-Id", f"lore-mcp-{uuid.uuid4().hex[:12]}")
             self.end_headers()
