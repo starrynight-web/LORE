@@ -15,6 +15,7 @@ Usage:
 
 import sys
 import os
+import re
 import json
 import logging
 import traceback
@@ -24,10 +25,12 @@ from typing import Dict, Any, List, Optional, Tuple, Union
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 # Ensure UTF-8 I/O for bilingual English & Bengali streaming
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')
+reconfigure_stdout = getattr(sys.stdout, 'reconfigure', None)
+if callable(reconfigure_stdout):
+    reconfigure_stdout(encoding='utf-8')
+reconfigure_stderr = getattr(sys.stderr, 'reconfigure', None)
+if callable(reconfigure_stderr):
+    reconfigure_stderr(encoding='utf-8')
 
 # Setup environment & Django context
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -2864,8 +2867,9 @@ def handle_get_authority_info(args: Dict[str, Any]) -> str:
 
     hierarchy_names = dict(SourceDocument.AUTHORITY_LEVELS)
     access_level = "internal"
-    if hasattr(doc, 'permissions') and doc.permissions:
-        access_level = doc.permissions.access_level
+    doc_perms = getattr(doc, 'permissions', None)
+    if doc_perms:
+        access_level = getattr(doc_perms, 'access_level', 'internal')
 
     payload = {
         "schema": "lore.authority/1",
