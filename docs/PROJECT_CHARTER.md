@@ -1,5 +1,7 @@
 # Lore — Project Charter
 
+> **Historical Charter (2026-09-29 baseline):** This charter records the initial International AI Builders Congress 2026 plan. The Solo tier now ships as **Lore Solo** (`lore-solo` on the `solo` branch, focused on governed persona/skill routing and quality — see [docs/solo/QUALITY_PLAN.md](solo/QUALITY_PLAN.md) and [docs/solo/HOW_IT_WORKS.md](solo/HOW_IT_WORKS.md)), while the Enterprise Knowledge Grid lives on the `enterprise` branch ([docs/solo/HOSTING.md](solo/HOSTING.md)).
+
 > "Your lore, structured. Your AI, grounded."
 
 | Field | Value |

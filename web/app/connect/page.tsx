@@ -18,6 +18,8 @@ type Install = { command: string; prompt: string }
 export default function ConnectPage() {
   const [install, setInstall] = useState<Install | null>(null)
   const [config, setConfig] = useState("")
+  const [connected, setConnected] = useState<string[] | null>(null)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -29,6 +31,25 @@ export default function ConnectPage() {
   async function copy(text: string, label: string) {
     await navigator.clipboard.writeText(text)
     toast.success(label)
+  }
+
+  async function connectEditors() {
+    setError("")
+    setBusy(true)
+    try {
+      const res = await api<{ written?: string[] }>("/api/connect/agents", { method: "POST" })
+      const written = res.written ?? []
+      setConnected(written)
+      if (written.length > 0) {
+        toast.success(`Connected ${written.length} editor config(s).`)
+      } else {
+        toast.info("No local editors detected automatically; use the command or project config below.")
+      }
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "Could not connect editors.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function writeConfig() {
@@ -44,7 +65,19 @@ export default function ConnectPage() {
       <PageHero
         title="Connect"
         subtitle="Register Lore MCP with your local coding editors."
+        action={
+          <Button type="button" disabled={busy} onClick={() => void connectEditors()}>
+            {busy ? "Connecting…" : "Connect installed editors"}
+          </Button>
+        }
       />
+      {connected !== null ? (
+        <p className="text-xs text-muted-foreground">
+          {connected.length > 0
+            ? `Updated: ${connected.join(", ")}`
+            : "No editors auto-detected. Use the universal command or project config below."}
+        </p>
+      ) : null}
       <div className="grid grid-cols-1 gap-4 @3xl/main:grid-cols-2">
         <Card>
           <CardHeader>

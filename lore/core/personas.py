@@ -355,20 +355,6 @@ def find_any(project: Path, item_id: str) -> Doc | None:
     return None
 
 
-def set_status(project: Path, item_id: str, status: str) -> Doc:
-    """Set status. Promoting to stable runs governance approve."""
-    if status == "stable":
-        from lore.core.governance import approve_item
-
-        return approve_item(project, item_id)
-    doc = find_any(project, item_id)
-    if doc is None or doc.path is None:
-        raise FileNotFoundError(item_id)
-    doc.header["status"] = status
-    write_doc(doc.path, doc)
-    return doc
-
-
 def _attach_skill(project: Path, persona: str, skill: str) -> None:
     doc = find_persona(project, persona)
     if doc is None or doc.path is None:

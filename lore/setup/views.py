@@ -68,7 +68,7 @@ from lore.core.provider import (
     set_model,
 )
 from lore.core.usage import summary as usage_summary
-from lore.core.workspace import copy_example, copy_persona, init_workspace, ready_personas
+from lore.core.workspace import copy_persona, init_workspace, ready_personas
 from lore.setup.graph_job import start_build
 
 _PROJECT: dict[str, str] = {}
@@ -272,15 +272,6 @@ def catalog_add(request: HttpRequest, persona_id: str) -> JsonResponse:
     except FileNotFoundError as exc:
         raise ApiError(404, "That starter does not exist.") from exc
     return JsonResponse({"id": doc_id, "status": "stable"})
-
-
-@_api
-def workspace_example(request: HttpRequest) -> JsonResponse:
-    if request.method != "POST":
-        raise ApiError(405, "Use POST to copy the example.")
-    project = _project(request)
-    copy_example(project)
-    return JsonResponse({"project": str(project), "copied": "examples/persona-pack"})
 
 
 @_api
@@ -661,21 +652,6 @@ def skillspector_status(request: HttpRequest) -> JsonResponse:
 
 
 @_api
-def graph_build(request: HttpRequest) -> JsonResponse:
-    if request.method != "POST":
-        raise ApiError(405, "Use POST to map the codebase.")
-    project = _project(request)
-    return JsonResponse(start_build(project, force=True), status=202)
-
-
-@_api
-def graph(request: HttpRequest) -> JsonResponse:
-    if request.method != "GET":
-        raise ApiError(405, "Use GET to read the map.")
-    return JsonResponse(summarize(_project(request)))
-
-
-@_api
 def onboarding(request: HttpRequest) -> JsonResponse:
     project = _project(request)
     if request.method == "GET":
@@ -863,17 +839,6 @@ def codebase_graph(request: HttpRequest, codebase_id: str) -> HttpResponse:
         return JsonResponse({"error": exc.message}, status=exc.status)
     html = folder / "graphify-out" / "graph.html"
     if not html.is_file() or not html_current(folder):
-        return HttpResponse("Map this project.", status=404)
-    return HttpResponse(html.read_text(encoding="utf-8"), content_type="text/html")
-
-
-def graph_page(request: HttpRequest) -> HttpResponse:
-    try:
-        project = _project(request)
-    except ApiError as exc:
-        return JsonResponse({"error": exc.message}, status=exc.status)
-    html = project / "graphify-out" / "graph.html"
-    if not html.is_file() or not html_current(project):
         return HttpResponse("Map this project.", status=404)
     return HttpResponse(html.read_text(encoding="utf-8"), content_type="text/html")
 

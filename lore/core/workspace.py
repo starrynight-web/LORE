@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 from lore.core.okf import read_doc
@@ -26,19 +25,6 @@ def init_workspace(project: Path) -> Path:
     if not config.exists():
         config.write_text("token_budget: 800\nmax_items: 8\n", encoding="utf-8")
     return project
-
-
-def copy_example(project: Path) -> None:
-    init_workspace(project)
-    pack = pack_root() / ".lore"
-    for name in ("personas", "skills"):
-        source = pack / name
-        dest = project / ".lore" / name
-        if not source.is_dir():
-            continue
-        if source.resolve() == dest.resolve():
-            continue
-        shutil.copytree(source, dest, dirs_exist_ok=True)
 
 
 def ready_personas() -> list[dict[str, str]]:

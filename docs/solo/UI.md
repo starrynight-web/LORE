@@ -16,29 +16,31 @@ npm run dev
 
 ## Pages
 
-A new library opens a welcome dialog over the dashboard. Outside clicks and Escape do not dismiss it. Get started leads to skills, then a persona, then an optional codebase map. Each of those three steps can be skipped. Finishing or skipping the last step marks setup complete.
+A new library opens a welcome dialog over the dashboard (`web/components/onboarding.tsx`). Outside clicks and Escape do not dismiss the onboarding wizard. **Get started** leads through four steps: **1. Connect** (`connect` — auto-connect installed editors, copy the universal `uvx lore-solo connect` command, write project MCP configs, and check optional SkillSpector), **2. Skills** (`skills`), **3. Role** (`persona`), and **4. Project** (`codebase`). Each step can be skipped. Finishing or skipping the last step marks setup complete in `.lore/onboarding.json`.
 
 | Route | File | What it does |
 | --- | --- | --- |
-| `/` | `web/app/page.tsx` | Call counts, top agents, personas, and skills, plus recent calls |
-| `/personas` | `web/app/personas/page.tsx` | Create, list, and delete personas |
-| `/personas/[id]` | `web/app/personas/[id]/page.tsx` | Edit one persona, open its skills, approve, and add a skill |
-| `/skills` | `web/app/skills/page.tsx` | Search saved skills, add from skills.sh or local files/folders, list, and delete skills |
-| `/skills/[...id]` | `web/app/skills/[...id]/page.tsx` | Read and edit one skill |
+| `/` | `web/app/page.tsx` | **Dashboard**: installed skills & created personas counts, `+ Add` quick-add menu (`Add skill`, `Create persona`), Editor & MCP quickstart card (`Connect IDE`, `MCP`, `Store` tabs), `Most called skills` bar chart, `Personas` card, and `Summary` token telemetry spline chart |
+| `/personas` | `web/app/personas/page.tsx` | Create, list, delete personas (with confirm dialog; deleting returns skills to inbox), and add starter personas |
+| `/personas/[id]` | `web/app/personas/[id]/page.tsx` | Edit one persona, search/sort/select its skills, approve or bulk-approve drafts (with accept-risk flow), and add a skill |
+| `/skills` | `web/app/skills/page.tsx` | Search/sort saved skills and waiting inbox skills, add from skills.sh or local files/folders, adopt inbox skills into a persona, and delete skills |
+| `/skills/[...id]` | `web/app/skills/[...id]/page.tsx` | Read, edit, and approve one skill |
 | `/codebase` | `web/app/codebase/page.tsx` | Add, list, and delete codebases |
-| `/codebase/[id]` | `web/app/codebase/[id]/page.tsx` | Rename a codebase, build its map, and read the links |
-| `/settings` | `web/app/settings/page.tsx` | Token budget, max items, provider key, draft model, and SkillSpector status |
-| `/locked` | `web/app/locked/page.tsx` | Shown when the setup key cookie is missing. No sidebar |
+| `/codebase/[id]` | `web/app/codebase/[id]/page.tsx` | Rename a codebase, build/update its Graphify map, view the theme-synced embedded `/api/codebases/<id>/graph` map, and inspect extracted/inferred links |
+| `/replay` | `web/app/replay/page.tsx` | **Decisions**: audit trail of `get_context` decision files and agent-reported receipts |
+| `/connect` | `web/app/connect/page.tsx` | Auto-connect installed editors (`POST /api/connect/agents`), copy the agent prompt/command (`GET /api/connect`), or write project MCP configs (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`) |
+| `/settings` | `web/app/settings/page.tsx` | Token budget, max items, draft provider key, draft model picker, and SkillSpector status/install command |
+| `/locked` | `web/app/locked/page.tsx` | Shown when the `lore_key` setup cookie is missing. No shell or navigation |
 
-The shell is `web/components/Shell.tsx`. The sidebar links are `web/components/app-sidebar.tsx`. The header and breadcrumb are `web/components/site-header.tsx`. `/locked` does not use the shell.
+The shell is `web/components/Shell.tsx` (which also keeps `backdrop-blur` on a `fixed inset-0 -z-10` layer so modals never clip). Desktop navigation is a sticky floating left icon rail in `web/components/app-sidebar.tsx` (`Dashboard`, `Personas`, `Skills`, `Codebase`, `Decisions`, plus a bottom dark/light theme switcher and `Settings`). Mobile navigation is a top bar with circular navigation pills and a theme button in `web/components/site-header.tsx`. `/locked` does not use the shell.
 
 API handlers are in `lore/setup/views.py`, routed from `lore/setup/urls.py`. A new page action needs a view there and a call in the page. The view writes markdown through `lore/core`. It does not keep a second store.
 
 ## Visual system
 
-The layout follows the [shadcn dashboard example](https://ui.shadcn.com/examples/dashboard): inset collapsible sidebar, header with the sidebar trigger, stat cards, and content cards. The example’s revenue chart, document table, and account menu are not part of this site.
+The setup dashboard uses the **Intellecta ("Soft Bento Glass")** visual system (`Plus Jakarta Sans` + `JetBrains Mono` in `web/app/layout.tsx`, lime `#c8eb5e` and lavender `#a59bf3` accent tokens in `web/app/globals.css`), with rounded bento cards, `web/components/page-hero.tsx` headers, `web/components/skill-bar-chart.tsx`, and `web/components/token-spline-chart.tsx`.
 
-shadcn is the `base-nova` style (`web/components.json`). Components come from Base UI.
+UI primitives use the `base-nova` shadcn style (`web/components.json`) built on Base UI (`@base-ui/react`):
 
 - A link-styled button uses `nativeButton={false}` and `render={<Link href="..." />}`.
 - `Select` takes an `items` list.

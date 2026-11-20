@@ -10,7 +10,7 @@ Like DevRelay (MCP tools + skills that fire unprompted), Solo has two layers:
 
 | Layer | Role |
 | --- | --- |
-| **MCP tools** | I/O: `get_context`, `map_codebase`, `check_applied`, `log_decision` |
+| **MCP tools** | I/O: `get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision` |
 | **Standing instructions / IDE rules** | Autopilot: call Lore on non-trivial work without being asked |
 | **Personas** | Policy router: which approved skills apply to this task |
 | **Graphify map** | Codebase orientation (soft auto or manual rebuild) |
@@ -33,12 +33,12 @@ Like DevRelay (MCP tools + skills that fire unprompted), Solo has two layers:
 
 ## What the agent must do (four steps)
 
-1. Call **get_context** once with the task.
-2. **Edit** only the files Lore named, using those skill summaries.
-3. Call **check_applied** with the decision id and the skill ids it followed.
-4. Call **log_decision** with a one-line outcome.
+1. Call **get_context** once with the task sentence (returns matching skill summaries, `cite_ids`, and advisory file suggestions).
+2. Call **get_skill** with a returned skill id (or `names=[...]` to batch multiple skills) when a summary is insufficient, then **inspect and edit** the relevant files.
+3. Call **check_applied** (or pass `rule_ids` directly to **log_decision**, which runs `check_applied` automatically when no receipt exists yet) to verify cited skill ids against the decision.
+4. Call **log_decision** with the `decision_id`, a one-line outcome, and `rule_ids`.
 
-Do not walk the skill folders or paste the whole library into the chat.
+Do not walk `.lore/skills` or `.lore/personas` or read `graphify-out/graph.json` directly.
 
 ## How we prove it
 

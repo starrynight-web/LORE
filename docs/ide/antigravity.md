@@ -29,7 +29,7 @@ Standing text is the coding loop: `get_context` → edit → `check_applied` →
 
 ## Tools
 
-Default coding surface (4 tools): `get_context`, `map_codebase`, `check_applied`, `log_decision`. Full admin surface: `lore-solo mcp --full`.
+Default coding surface (5 tools): `get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`. Full admin surface: `lore-solo mcp --full`.
 
 Antigravity shares one token budget between rules, skills and MCP tools. When over budget, it can drop Lore’s tools — disable unused skills/servers until Customizations lists `lore-solo` with nothing excluded.
 

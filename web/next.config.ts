@@ -11,14 +11,6 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `http://127.0.0.1:${port}/api/:path*`,
       },
-      {
-        source: "/graph/view",
-        destination: `http://127.0.0.1:${port}/graph/view/`,
-      },
-      {
-        source: "/graph/view/:path*",
-        destination: `http://127.0.0.1:${port}/graph/view/:path*`,
-      },
     ];
   },
 };

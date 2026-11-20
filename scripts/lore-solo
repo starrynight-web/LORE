@@ -88,8 +88,22 @@ case "$CMD" in
     cd "${LORE_PROJECT:-$(pwd)}"
     exec "$BIN" map "$@"
     ;;
+  update|container|govern|skill|persona|stats)
+    require_lore
+    cd "${LORE_PROJECT:-$(pwd)}"
+    exec "$BIN" "$CMD" "$@"
+    ;;
+  help|-h|--help)
+    if [ -x "$BIN" ]; then
+      exec "$BIN" help "$@"
+    fi
+    need_uv
+    export LORE_CHECKOUT="$ROOT"
+    exec uv run --managed-python --python 3.12 --no-build --locked --project "$ROOT" \
+      python -m lore help "$@"
+    ;;
   *)
-    echo "usage: scripts/lore-solo install|setup|uninstall|mcp|connect|map|doctor" >&2
+    echo "usage: scripts/lore-solo install|update|setup|uninstall|connect|container|mcp|map|doctor|govern|skill|persona|stats|help" >&2
     exit 2
     ;;
 esac

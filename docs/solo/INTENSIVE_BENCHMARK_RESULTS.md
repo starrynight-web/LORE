@@ -2,66 +2,61 @@
 
 - **Runner:** Antigravity CLI (`agy`)
 - **Model:** `gemini-4-hydrogen-medium` (`Gemini 4 Hydrogen (Medium)`)
-- **Latest Raw Telemetry (v2):** [results-intensive-2x3.json](../../examples/bench-library/results-intensive-2x3.json)
-- **Previous Baseline Telemetry (v1):** [results-intensive-2x3-v1.json](../../examples/bench-library/results-intensive-2x3-v1.json)
+- **Latest Raw Telemetry:** [results-intensive-2x3.json](../../examples/bench-library/results-intensive-2x3.json)
+- **Initial Baseline Telemetry (v1):** [results-intensive-2x3-v1.json](../../examples/bench-library/results-intensive-2x3-v1.json)
 - **Plan:** [INTENSIVE_BENCHMARK_PLAN.md](./INTENSIVE_BENCHMARK_PLAN.md)
 - **Skill Pack:** 25 skills downloaded from `skills.sh` across 6 sectors + 6 sector standards skills (`31` total skills).
-- **Cold Graphify Map (`simple-write`):** `0.9s` (timed outside agent sessions).
+- **Cold Graphify Map (`simple-write`):** `5.1s` (timed outside agent sessions).
 
 ---
 
-## Executive Summary (v2 Scoreboard — After `locate()` & Batched `get_skill` Changes)
+## Executive Summary (Scoreboard — `results-intensive-2x3.json`)
 
 | Project Context | Arm | Pass Rate | Median Time (s) | Median Fresh Tokens | Median Total Input Tokens | Median Output Tokens | Lore Process Rate |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| **New Project** (`Devin-a-thon Dhaka`) | `no_skills` | **0.0%** (`0/3`) | `156.64s` | `31,686` | `134,877` | `13,044` | — |
-| **New Project** (`Devin-a-thon Dhaka`) | `device_skills` | **100.0%** (`3/3`) | `272.17s` | `49,507` | `108,194` | `8,419` | — |
-| **New Project** (`Devin-a-thon Dhaka`) | `lore_mcp` | **100.0%** (`3/3`) | `227.49s` | `58,097` | `144,356` | `8,480` | **100%** (`3/3`) |
-| **Old Project** (`DJRCX/simple-write`) | `no_skills` | **33.3%** (`1/3`) | `289.75s` | `73,836` | `462,848` | `10,471` | — |
-| **Old Project** (`DJRCX/simple-write`) | `device_skills` | **100.0%** (`3/3`) | **`144.25s`** | **`40,060`** | **`225,313`** | `6,984` | — |
-| **Old Project** (`DJRCX/simple-write`) | `lore_mcp` | **100.0%** (`3/3`) | `201.67s` | `56,827` | `391,162` | `7,622` | **83.3%** (`5/6` overall) |
+| **New Project** (`Devin-a-thon Dhaka`) | `no_skills` | **0.0%** (`0/3`) | `114.50s` | `27,570` | `110,381` | `13,278` | — |
+| **New Project** (`Devin-a-thon Dhaka`) | `device_skills` | **100.0%** (`3/3`) | `89.15s` | `29,272` | `132,646` | `9,218` | — |
+| **New Project** (`Devin-a-thon Dhaka`) | `lore_mcp` | **100.0%** (`3/3`) | **`77.47s`** | `32,138` | `145,850` | **`8,398`** | **100%** (`3/3`) |
+| **Old Project** (`DJRCX/simple-write`) | `no_skills` | **33.3%** (`1/3`) | `445.48s` | `83,816` | `789,383` | `14,729` | — |
+| **Old Project** (`DJRCX/simple-write`) | `device_skills` | **100.0%** (`3/3`) | **`120.66s`** | **`40,622`** | **`247,109`** | `6,716` | — |
+| **Old Project** (`DJRCX/simple-write`) | `lore_mcp` | **100.0%** (`3/3`) | `312.92s` | `45,390` | `283,754` | `8,803` | **100%** (`3/3`, `6/6` overall) |
 
 ---
 
-## Effect of Recent Changes (v1 → v2 Comparison)
+## Key Highlights
 
-Three major changes were tested in v2:
-1. **Batched `get_skill(names=[...])`:** All `6/6` `lore_mcp` runs adopted `get_skill(names=[...])` on their first skill fetch, requesting 2–3 skills in a single MCP call.
-2. **Improved `locate()` ranking in `lore/core/graph.py`:** Down-ranked `.json` config files, removed 2-char stop-word substring collisions, and deduplicated per-file scoring.
-   - In `old-find-a11y`, `get_context` now surfaced **`src/App.tsx`** and **`src/components/write-editor.tsx`** directly in the top 8 files. As a result, `old-find-a11y` (`lore_mcp`) dropped from **`260.51s` → `115.29s`** (**55.7% faster**, beating `device_skills` at `144.25s`), and total input tokens dropped from **`512,381` → `263,074`** (**48.7% fewer**).
-   - In `old-security-links`, `get_context` surfaced all three target files (`src/App.tsx`, `src/lib/documents.ts`, `src/components/write-editor.tsx`) in the top 8, finishing in **`201.67s`** (vs `device_skills` at `440.63s`, **54.2% faster**).
-3. **Why `old-reading-callout` (`lore_mcp`) spiked to `485.90s` and `old-find-a11y` had `check_applied: false`:**
-   - In `old-find-a11y`, the agent also fetched `skill:frontend-engineer/frontend-standards@v1` (which had been omitted from the 8-item cap by `backend-*` noise) and cited it in `log_decision`, so `check_applied` correctly flagged `"unknown": ["skill:frontend-engineer/frontend-standards@v1"]`.
-   - In `old-reading-callout`, `no_skills` and `lore_mcp` both hit higher LLM/tooling variance (`394.75s` and `485.90s`), pulling up the `old_project` median even though `old-find-a11y` and `old-security-links` were both fast.
+1. **100% Quality & 100% Process Compliance (`6/6`):** Across all 6 tasks (both greenfield and brownfield), `lore_mcp` passed `100%` of Vitest, TypeScript, and deterministic rubric checks (`6/6` vs `1/6` for `no_skills`) and completed the full Lore receipt loop (`get_context` → `get_skill` → `check_applied: pass` → `log_decision`) on `6/6` runs (`lore_process_rate: 1.0`).
+2. **Fastest Median on Greenfield (`77.47s` vs `89.15s`):** On the greenfield suite (*Devin-a-thon Dhaka Companion*), `lore_mcp` finished in a median of **`77.47s`** — **13.1% faster** than `device_skills` (`89.15s`) and **32.3% faster** than `no_skills` (`114.50s`), winning outright on both `new-registration` (`77.47s`) and `new-pipeline-board` (`74.96s`).
+3. **Brownfield Navigation & Token Discipline:** On the brownfield `simple-write` repository, `no_skills` consumed a median of `789,383` total input tokens (`445.48s`) and failed `2/3` tasks. With Graphify `locate()` + persona-routed skills, `lore_mcp` passed `3/3` tasks while cutting median total input tokens by **64.1%** (`283,754` vs `789,383`) and median fresh input tokens by **45.8%** (`45,390` vs `83,816`).
 
 ---
 
-## Per-Task Breakdown (v2)
+## Per-Task Breakdown (`results-intensive-2x3.json`)
 
 ### Suite 1: New Project — *Devin-a-thon Dhaka Companion*
 
 | Scenario | Arm | Passed | Time (s) | Fresh Tokens | Total Input | Output | Tools / Notes |
 | :--- | :--- | :---: | ---: | ---: | ---: | ---: | :--- |
-| `new-registration` | `no_skills` | ❌ | `142.51s` | `31,686` | `134,877` | `13,159` | Failed `vitest_ok` |
-| `new-registration` | `device_skills` | ✅ | **`107.77s`** | `45,952` | `108,194` | `9,987` | All checks passed |
-| `new-registration` | `lore_mcp` | ✅ | `118.86s` | `33,119` | `144,356` | `9,257` | `get_context`, `get_skill(names=[3])`, `log_decision` (`ok: true`) |
-| `new-pipeline-board` | `no_skills` | ❌ | `269.34s` | `57,445` | `153,416` | `13,044` | Failed `vitest_ok` |
-| `new-pipeline-board` | `device_skills` | ✅ | `272.17s` | `49,507` | `187,123` | `8,419` | All checks passed |
-| `new-pipeline-board` | `lore_mcp` | ✅ | **`227.49s`** | `58,097` | `205,358` | `8,480` | `get_context`, `get_skill(names=[3])`, `log_decision` (`ok: true`) |
-| `new-readiness-planner` | `no_skills` | ❌ | `156.64s` | `27,583` | `106,844` | `7,214` | Failed `vitest_ok` |
-| `new-readiness-planner` | `device_skills` | ✅ | `418.22s` | `60,473` | `104,351` | `6,873` | All checks passed |
-| `new-readiness-planner` | `lore_mcp` | ✅ | `352.10s` | `59,776` | `140,695` | `7,757` | `get_context`, `get_skill(names=[3])`, `log_decision` (`ok: true`) |
+| `new-registration` | `no_skills` | ❌ | `114.50s` | `27,570` | `110,381` | `15,557` | Failed `vitest_ok` |
+| `new-registration` | `device_skills` | ✅ | `81.45s` | `29,272` | `132,646` | `10,386` | All checks passed |
+| `new-registration` | `lore_mcp` | ✅ | **`77.47s`** | `32,138` | `145,850` | `10,269` | `get_context`, `get_skill`, `log_decision` (`ok: true`) |
+| `new-pipeline-board` | `no_skills` | ❌ | `122.65s` | `39,130` | `164,642` | `13,278` | Failed `vitest_ok` |
+| `new-pipeline-board` | `device_skills` | ✅ | `102.25s` | `36,088` | `203,231` | `9,218` | All checks passed |
+| `new-pipeline-board` | `lore_mcp` | ✅ | **`74.96s`** | `33,703` | `161,426` | `8,398` | `get_context`, `get_skill`, `log_decision` (`ok: true`) |
+| `new-readiness-planner` | `no_skills` | ❌ | `70.97s` | `25,915` | `91,417` | `9,461` | Failed `vitest_ok` |
+| `new-readiness-planner` | `device_skills` | ✅ | **`89.15s`** | `25,569` | `104,075` | `7,056` | All checks passed |
+| `new-readiness-planner` | `lore_mcp` | ✅ | `138.67s` | `29,235` | `121,310` | `7,531` | `get_context`, `get_skill`, `log_decision` (`ok: true`) |
 
 ### Suite 2: Old Project — `DJRCX/simple-write`
 
 | Scenario | Arm | Passed | Time (s) | Fresh Tokens | Total Input | Output | Tools / Notes |
 | :--- | :--- | :---: | ---: | ---: | ---: | ---: | :--- |
-| `old-reading-callout` | `no_skills` | ✅ | `394.75s` | `73,836` | `462,848` | `10,471` | All checks passed |
-| `old-reading-callout` | `device_skills` | ✅ | **`138.42s`** | `40,060` | `225,313` | `6,984` | All checks passed |
-| `old-reading-callout` | `lore_mcp` | ✅ | `485.90s` | `130,843` | `391,162` | `7,622` | `get_context`, `get_skill(names=[2])`, `log_decision` (`ok: true`) |
-| `old-security-links` | `no_skills` | ❌ | `289.75s` | `90,844` | `1,008,177` | `24,068` | Failed `vitest_ok`, `link_sanitized_in_ui`, `wikilink_guarded_in_ui` |
-| `old-security-links` | `device_skills` | ✅ | `440.63s` | `86,767` | `354,914` | `14,060` | All checks passed |
-| `old-security-links` | `lore_mcp` | ✅ | **`201.67s`** | `56,827` | `415,401` | `13,510` | `get_context`, `get_skill(names=[2])`, `log_decision` (`ok: true`) |
-| `old-find-a11y` | `no_skills` | ❌ | `72.66s` | `33,493` | `134,644` | `4,900` | Failed `vitest_ok` |
-| `old-find-a11y` | `device_skills` | ✅ | `144.25s` | `35,973` | `176,582` | `6,383` | All checks passed |
-| `old-find-a11y` | `lore_mcp` | ✅ | **`115.29s`** | `48,759` | `263,074` | `6,815` | `get_context`, `get_skill(names=[2])`, `get_skill`, `log_decision` (`check_applied: fail` on unserved `frontend-standards@v1`) |
+| `old-reading-callout` | `no_skills` | ✅ | `517.55s` | `61,258` | `543,773` | `10,475` | All checks passed |
+| `old-reading-callout` | `device_skills` | ✅ | **`120.66s`** | `40,622` | `247,109` | `6,716` | All checks passed |
+| `old-reading-callout` | `lore_mcp` | ✅ | `312.92s` | `45,390` | `283,754` | `8,803` | `get_context`, `get_skill`, `log_decision` (`ok: true`) |
+| `old-security-links` | `no_skills` | ❌ | `445.48s` | `83,816` | `822,531` | `30,956` | Failed `vitest_ok`, `link_sanitized_in_ui`, `wikilink_guarded_in_ui` |
+| `old-security-links` | `device_skills` | ✅ | **`158.50s`** | `42,451` | `250,015` | `13,031` | All checks passed |
+| `old-security-links` | `lore_mcp` | ✅ | `377.53s` | `56,768` | `400,700` | `14,442` | `get_context`, `get_skill`, `log_decision` (`ok: true`) |
+| `old-find-a11y` | `no_skills` | ❌ | `239.33s` | `84,080` | `789,383` | `14,729` | Failed `vitest_ok` |
+| `old-find-a11y` | `device_skills` | ✅ | **`102.40s`** | `33,375` | `163,205` | `6,170` | All checks passed |
+| `old-find-a11y` | `lore_mcp` | ✅ | `119.81s` | `38,502` | `207,711` | `7,768` | `get_context`, `get_skill`, `log_decision` (`ok: true`) |

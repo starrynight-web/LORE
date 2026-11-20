@@ -49,13 +49,18 @@ governance:
     claims_unverifiable: 0
 ```
 
-## CLI
+## CLI & autonomous MCP
 
 ```bash
 lore-solo govern scan [path] [--json]
 lore-solo govern check [path] [--json]
+lore-solo govern approve <item_id> [--accept-risk] [--note TEXT] [--json]
+lore-solo skill approve <skill_id> [--accept-risk] [--note TEXT] [--json]
+lore-solo persona approve <persona_id> [--accept-risk] [--note TEXT] [--json]
 lore-solo doctor   # includes SkillSpector + knowledge counts
 ```
+
+On the `--full` MCP surface (`lore-solo mcp --full` or `LORE_MCP_SURFACE=full`), agents can run the same checks via `check_security`, `check_freshness`, `approve_item`, and `setup_persona(..., approve=True)`.
 
 ## Install SkillSpector (optional)
 

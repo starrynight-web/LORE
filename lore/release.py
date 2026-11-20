@@ -20,10 +20,6 @@ def release_version() -> str:
     return __version__
 
 
-def release_tag() -> str:
-    return f"v{__version__}"
-
-
 def published_spec(*, with_map: bool) -> str:
     extra = "[map]" if with_map else ""
     return f"lore-solo{extra}=={__version__}"

@@ -1,5 +1,7 @@
 # Lore — Project Overview
 
+> **Historical Snapshot (2026-10-10 Go baseline):** This document describes the earlier Go `lore` engine (`cmd/`, `internal/`). For the current **Lore Solo** (`lore-solo` on the `solo` branch) architecture and workflow, see [docs/solo/HOW_IT_WORKS.md](solo/HOW_IT_WORKS.md) and [docs/solo/FLOW.md](solo/FLOW.md). For **Lore Enterprise**, see [docs/solo/HOSTING.md](solo/HOSTING.md) and the `enterprise` branch.
+
 | Field | Value |
 | --- | --- |
 | Snapshot date | 2026-10-10 |

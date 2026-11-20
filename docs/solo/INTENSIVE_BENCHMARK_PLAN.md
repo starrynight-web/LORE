@@ -1,24 +1,26 @@
 # Intensive 2×3 Benchmark Plan for Lore Solo (`agy` + Gemini 4 Hydrogen Medium)
 
+> **Status:** Implemented and executed. See [INTENSIVE_BENCHMARK_RESULTS.md](./INTENSIVE_BENCHMARK_RESULTS.md) and [results-intensive-2x3.json](../../examples/bench-library/results-intensive-2x3.json) for the latest run results.
+
 ## 1. Benchmark Matrix Overview
 
-We will test **2 Project Contexts × 3 Arms × 3 Multi-Sector Tasks = 18 isolated `agy` runs** per pass:
+We test **2 Project Contexts × 3 Arms × 3 Multi-Sector Tasks = 18 isolated `agy` runs** per pass:
 
 | Project Context | Arm 1: `no_skills` | Arm 2: `device_skills` | Arm 3: `lore_mcp` |
 | :--- | :--- | :--- | :--- |
-| **1. New Project (Greenfield)**<br>*Devin-a-thon Dhaka Companion*<br>(`examples/bench-devin-dhaka/`) | • Empty `$HOME/.gemini/config/skills/`<br>• Empty `mcp_config.json`<br>• No `.lore/`, no `AGENTS.md` | • All 30 `SKILL.md` folders installed natively in `$HOME/.gemini/config/skills/` & `.agents/skills/`<br>• Empty `mcp_config.json` | • Empty native device skills<br>• `lore-solo` MCP in `$HOME/.gemini/config/mcp_config.json`<br>• `.lore/` personas + stable skills<br>• `STANDING_INSTRUCTIONS` in `AGENTS.md` |
-| **2. Old Project (Brownfield)**<br>`DJRCX/simple-write` (`/home/djrcx/Projects/simple-write`) | • Clean worktree of `simple-write`<br>• Empty `$HOME/.gemini/config/skills/`<br>• Empty `mcp_config.json` | • Clean worktree of `simple-write`<br>• All 30 `SKILL.md` folders installed natively on device<br>• Empty `mcp_config.json` | • Clean worktree of `simple-write`<br>• Pre-built Graphify map (`graphify-out/graph.json`)<br>• `.lore/` personas + stable skills<br>• `lore-solo` MCP enabled |
+| **1. New Project (Greenfield)**<br>*Devin-a-thon Dhaka Companion*<br>(`examples/bench-devin-dhaka/`) | • Empty `$HOME/.gemini/config/skills/`<br>• Empty `mcp_config.json`<br>• No `.lore/`, no `AGENTS.md` | • All 31 `SKILL.md` folders installed natively in `$HOME/.gemini/config/skills/` & `.agents/skills/`<br>• Empty `mcp_config.json` | • Empty native device skills<br>• `lore-solo` MCP in `$HOME/.gemini/config/mcp_config.json`<br>• `.lore/` personas + stable skills<br>• `STANDING_INSTRUCTIONS` in `AGENTS.md` |
+| **2. Old Project (Brownfield)**<br>`DJRCX/simple-write` (`/home/djrcx/Projects/simple-write`) | • Clean worktree of `simple-write`<br>• Empty `$HOME/.gemini/config/skills/`<br>• Empty `mcp_config.json` | • Clean worktree of `simple-write`<br>• All 31 `SKILL.md` folders installed natively on device<br>• Empty `mcp_config.json` | • Clean worktree of `simple-write`<br>• Pre-built Graphify map (`graphify-out/graph.json`)<br>• `.lore/` personas + stable skills<br>• `lore-solo` MCP enabled |
 
 ```mermaid
 flowchart TD
   subgraph Prep["1. Benchmark Preparation"]
-    S["skills.sh Registry API\n(lore.core.inbox)"] -->|"Fetch 24+ skills across 6 sectors"| Pack["Cached Skill Pack\nexamples/bench-intensive-skills/"]
+    S["skills.sh Registry API\n(lore.core.inbox)"] -->|"Fetch 25 skills across 6 sectors"| Pack["Cached Skill Pack\nexamples/bench-intensive-skills/"]
     SW["/home/djrcx/Projects/simple-write"] -->|"Graphify extract"| Map["Cold Codebase Map\ngraphify-out/graph.json"]
   end
 
   subgraph Arms["2. Isolated Per-Run Environment (HOME = temp_dir)"]
     A1["Arm 1: no_skills\n• Empty $HOME/.gemini/config/skills\n• Empty mcp_config.json\n• No .lore/"]
-    A2["Arm 2: device_skills\n• All 30 SKILL.md folders in\n  $HOME/.gemini/config/skills & .agents/skills\n• Empty mcp_config.json"]
+    A2["Arm 2: device_skills\n• All 31 SKILL.md folders in\n  $HOME/.gemini/config/skills & .agents/skills\n• Empty mcp_config.json"]
     A3["Arm 3: lore_mcp\n• Empty native skills\n• lore-solo in $HOME/.gemini/config/mcp_config.json\n• .lore/ personas + stable skills\n• AGENTS.md standing instructions"]
   end
 
@@ -56,7 +58,7 @@ Inspecting `scripts/run_benchmark.py` and prior logs in `.tmp/bench-runs/agy-qua
 
 ## 3. Multi-Sector Skill Pack Downloaded from `skills.sh`
 
-We will add `scripts/fetch_bench_skills.py` using `lore.core.inbox.search_registry` and `_fetch_skill` to download **24 real skills from `skills.sh`** across **6 sectors** (verified live against `https://skills.sh/api/search`):
+`scripts/fetch_bench_skills.py` uses `lore.core.inbox.search_registry` and `_fetch_skill` to download **25 real skills from `skills.sh`** across **6 sectors** (verified live against `https://skills.sh/api/search`):
 
 | Sector | Lore Persona | Downloaded `skills.sh` Skills (`source/skill_id`) |
 | :--- | :--- | :--- |
@@ -67,8 +69,8 @@ We will add `scripts/fetch_bench_skills.py` using `lore.core.inbox.search_regist
 | **Security** | `persona:security-engineer` | `addyosmani/agent-skills/security-and-hardening`, `better-auth/skills/better-auth-security-best-practices`, `firebase/agent-skills/firebase-security-rules-auditor`, `samber/cc-skills-golang/golang-security` |
 | **Accessibility & Testing** | `persona:accessibility-engineer` | `addyosmani/web-quality-skills/accessibility`, `jakubkrehel/skills/better-accessibility`, `ibelick/ui-skills/fixing-accessibility`, `mattpocock/skills/tdd` |
 
-Alongside the 24 downloaded `skills.sh` skills, each sector includes one **sector standards skill** (`frontend-standards@v1`, `backend-standards@v1`, `database-standards@v1`, `motion-standards@v1`, `security-standards@v1`, `a11y-standards@v1`) encoding exact, deterministic conventions required by the test rubrics:
-* **In `device_skills`:** All 30 skills are installed as native `<slug>/SKILL.md` directories in `$HOME/.gemini/config/skills/` and `<work>/.agents/skills/` (including competing/off-stack skills like `.NET`, `Go`, `Azure`, `Firebase`, `v1` vs `v2` design skills).
+Alongside the 25 downloaded `skills.sh` skills, each sector includes one **sector standards skill** (`frontend-standards@v1`, `backend-standards@v1`, `database-standards@v1`, `motion-standards@v1`, `security-standards@v1`, `a11y-standards@v1`) encoding exact, deterministic conventions required by the test rubrics:
+* **In `device_skills`:** All 31 skills are installed as native `<slug>/SKILL.md` directories in `$HOME/.gemini/config/skills/` and `<work>/.agents/skills/` (including competing/off-stack skills like `.NET`, `Go`, `Azure`, `Firebase`, `v1` vs `v2` design skills).
 * **In `lore_mcp`:** Off-stack/competing skills remain `status: draft` (held back by Lore's governance gate), while approved `status: stable` skills are filed under their 6 personas and served on demand via `get_context` + `get_skill`.
 
 ---

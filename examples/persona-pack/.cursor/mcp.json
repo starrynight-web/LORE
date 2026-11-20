@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "lore": {
+    "lore-solo": {
       "command": "python",
       "args": [
         "-m",

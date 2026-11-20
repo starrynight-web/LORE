@@ -1,5 +1,7 @@
 # Lore — Complete Architecture, System Design, Tech Stack, Requirements
 
+> **Historical Specification (Congress / Go-era baseline):** This document records the initial 2026-09-29 multi-tier architecture (Go engine + Neo4j + Jev). On the `solo` branch, Lore ships as **Lore Solo** (`lore-solo`, Python + Graphify + Next.js/Django setup dashboard) — see [docs/solo/HOW_IT_WORKS.md](solo/HOW_IT_WORKS.md), [docs/solo/FLOW.md](solo/FLOW.md), and [docs/solo/GOVERNANCE.md](solo/GOVERNANCE.md). The Enterprise Knowledge Grid ships on the `enterprise` branch — see [docs/solo/HOSTING.md](solo/HOSTING.md).
+
 Single locked plan for Lore under the International AI Builders Congress 2026, InfraSphere AI / Knowledge Grid track.
 
 | Field | Value |

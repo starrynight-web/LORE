@@ -9,15 +9,6 @@ from lore.core.personas import served_skills
 from lore.core.tests.pack import PACK
 
 
-def test_copy_example_onto_its_own_pack_leaves_the_files() -> None:
-    from lore.core.workspace import copy_example, pack_root
-
-    persona = pack_root() / ".lore" / "personas" / "frontend-engineer.md"
-    before = persona.read_text(encoding="utf-8")
-    copy_example(pack_root())
-    assert persona.read_text(encoding="utf-8") == before
-
-
 def test_round_trip_keeps_unknown_header_keys(tmp_path: Path) -> None:
     source = PACK / ".lore" / "personas" / "frontend-engineer.md"
     doc = read_doc(source)

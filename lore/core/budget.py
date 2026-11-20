@@ -60,10 +60,3 @@ def context_content_text(
         )
     return "\n".join(parts)
 
-
-def context_content_tokens(
-    summary: str,
-    items: list[dict[str, Any]],
-    files: list[dict[str, Any]] | None = None,
-) -> int:
-    return count_tokens(context_content_text(summary, items, files))

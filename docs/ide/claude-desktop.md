@@ -15,4 +15,4 @@ Prefer `uvx lore-solo connect`, which writes this entry when Claude Desktop’s 
 }
 ```
 
-Quit Claude Desktop completely (including the tray icon) after editing the file, then reopen. Coding tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`.
+Quit Claude Desktop completely (including the tray icon) after editing the file, then reopen. Coding tools: `get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`.

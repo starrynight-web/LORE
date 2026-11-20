@@ -22,7 +22,7 @@ The older architecture documents describe the previous Go design.
 Check the machine first (works before install, via PyPI):
 
 ```bash
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.4 doctor
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.7 doctor
 ```
 
 `--managed-python --python 3.12` selects a managed Python 3.12 interpreter before dependencies are resolved, and `--no-build` accepts prebuilt binary wheels only — nothing compiles on your machine.
@@ -34,8 +34,8 @@ From a clone: `./scripts/lore-solo doctor` or `.\scripts\lore-solo.ps1 doctor`. 
 The setup site needs Node.js 22 (the prebuilt page is produced and verified on the Node 22 line; npm is only needed when building the page from source). The agent needs neither. With [uv](https://docs.astral.sh/uv/) installed, the same commands work on macOS, Linux, and Windows:
 
 ```bash
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.4 doctor
-uvx --managed-python --python 3.12 --no-build lore-solo==0.2.4 install
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.7 doctor
+uvx --managed-python --python 3.12 --no-build lore-solo==0.2.7 install
 lore-solo setup
 ```
 
@@ -47,21 +47,27 @@ Once installed, the same subcommands run through `lore-solo` (`uvx lore-solo ...
 
 ```bash
 lore-solo doctor
+lore-solo update
 lore-solo connect
 lore-solo mcp
 lore-solo map
+lore-solo skill --help
+lore-solo persona --help
+lore-solo govern --help
+lore-solo stats
+lore-solo help
 lore-solo uninstall
 ```
 
-Native installs are the supported path, with release targets of Windows x86_64, glibc Linux x86_64, and macOS arm64. A source checkout carries an intentionally **empty** `lore/site_bundles.json` — it is a placeholder, not a release manifest. The release workflow builds and smoke-tests the per-platform site archives, then generates the pinned manifest inside the release wheel — only that released package can auto-download the setup site (see [docs/solo/RELEASING.md](docs/solo/RELEASING.md)). Passing `setup --site-bundle <zip>` performs integrity and format validation, but without a pinned manifest entry it is **not** release-verified; combine it with `--offline` to avoid downloads. Checkouts can also run the site from their own `web/` build. The `lore-solo==0.2.4` install examples above work once that version is published to PyPI; the release packages and assets ship only after the native platform matrix and the Docker image gates pass — see the repository's [Actions](https://github.com/starrynight-web/LORE/actions) and [Releases](https://github.com/starrynight-web/LORE/releases) pages for current evidence.
+Native installs are the supported path, with release targets of Windows x86_64, glibc Linux x86_64, and macOS arm64. A source checkout carries an intentionally **empty** `lore/site_bundles.json` — it is a placeholder, not a release manifest. The release workflow builds and smoke-tests the per-platform site archives, then generates the pinned manifest inside the release wheel — only that released package can auto-download the setup site (see [docs/solo/RELEASING.md](docs/solo/RELEASING.md)). Passing `setup --site-bundle <zip>` performs integrity and format validation, but without a pinned manifest entry it is **not** release-verified; combine it with `--offline` to avoid downloads. Checkouts can also run the site from their own `web/` build. The `lore-solo==0.2.7` install examples above work once that version is published to PyPI; the release packages and assets ship only after the native platform matrix and the Docker image gates pass — see the repository's [Actions](https://github.com/starrynight-web/LORE/actions) and [Releases](https://github.com/starrynight-web/LORE/releases) pages for current evidence.
 
 ### Containers (optional)
 
 A container runtime exists for hosts where you would rather keep Lore's toolchain (Node, map dependencies) inside an image. The `lore-solo` Python launcher on the host still drives `container` and `connect` — it is what editors spawn. No official image is published — build the local versioned tags yourself:
 
 ```bash
-docker build --target mcp  -t lore-solo:0.2.4-mcp .
-docker build --target full -t lore-solo:0.2.4-full .
+docker build --target mcp  -t lore-solo:0.2.7-mcp .
+docker build --target full -t lore-solo:0.2.7-full .
 ```
 
 The `mcp` target holds the installed wheel plus map dependencies under the packaged constraints — no Node, npm, or compilers. The `full` target adds Node 22 and the prebuilt setup site. A default build always compiles the wheel and frontend from source and ignores whatever happens to be in `dist/`. Release builds opt in explicitly: place the verified artifacts under `dist/` (`dist/lore_solo-*.whl`, `dist/release_constraints.txt`, `dist/site/lore-site-<version>-linux-amd64.zip`) and pass `--build-arg LORE_RELEASE_ARTIFACTS=1`; the build then fails closed unless the constraints match the wheel and the site archive satisfies the pinned linux-amd64 manifest entry. Verified locally against rootless Podman; Docker Engine and Docker Desktop specifics are covered by argument tests, not local runs.
@@ -69,15 +75,15 @@ The `mcp` target holds the installed wheel plus map dependencies under the packa
 Run Lore inside the image with exactly two writable bind mounts — a workspace and a persona library, both of which must exist:
 
 ```bash
-lore-solo container mcp   --image lore-solo:0.2.4-mcp  --workspace ~/code/app --library ~/.local/share/lore
-lore-solo container setup --image lore-solo:0.2.4-full --workspace ~/code/app --library ~/.local/share/lore --port 3000
-lore-solo container map   --image lore-solo:0.2.4-mcp  --workspace ~/code/app --library ~/.local/share/lore
+lore-solo container mcp   --image lore-solo:0.2.7-mcp  --workspace ~/code/app --library ~/.local/share/lore
+lore-solo container setup --image lore-solo:0.2.7-full --workspace ~/code/app --library ~/.local/share/lore --port 3000
+lore-solo container map   --image lore-solo:0.2.7-mcp  --workspace ~/code/app --library ~/.local/share/lore
 ```
 
 Only those two directories cross the boundary — no home directory, socket, or other host paths — and the setup page is published on `127.0.0.1` only. On Linux the container runs as your UID/GID so files it writes stay owned by you. Under Docker Desktop on Windows/macOS the image's own user is used instead, and workspace/library paths may come from the VM's view of your files. Connect the editors from the host so the configs point back at the container:
 
 ```bash
-lore-solo connect --runtime docker --image lore-solo:0.2.4-mcp \
+lore-solo connect --runtime docker --image lore-solo:0.2.7-mcp \
   --workspace ~/code/app --library ~/.local/share/lore
 ```
 
@@ -157,20 +163,23 @@ uv run --frozen pytest
 
 | Document | Contents |
 | --- | --- |
-| [docs/LORE_OVERVIEW.md](docs/LORE_OVERVIEW.md) | Earlier product overview |
-| [docs/LORE_ARCHITECTURE.md](docs/LORE_ARCHITECTURE.md) | Earlier target architecture |
-| [docs/PROJECT_REQUIREMENTS.md](docs/PROJECT_REQUIREMENTS.md) | Earlier requirements |
-| [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) | Earlier scope and milestones |
 | [docs/solo/FLOW.md](docs/solo/FLOW.md) | Visual flow: user, agent, MCP, and API wiring |
 | [docs/solo/HOW_IT_WORKS.md](docs/solo/HOW_IT_WORKS.md) | How the solo slice runs |
 | [docs/solo/QUALITY_PLAN.md](docs/solo/QUALITY_PLAN.md) | Plain-language quality promise and bake-off |
+| [docs/solo/INTENSIVE_BENCHMARK_PLAN.md](docs/solo/INTENSIVE_BENCHMARK_PLAN.md) | Intensive 2×3 multi-sector benchmark design |
+| [docs/solo/INTENSIVE_BENCHMARK_RESULTS.md](docs/solo/INTENSIVE_BENCHMARK_RESULTS.md) | Intensive 2×3 benchmark results (`agy` + Gemini 4 Hydrogen) |
 | [docs/solo/UI.md](docs/solo/UI.md) | Setup site pages and how to change them |
 | [docs/solo/TASKLIST.md](docs/solo/TASKLIST.md) | Build record and the current shape |
-| [docs/solo/HOSTING.md](docs/solo/HOSTING.md) | What a later paid host would sync |
+| [docs/solo/HOSTING.md](docs/solo/HOSTING.md) | Solo vs Enterprise tiers and what a later host would sync |
 | [docs/solo/GOVERNANCE.md](docs/solo/GOVERNANCE.md) | Content-trust layer: scans, approval, freshness |
 | [docs/solo/RELEASING.md](docs/solo/RELEASING.md) | How a release is produced and what ships |
 | [docs/solo/DEPENDENCY_AUDIT.md](docs/solo/DEPENDENCY_AUDIT.md) | Dependency audit record and how to repeat it |
+| [docs/ide/README.md](docs/ide/README.md) | Connecting Lore Solo to Cursor, VS Code, Antigravity, Claude, Codex, Devin |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
+| [docs/LORE_OVERVIEW.md](docs/LORE_OVERVIEW.md) | Historical: original Congress / Go-era product overview |
+| [docs/LORE_ARCHITECTURE.md](docs/LORE_ARCHITECTURE.md) | Historical: original Congress / Go-era architecture spec |
+| [docs/PROJECT_REQUIREMENTS.md](docs/PROJECT_REQUIREMENTS.md) | Historical: original Congress / Go-era requirements |
+| [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) | Historical: original Congress / Go-era charter and milestones |
 
 ## License
 

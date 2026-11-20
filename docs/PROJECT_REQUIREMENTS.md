@@ -1,5 +1,7 @@
 # Lore — Project Requirements Document
 
+> **Historical PRD (2026-09-29 baseline):** This PRD specifies the original Go/Neo4j/Jev multi-phase plan. For the current **Lore Solo** (`lore-solo`) implementation on the `solo` branch, see [docs/solo/HOW_IT_WORKS.md](solo/HOW_IT_WORKS.md), [docs/solo/GOVERNANCE.md](solo/GOVERNANCE.md), and [docs/solo/TASKLIST.md](solo/TASKLIST.md). For **Lore Enterprise**, see [docs/solo/HOSTING.md](solo/HOSTING.md) and the `enterprise` branch.
+
 | Field | Value |
 | --- | --- |
 | Project | Lore — a Knowledge Grid engine for developers and enterprises |

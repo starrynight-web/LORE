@@ -49,11 +49,6 @@ def invocation() -> tuple[str, list[str]]:
     )
 
 
-def lore_command() -> str:
-    """The program editors should start."""
-    return invocation()[0]
-
-
 def _installed_command() -> Path | None:
     bin_dir = Path.home() / ".lore" / "bin"
     base = bin_dir / "lore-solo"

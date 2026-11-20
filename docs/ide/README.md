@@ -6,11 +6,11 @@ Server display name: **`lore-solo`** (avoids colliding with older Go `lore` and 
 
 ## Before you start
 
-1. Install: `uvx --managed-python --python 3.12 --no-build lore-solo==0.2.4 install` (optional map extra; see GitHub #2 / Graphify native build).
+1. Install: `uvx --managed-python --python 3.12 --no-build lore-solo==0.2.7 install` (optional map extra; see GitHub #2 / Graphify native build).
 2. Register editors: `uvx lore-solo connect` — writes MCP configs + standing rules.
 3. Or from a clone of the `solo` branch: `./scripts/lore-solo install` then `connect`.
 
-Default **coding** tools: `get_context`, `map_codebase`, `check_applied`, `log_decision`. Admin tools: `lore-solo mcp --full`.
+Default **coding** tools (5): `get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`. Admin tools: `lore-solo mcp --full`.
 
 Product promise and loop: [../solo/QUALITY_PLAN.md](../solo/QUALITY_PLAN.md).
 

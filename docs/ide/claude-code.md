@@ -15,4 +15,4 @@ Prefer `uvx lore-solo connect`, which updates `~/.claude.json` (or the Claude De
 
 Or: `claude mcp add lore-solo -- uvx lore-solo mcp`.
 
-Standing instructions in `CLAUDE.md` describe the coding loop. Default surface is four coding tools; use `lore-solo mcp --full` for admin tools.
+Standing instructions in `CLAUDE.md` describe the coding loop. Default surface is five coding tools (`get_context`, `get_skill`, `map_codebase`, `check_applied`, `log_decision`); use `lore-solo mcp --full` for admin tools.

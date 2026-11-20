@@ -1,8 +1,8 @@
 # Function audit
 
 > Snapshot from 2026-10-26, before map tools and one-call task mode. Current behavior:
-> default MCP coding surface is `get_context`, `map_codebase`, `check_applied`,
-> `log_decision`; full surface keeps the tools below. See [HOW_IT_WORKS.md](HOW_IT_WORKS.md),
+> default MCP coding surface is `get_context`, `get_skill`, `map_codebase`, `check_applied`,
+> `log_decision`; full surface (`--full`) adds autonomous/admin tools. See [HOW_IT_WORKS.md](HOW_IT_WORKS.md),
 > [FLOW.md](FLOW.md), and [QUALITY_PLAN.md](QUALITY_PLAN.md).
 
 Recorded before the map tools were added. Date: 2026-10-26.

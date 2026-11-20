@@ -6,15 +6,3 @@ export const PROVIDERS = [
   { label: "Anthropic", value: "anthropic" },
 ]
 
-/** Defaults match lore/core/provider.py. A saved key replaces these with the live catalog. */
-export const DEFAULT_MODELS: Record<string, string[]> = {
-  groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
-  openrouter: ["openai/gpt-4o-mini"],
-  gemini: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
-  openai: ["gpt-4o-mini", "gpt-4.1-mini"],
-  anthropic: ["claude-haiku-4-5"],
-}
-
-export function defaultModels(provider: string) {
-  return DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.groq
-}

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.7 — 2026-11-20
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+### Changed
+
+- Cleaned up unused legacy code and endpoints (`lore.connect.lore_command`,
+  `lore.core.budget.context_content_tokens`, `lore.core.personas.set_status`,
+  `lore.release.release_tag`, `lore.core.workspace.copy_example`, unused
+  `/api/workspace/example`, `/api/graph/build`, `/api/graph`, and
+  `/graph/view/` routes, and unused `web/` components/exports).
+- Added **Connect installed editors** (`POST /api/connect/agents`) to `/connect`
+  and updated `scripts/lore-solo` / `scripts/lore-solo.ps1` to forward all
+  current CLI subcommands (`update`, `container`, `govern`, `skill`, `persona`,
+  `stats`, `help`).
+- Aligned `README.md`, `docs/solo/*`, `docs/ide/*`, `examples/persona-pack/.cursor/mcp.json`,
+  and historical `docs/` banners with the `0.2.7` codebase and latest 2×3
+  benchmark results.
+
 ## 0.2.6 — 2026-11-20
 
 GitHub release artifacts are produced by the tag-triggered release workflow

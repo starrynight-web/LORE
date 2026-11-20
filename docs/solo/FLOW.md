@@ -112,29 +112,34 @@ sequenceDiagram
 
 ### Tools
 
-| Tool | Role |
-| --- | --- |
-| `get_context` | Main call. Task sentence → matching skill summaries + files to open. Or name a persona for that persona’s stable summaries. |
-| `map_codebase` | Build the codebase map (coding surface) |
-| `check_applied` | Receipt: cited skill ids must match what that decision served |
-| `log_decision` | Append a one-line outcome to the decision |
-| `get_skill` | Full skill body when summaries are not enough (coding surface) |
-| `list_personas` | Stable persona names (full surface) |
-| `locate` / `map_status` | Map helpers (full surface; locate also folded into task-mode `get_context`) |
-| `ingest` / `trace` | Draft ingest / read a decision (full surface) |
+| Tool | Surface | Role |
+| --- | --- | --- |
+| `get_context` | coding (default) | Main call. Task sentence → matching skill summaries (`items`), `data.cite_ids`, and advisory files to inspect (`data.files`). Or name a persona for that persona’s stable summaries + map slice. |
+| `get_skill` | coding (default) | Full skill body for one skill (`name=...`) or a batch (`names=[...]`) when summaries are not enough |
+| `map_codebase` | coding (default) | Build the codebase map in the background |
+| `check_applied` | coding (default) | Receipt: verify cited `rule_ids` match what that decision served (`pass`, `fail`, or `skip`) |
+| `log_decision` | coding (default) | Verify cited `rule_ids` (auto-runs `check_applied` if needed) and append an outcome to the decision |
+| `list_personas` | full (`--full`) | Persona names, summaries, and governance (`include_drafts=True` includes drafts) |
+| `search_skills` / `install_skill` | full (`--full`) | Search skills.sh (or featured list) and install skills from skills.sh, local folder, or text |
+| `list_inbox` / `list_skills` | full (`--full`) | List waiting inbox skills or filed skills with governance and freshness metadata |
+| `setup_persona` / `approve_item` | full (`--full`) | Create/update a persona, adopt inbox skills, and run ATR/SkillSpector governance approval |
+| `check_security` / `check_freshness` | full (`--full`) | Run ATR + optional SkillSpector scan or freshness check on one item or the whole store |
+| `get_telemetry` | full (`--full`) | Call counts, token usage telemetry (`total`, `avg`, `max`, `budget`, `series`), and top agents/personas/skills |
+| `locate` / `map_status` | full (`--full`) | Map helpers (`locate` is also folded into task-mode `get_context`) |
+| `ingest` / `trace` | full (`--full`) | Draft skill ingest / read a decision record |
 
-The standing instruction tells the agent to call `get_context` once, edit the files it returns, then `check_applied` and `log_decision`. It should not read `.lore/skills` or `graphify-out/graph.json` by hand. See [QUALITY_PLAN.md](QUALITY_PLAN.md).
+The standing instruction (`lore/core/instructions.py`) tells the agent to call `get_context` once, treat `data.files` as advisory suggestions, call `get_skill` (or `get_skill(names=[...])`) when summaries are insufficient, and finish with `log_decision` (passing `rule_ids`, which records both the citation receipt and outcome). It should not walk `.lore/skills` or `.lore/personas` or read `graphify-out/graph.json` directly. See [QUALITY_PLAN.md](QUALITY_PLAN.md).
 
 ### What the agent receives
 
 ```text
 lore.result/1
-  verdict      ok | abstain | no_knowledge
+  verdict      ok | ok_with_notes | abstain | no_knowledge
   directive    proceed_and_cite | ask_user | proceed
-  summary      short human sentence
-  items[]      skill summaries (and sometimes map chunks)
-  data.files   paths to open (task mode)
-  data.personas / data.persona
+  summary      short human sentence + Files + Cite
+  items[]      skill summaries (and named-persona map chunks)
+  data.files   advisory paths to inspect (task mode)
+  data.personas / data.persona / data.cite_ids / data.map
   budget       limit 800 · used …
   decision_id  dec-NNNN
 ```
@@ -204,7 +209,7 @@ All of these are under `http://127.0.0.1:7421` (browser hits them as `/api/...` 
 ```mermaid
 flowchart TB
   subgraph human [You · browser]
-    pages[Setup · Personas · Codebase · Replay · Connect · Settings]
+    pages[Dashboard · Personas · Skills · Codebase · Decisions · Connect · Settings]
   end
 
   subgraph api [Django lore/setup/urls.py]
@@ -212,17 +217,17 @@ flowchart TB
     ws["/api/workspace · browse · pick-folder"]
     prov["/api/provider · models · draft"]
     inbox["/api/inbox · skills · catalog"]
-    pers["/api/personas · approve"]
-    graph["/api/graph · graph/build · codebases"]
+    pers["/api/personas · approve · skillspector"]
+    graph["/api/codebases · codebases/<id>/graph"]
     conn["/api/connect · connect/agents"]
     dec["/api/decisions · stats · settings · onboarding"]
   end
 
   subgraph disk [.lore store]
     personas[personas/]
-    skills[skills/]
+    skills[skills/ + inbox/]
     decisions[decisions/]
-    config[lore.config.yaml]
+    config[lore.config.yaml + onboarding.json + codebases.json]
     gout[graphify-out/]
   end
 
@@ -239,13 +244,13 @@ flowchart TB
 
 | Area | Endpoints (representative) | Disk / side effect |
 | --- | --- | --- |
-| Workspace | `/api/workspace`, `/api/browse`, `/api/pick-folder` | Choose project; refuse paths outside project + library |
+| Workspace / folders | `/api/workspace`, `/api/browse`, `/api/pick-folder` | Initialize store or pick a local folder; refuse paths outside project + home/library |
 | Provider | `/api/provider`, `/models`, `/draft` | `provider.json` in library; LLM only for drafts |
-| Skills / inbox | `/api/skills/*`, `/api/inbox/*`, `/api/catalog` | Inbox → persona skill folders |
-| Personas | `/api/personas`, `/api/items/.../approve` | Markdown OKF files; draft → stable |
-| Map | `/api/graph`, `/api/graph/build`, `/api/codebases` | `graphify-out/`, `graph-status.json` |
-| Connect | `/api/connect` | Same as CLI `connect` |
-| Replay | `/api/decisions` | Read `decisions/` |
+| Skills / inbox | `/api/skills/*`, `/api/inbox/*`, `/api/catalog` | Inbox (`.lore/inbox/`) → persona skill folders |
+| Personas & governance | `/api/personas`, `/api/items/.../approve`, `/api/skillspector` | Markdown OKF files; ATR + optional SkillSpector scan; draft → stable |
+| Codebase map | `/api/codebases`, `/api/codebases/<id>`, `/api/codebases/<id>/graph` | `codebases.json`, `graphify-out/`, `.lore/graph-status.json` |
+| Connect | `/api/connect`, `/api/connect/agents` | Project `.mcp.json`/`.cursor/mcp.json`/`.vscode/mcp.json` or host editor registration |
+| Decisions & telemetry | `/api/decisions`, `/api/stats`, `/api/settings`, `/api/onboarding` | Read `decisions/` & token stats; save `lore.config.yaml` and `onboarding.json` |
 
 ### MCP → core (no HTTP)
 
@@ -313,10 +318,16 @@ flowchart TB
 ```text
 .lore/
   lore.config.yaml
+  onboarding.json
+  codebases.json
+  idempotency.json
+  provider.json              # library only
+  inbox/*.md
   personas/*.md
   skills/<persona-slug>/*.md
   decisions/dec-NNNN.md
   graph-status.json          # map job only; does not count as a persona store alone
+  map.lock / map.log / map-fingerprint.json
 graphify-out/
   graph.json
   graph.html

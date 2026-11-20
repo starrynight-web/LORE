@@ -99,8 +99,28 @@ switch ($Command) {
     uv run --managed-python --python 3.12 --no-build --locked --project $Root python -m lore doctor @DoctorArgs
     exit $LASTEXITCODE
   }
+  { $_ -in "update", "container", "govern", "skill", "persona", "stats" } {
+    Require-Lore
+    if ($env:LORE_PROJECT) { Set-Location $env:LORE_PROJECT }
+    $SubArgs = @()
+    if ($args.Count -gt 1) { $SubArgs = $args[1..($args.Count - 1)] }
+    & $Bin $Command @SubArgs
+    exit $LASTEXITCODE
+  }
+  { $_ -in "help", "-h", "--help" } {
+    $HelpArgs = @()
+    if ($args.Count -gt 1) { $HelpArgs = $args[1..($args.Count - 1)] }
+    if (Test-Path $Bin) {
+      & $Bin help @HelpArgs
+      exit $LASTEXITCODE
+    }
+    Need-Uv
+    $env:LORE_CHECKOUT = $Root
+    uv run --managed-python --python 3.12 --no-build --locked --project $Root python -m lore help @HelpArgs
+    exit $LASTEXITCODE
+  }
   default {
-    Write-Error "usage: scripts/lore-solo.ps1 install|setup|uninstall|mcp|connect|map|doctor"
+    Write-Error "usage: scripts/lore-solo.ps1 install|update|setup|uninstall|connect|container|mcp|map|doctor|govern|skill|persona|stats|help"
     exit 2
   }
 }
