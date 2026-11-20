@@ -383,7 +383,7 @@ export default function DashboardPage() {
                       className={cn(
                         "grid size-[26px] shrink-0 place-items-center rounded-full text-xs font-bold",
                         isStable
-                          ? "bg-[#c8eb5e] text-[#141517]"
+                          ? "bg-[var(--lore-sage)] text-[#1a2e1c]"
                           : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
                       )}
                     >

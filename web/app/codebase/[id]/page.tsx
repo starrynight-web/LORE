@@ -117,7 +117,7 @@ export default function CodebaseDetailPage() {
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold",
                     ready
-                      ? "bg-[#c8eb5e] text-[#141517]"
+                      ? "bg-[var(--lore-sage)] text-[#1a2e1c]"
                       : running
                         ? "bg-[#a59bf3]/30 text-foreground"
                         : "bg-muted text-muted-foreground"
@@ -236,7 +236,7 @@ export default function CodebaseDetailPage() {
                           className={cn(
                             "inline-flex rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold",
                             link.confidence === "EXTRACTED"
-                              ? "bg-[#c8eb5e]/35 text-foreground"
+                              ? "bg-[var(--lore-sage)]/35 text-foreground"
                               : "bg-muted text-muted-foreground"
                           )}
                         >

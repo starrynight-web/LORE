@@ -190,7 +190,7 @@ export default function SkillsPage() {
                       className={cn(
                         "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
                         isStable
-                          ? "bg-[#c8eb5e] text-[#141517]"
+                          ? "bg-[var(--lore-sage)] text-[#1a2e1c]"
                           : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
                       )}
                     >

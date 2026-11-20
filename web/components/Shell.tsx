@@ -32,7 +32,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
       <AppSidebar />
-      <div className="mx-auto flex min-w-0 w-full max-w-[1400px] flex-1 flex-col px-4 pt-[18px] pb-16 sm:px-7">
+      <div className="mx-auto flex min-w-0 w-full max-w-[1280px] flex-1 flex-col px-4 pt-[22px] pb-16 sm:px-7">
         <SiteHeader />
         <main id="content" className="flex flex-1 flex-col gap-[18px]">
           {children}

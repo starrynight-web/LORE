@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.9 — 2026-11-20
+
+GitHub release artifacts are produced by the tag-triggered release workflow
+once its native platform matrix and Docker image gates pass. PyPI publication
+is a separate, user-owned step on those verified artifacts — this entry does
+not assert that upload has happened.
+
+### Changed
+
+- Refreshed project logo and favicon package (`web/app` icons, `web/public`
+  favicon/manifest assets, `assets/lore-logo*.png`, and README brand header).
+- Polished the setup-site chrome (sidebar navigation/branding, header, charts,
+  and related page styling) to match the new brand.
+
 ## 0.2.8 — 2026-11-20
 
 GitHub release artifacts are produced by the tag-triggered release workflow

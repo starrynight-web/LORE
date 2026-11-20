@@ -5,7 +5,7 @@ import Link from "next/link"
 import type { Rank } from "@/lib/api"
 import { skillHref } from "@/lib/routes"
 
-const BAR_COLORS = ["#c8eb5e", "#a59bf3", "#c5c8d0", "#c8eb5e", "#a59bf3"]
+const BAR_COLORS = ["#8fbc8f", "#a59bf3", "#c5c8d0", "#8fbc8f", "#a59bf3"]
 
 export function SkillBarChart({ rows }: { rows: Rank[] }) {
   const top = rows.slice(0, 5)

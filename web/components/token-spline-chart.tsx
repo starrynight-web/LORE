@@ -76,8 +76,8 @@ export function TokenSplineChart({
       >
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#c8eb5e" stopOpacity="0.26" />
-            <stop offset="100%" stopColor="#c8eb5e" stopOpacity="0" />
+            <stop offset="0%" stopColor="#8fbc8f" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#8fbc8f" stopOpacity="0" />
           </linearGradient>
         </defs>
 
@@ -136,7 +136,7 @@ export function TokenSplineChart({
         {coords.length > 1 ? (
           <>
             <path d={areaD} fill={`url(#${gradId})`} />
-            <path d={pathD} fill="none" stroke="#c8eb5e" strokeWidth="2.2" strokeLinecap="round" />
+            <path d={pathD} fill="none" stroke="#5f8f6a" strokeWidth="2.2" strokeLinecap="round" />
           </>
         ) : null}
 
@@ -154,8 +154,8 @@ export function TokenSplineChart({
                 cx={item.x}
                 cy={item.y}
                 r={isSelected ? 4.5 : 3.5}
-                fill={isSelected ? "#c8eb5e" : "var(--card)"}
-                stroke="#c8eb5e"
+                fill={isSelected ? "#8fbc8f" : "var(--card)"}
+                stroke="#8fbc8f"
                 strokeWidth={isSelected ? 2 : 1.7}
               />
             </g>

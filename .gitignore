@@ -49,3 +49,6 @@ Thumbs.db
 # Private working material — never shipped
 /docs/new/
 /lore_core_dump.txt
+
+# Launch video Remotion project (local assets + render output)
+video/
