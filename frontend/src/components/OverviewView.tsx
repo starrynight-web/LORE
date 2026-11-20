@@ -21,6 +21,7 @@ import {
   RefreshCw, 
   Clock, 
   Check, 
+  Copy,
   Activity,
   FileSpreadsheet,
   FileCode,
@@ -166,6 +167,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [sweepActive, setSweepActive] = useState(false);
   const [lastSyncedTime, setLastSyncedTime] = useState<string>('just now');
+  const [copiedWsId, setCopiedWsId] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -331,9 +333,26 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           <h1 className="sonoma-title text-[var(--text-primary)]">
             Workspace Overview
           </h1>
-          <p className="sonoma-row-secondary text-[#6E6E73] mt-0.5">
-            {currentOrg?.name || 'Northstar Enterprise'} · {currentWorkspace?.name || 'Governance & Security Workspace'}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+            <p className="sonoma-row-secondary text-[#6E6E73]">
+              {currentOrg?.name || 'Northstar Enterprise'} · {currentWorkspace?.name || 'Governance & Security Workspace'}
+            </p>
+            {currentWorkspace?.id && (
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(currentWorkspace.id);
+                  setCopiedWsId(true);
+                  setTimeout(() => setCopiedWsId(false), 1500);
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] text-[#86868B] hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/10 transition-colors cursor-pointer border border-[var(--hairline)]"
+                title={`Full Workspace UUID: ${currentWorkspace.id}\nClick to copy`}
+              >
+                <span>UUID: {currentWorkspace.id}</span>
+                {copiedWsId ? <Check className="w-3 h-3 text-[#34C759]" /> : <Copy className="w-2.5 h-2.5" />}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

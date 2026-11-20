@@ -1,55 +1,169 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 title LORE Enterprise Launcher
 cd /d "%~dp0"
 
 echo ======================================================================
-echo   LORE Enterprise - Unified Application Launcher
+echo   LORE Enterprise - Turnkey Unified Application Launcher
 echo ======================================================================
 echo.
 
-:: 1. Verify Python availability
+:: 1. Verify Python availability or discover standard installations
+echo [*] Checking Python environment...
 where python >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Python is not installed or not in PATH.
-    echo Please install Python 3.12 or 3.13 and ensure 'Add to PATH' is checked.
-    echo.
-    pause
-    exit /b 1
+    if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" (
+        set "PATH=%LOCALAPPDATA%\Programs\Python\Python313;%LOCALAPPDATA%\Programs\Python\Python313\Scripts;!PATH!"
+    ) else if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+        set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;!PATH!"
+    ) else if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
+        set "PATH=%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Programs\Python\Python311\Scripts;!PATH!"
+    ) else if exist "C:\Python314\python.exe" (
+        set "PATH=C:\Python314;C:\Python314\Scripts;!PATH!"
+    ) else if exist "C:\Python312\python.exe" (
+        set "PATH=C:\Python312;C:\Python312\Scripts;!PATH!"
+    )
 )
 
-:: 2. Verify Node / npm availability
+where python >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ======================================================================
+    echo   [AUTO-SETUP] Python was not detected on this system.
+    echo   Downloading and installing official Python 3.12 (silent setup)...
+    echo   (This is an automated one-time setup for new Windows devices)
+    echo ======================================================================
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe', '$env:TEMP\python_setup.exe')"
+    if exist "%TEMP%\python_setup.exe" (
+        echo [*] Installing Python 3.12 silently...
+        "%TEMP%\python_setup.exe" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 Include_pip=1 SimpleInstall=1
+        del "%TEMP%\python_setup.exe" >nul 2>&1
+        for /f "tokens=*" %%p in ('powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')"') do set "PATH=%%p;!PATH!"
+        if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+            set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;!PATH!"
+        )
+    )
+    where python >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [ERROR] Python auto-installation could not be completed.
+        echo Please download and install Python manually from: https://www.python.org/downloads/
+        echo (IMPORTANT: Make sure to check the box 'Add python.exe to PATH')
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK] Python installed and registered successfully.
+) else (
+    echo [OK] Python is available.
+)
+
+:: 2. Verify Node.js / npm availability or discover standard installations
+echo [*] Checking Node.js environment...
+where node >nul 2>&1
+if %errorlevel% neq 0 (
+    if exist "C:\Program Files\nodejs\node.exe" (
+        set "PATH=C:\Program Files\nodejs;%APPDATA%\npm;!PATH!"
+    ) else if exist "C:\Program Files (x86)\nodejs\node.exe" (
+        set "PATH=C:\Program Files (x86)\nodejs;%APPDATA%\npm;!PATH!"
+    )
+)
+
 where npm >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Node.js / npm is not installed or not in PATH.
-    echo Please install Node.js from https://nodejs.org
-    echo.
-    pause
-    exit /b 1
+    echo ======================================================================
+    echo   [AUTO-SETUP] Node.js was not detected on this system.
+    echo   Downloading and installing official Node.js LTS (silent setup)...
+    echo   (This is an automated one-time setup for new Windows devices)
+    echo ======================================================================
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://nodejs.org/dist/v20.18.1/node-v20.18.1-x64.msi', '$env:TEMP\node_setup.msi')"
+    if exist "%TEMP%\node_setup.msi" (
+        echo [*] Installing Node.js LTS silently...
+        msiexec /i "%TEMP%\node_setup.msi" /qn
+        del "%TEMP%\node_setup.msi" >nul 2>&1
+        for /f "tokens=*" %%p in ('powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')"') do set "PATH=%%p;!PATH!"
+        if exist "C:\Program Files\nodejs\node.exe" (
+            set "PATH=C:\Program Files\nodejs;%APPDATA%\npm;!PATH!"
+        )
+    )
+    where npm >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [ERROR] Node.js auto-installation could not be completed.
+        echo Please download and install Node.js manually from: https://nodejs.org
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK] Node.js and npm installed and registered successfully.
+) else (
+    echo [OK] Node.js is available.
 )
 
 :: 2.5 Auto-Setup for Fresh Devices: Verify Python packages
-python -c "import django" >nul 2>&1
+echo [*] Checking Python dependencies...
+python -c "import django, rest_framework, corsheaders, pydantic, qdrant_client" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [SETUP] Python dependencies missing. Installing required packages from requirements.txt...
-    pip install -r "%~dp0backend\requirements.txt"
+    echo.
+    echo ======================================================================
+    echo   [SETUP] Core Python dependencies missing or incomplete.
+    echo   Installing packages from backend\requirements.txt...
+    echo   (This is an automated one-time setup for fresh machines)
+    echo ======================================================================
+    python -m pip install --upgrade pip
+    python -m pip install -r "%~dp0backend\requirements.txt"
+    if !errorlevel! neq 0 (
+        echo [*] Retrying core runtime dependencies installation...
+        python -m pip install django djangorestframework djangorestframework-simplejwt django-cors-headers pydantic qdrant-client requests sentence-transformers
+    )
+    python -c "import django, rest_framework, corsheaders, pydantic" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo.
+        echo [ERROR] Failed to install Python dependencies.
+        echo Please check your internet connection or install manually with:
+        echo   pip install -r backend\requirements.txt
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK] Python dependencies installed successfully.
+) else (
+    echo [OK] Python dependencies verified.
 )
 
-:: 2.6 Auto-Setup for Fresh Devices: Initialize Database & Seed Demo Data if db.sqlite3 is missing
-if not exist "%~dp0backend\db.sqlite3" (
-    echo [SETUP] Database not found. Initializing schema migrations and enterprise demo data...
-    cd /d "%~dp0backend"
-    python manage.py migrate --noinput
-    python manage.py seed_enterprise_demo
-    cd /d "%~dp0"
+:: 2.6 Auto-Setup for Fresh Devices: Initialize Database & Seed Demo Data
+echo [*] Checking database schema ^& enterprise seed data...
+cd /d "%~dp0backend"
+python manage.py migrate --noinput
+if %errorlevel% neq 0 (
+    echo [ERROR] Django migrations failed to execute.
+    pause
+    exit /b 1
 )
+python manage.py seed_enterprise_demo >nul 2>&1
+cd /d "%~dp0"
+echo [OK] Database schema and enterprise demo data ready.
 
-:: 2.7 Auto-Setup for Fresh Devices: Install frontend node_modules if missing
-if not exist "%~dp0frontend\node_modules" (
-    echo [SETUP] Frontend node_modules missing. Running npm install...
+:: 2.7 Auto-Setup for Fresh Devices: Install frontend node_modules if Next.js CLI is missing
+if not exist "%~dp0frontend\node_modules\.bin\next.cmd" (
+    echo.
+    echo ======================================================================
+    echo   [SETUP] Frontend dependencies (Next.js) missing or incomplete.
+    echo   Running 'npm install' in frontend directory...
+    echo   (This is an automated one-time setup for fresh machines - please wait)
+    echo ======================================================================
     cd /d "%~dp0frontend"
     call npm install
     cd /d "%~dp0"
+    if not exist "%~dp0frontend\node_modules\.bin\next.cmd" (
+        echo.
+        echo [ERROR] 'npm install' failed to install Next.js CLI into frontend\node_modules.
+        echo Please run manually to inspect errors:
+        echo   cd frontend ^&^& npm install
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK] Frontend dependencies installed successfully.
+) else (
+    echo [OK] Frontend dependencies verified.
 )
 
 :: 3. Launch Backend in its own titled window if not already listening
@@ -83,11 +197,23 @@ if %errorlevel% equ 0 (
     )
 )
 
-:: 6. Wait for servers to initialize
-echo [4/4] Waiting for servers to bind ports...
-ping -n 5 127.0.0.1 >nul
+:: 6. Wait for servers to initialize and bind ports before launching browser
+echo [4/4] Waiting for backend (8000) and frontend (3000) to initialize...
+set /a WAIT_COUNT=0
+:WAIT_SERVERS
+netstat -ano | findstr /R /C:":3000 .*LISTENING" >nul 2>&1
+if %errorlevel% neq 0 (
+    set /a WAIT_COUNT+=1
+    if !WAIT_COUNT! leq 35 (
+        ping -n 2 127.0.0.1 >nul
+        goto :WAIT_SERVERS
+    )
+    echo [WARNING] Servers took longer than expected to bind ports. Opening browser anyway...
+) else (
+    echo [OK] All ports are live and listening!
+)
 
-:: 6. Launch Application Window (Edge App Mode or default browser)
+:: 7. Launch Application Window (Edge App Mode or default browser)
 echo.
 echo Launching LORE in standalone application window...
 if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" (

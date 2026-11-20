@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Building2, Check, Search, X, Layers, ShieldCheck, ChevronRight, Plus, Loader2 } from 'lucide-react';
+import { Building2, Check, Search, X, Layers, ShieldCheck, ChevronRight, Plus, Loader2, Copy } from 'lucide-react';
 import { Workspace, Organization, api } from '@/lib/api';
 
 interface WorkspaceSwitcherSheetProps {
@@ -29,6 +29,7 @@ export const WorkspaceSwitcherSheet: React.FC<WorkspaceSwitcherSheetProps> = ({
   const [newWsDesc, setNewWsDesc] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -309,7 +310,25 @@ export const WorkspaceSwitcherSheet: React.FC<WorkspaceSwitcherSheetProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-[#6E6E73] mt-0.5 flex items-center gap-2">
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="text-[10px] font-mono text-[#86868B] bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded border border-[var(--hairline)] truncate max-w-[240px]" title={`Full UUID: ${ws.id}`}>
+                                  UUID: {ws.id}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(ws.id);
+                                    setCopiedId(ws.id);
+                                    setTimeout(() => setCopiedId(null), 1500);
+                                  }}
+                                  className="p-1 rounded text-[#86868B] hover:text-[#007AFF] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+                                  title="Copy Workspace UUID"
+                                >
+                                  {copiedId === ws.id ? <Check className="w-3 h-3 text-[#34C759]" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                              </div>
+                              <div className="text-[11px] text-[#6E6E73] mt-1 flex items-center gap-2">
                                 <span>Role: <strong className="capitalize font-medium text-[var(--text-primary)]">{ws.role || 'Member'}</strong></span>
                                 <span>•</span>
                                 <span className="truncate">{ws.description || 'Enterprise sovereign partition'}</span>

@@ -7,7 +7,17 @@ Handles:
 """
 
 import logging
-from celery import shared_task
+try:
+    from celery import shared_task
+except ImportError:
+    def shared_task(*args, **kwargs):
+        def decorator(func):
+            func.delay = lambda *a, **k: func(*a, **k)
+            func.apply_async = lambda args=(), kwargs=None, **k: func(*args, **(kwargs or {}))
+            return func
+        if args and callable(args[0]):
+            return decorator(args[0])
+        return decorator
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)

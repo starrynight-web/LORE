@@ -171,8 +171,7 @@ export default function Home() {
         setIsCommandPaletteOpen(prev => !prev);
       } else if (cmdOrCtrl && (e.key === 'u' || e.key === 'U')) {
         e.preventDefault();
-        setUploadIntakeMode('files');
-        setIsUploadModalOpen(true);
+        handleOpenUploadWithMode('files');
       } else if (e.key === 'Escape') {
         if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
         if (isWorkspaceSwitcherOpen) setIsWorkspaceSwitcherOpen(false);
@@ -197,6 +196,11 @@ export default function Home() {
   };
 
   const handleOpenUploadWithMode = (mode: 'files' | 'zip' | 'scraper' = 'files') => {
+    if (!currentWorkspace && workspaces.length > 0) {
+      const defaultWs = workspaces[0];
+      setCurrentWorkspace(defaultWs);
+      loadWorkspaceData(defaultWs.id);
+    }
     setUploadIntakeMode(mode);
     setIsUploadModalOpen(true);
   };
@@ -444,15 +448,19 @@ export default function Home() {
       )}
 
       {/* 8 · Ingest Sheet / Upload Modal (⌘U, 720px drawer) */}
-      {currentWorkspace && (
-        <UploadModal
-          isOpen={isUploadModalOpen}
-          onClose={() => setIsUploadModalOpen(false)}
-          workspaceId={currentWorkspace.id}
-          collections={collections}
-          onUploadSuccess={handleUploadSuccess}
-        />
-      )}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        workspaceId={currentWorkspace?.id || workspaces[0]?.id || ''}
+        collections={collections}
+        onUploadSuccess={handleUploadSuccess}
+        initialIntakeMode={uploadIntakeMode}
+        workspaces={workspaces}
+        onSelectWorkspace={(ws) => {
+          setCurrentWorkspace(ws);
+          loadWorkspaceData(ws.id);
+        }}
+      />
 
       {/* 9 · Document Detail Modal */}
       <DocumentDetailModal

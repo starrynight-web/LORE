@@ -2,7 +2,20 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from celery import shared_task
+try:
+    from celery import shared_task
+except ImportError:
+    # Graceful fallback when Celery is not installed or when running in local synchronous mode
+    def shared_task(*d_args, **d_kwargs):
+        def decorator(func):
+            def delay(*args, **kwargs):
+                return func(None, *args, **kwargs)
+            func.delay = delay
+            func.apply_async = lambda args=(), kwargs=None, **opt: delay(*args, **(kwargs or {}))
+            return func
+        if len(d_args) == 1 and callable(d_args[0]):
+            return decorator(d_args[0])
+        return decorator
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -123,7 +136,10 @@ def _execute_celery_document_job(
                 )
             except IngestionJob.DoesNotExist:
                 pass
-            raise task_self.retry(exc=exc, countdown=backoff_seconds)
+            if hasattr(task_self, 'retry'):
+                raise task_self.retry(exc=exc, countdown=backoff_seconds)
+            else:
+                raise exc
         else:
             logger.error(f"Permanent ingestion failure or max retries exceeded for job {job_id}: {exc}")
             try:

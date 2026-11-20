@@ -18,6 +18,7 @@ import {
   Network,
   Globe,
   ChevronRight,
+  Copy,
   LucideIcon
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -168,6 +169,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   ENTERPRISE
                 </span>
               </div>
+              {currentWorkspace?.id && (
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(currentWorkspace.id);
+                  }}
+                  className="flex items-center gap-1 mt-1 text-[10px] font-mono text-[#86868B] hover:text-[#007AFF] transition-colors cursor-pointer group"
+                  title={`Workspace UUID: ${currentWorkspace.id} (Click to copy)`}
+                >
+                  <span className="truncate">UUID: {currentWorkspace.id.slice(0, 8)}...</span>
+                  <Copy className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 shrink-0" />
+                </div>
+              )}
             </div>
           </div>
           <ChevronRight className="w-3.5 h-3.5 text-[#86868B] shrink-0" />

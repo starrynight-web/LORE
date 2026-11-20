@@ -24,9 +24,10 @@ import {
   Layers,
   Ban,
   Globe,
+  Copy,
   Cpu
 } from 'lucide-react';
-import { Collection, ZipImportJob, ZipImportEntry, api } from '@/lib/api';
+import { Collection, Workspace, ZipImportJob, ZipImportEntry, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 interface UploadFileItem {
@@ -48,6 +49,9 @@ interface UploadModalProps {
   workspaceId: string;
   collections: Collection[];
   onUploadSuccess: (docId: string, jobId: string) => void;
+  initialIntakeMode?: 'files' | 'zip' | 'scraper';
+  workspaces?: Workspace[];
+  onSelectWorkspace?: (ws: Workspace) => void;
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
@@ -55,9 +59,23 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onClose,
   workspaceId,
   collections,
-  onUploadSuccess
+  onUploadSuccess,
+  initialIntakeMode = 'files',
+  workspaces = [],
+  onSelectWorkspace
 }) => {
   const { t } = useI18n();
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(workspaceId || '');
+
+  useEffect(() => {
+    if (workspaceId) {
+      setActiveWorkspaceId(workspaceId);
+    } else if (workspaces && workspaces.length > 0) {
+      setActiveWorkspaceId(workspaces[0].id);
+    }
+  }, [workspaceId, workspaces]);
+
+  const effectiveWorkspaceId = activeWorkspaceId || workspaceId || (workspaces && workspaces.length > 0 ? workspaces[0].id : '');
   const [fileList, setFileList] = useState<UploadFileItem[]>([]);
   const [description, setDescription] = useState('');
   const [collectionId, setCollectionId] = useState('');
@@ -111,6 +129,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setShowS3Drawer(false);
       setOverrideS3Enabled(null);
 
+      if (initialIntakeMode === 'scraper') {
+        setIntakeMode('scraper');
+      } else {
+        setIntakeMode('files');
+      }
+
       if (typeof window !== 'undefined') {
         try {
           const raw = localStorage.getItem('lore_ingestion_llm_config');
@@ -130,7 +154,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         }
       }
     }
-  }, [isOpen]);
+  }, [isOpen, initialIntakeMode]);
 
   if (!isOpen) return null;
 
@@ -182,13 +206,17 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   const handleZipPreview = async (file: File) => {
+    if (!effectiveWorkspaceId) {
+      setOverallError('Please select or create a workspace before uploading documents.');
+      return;
+    }
     setIsZipPreviewing(true);
     setOverallError(null);
     setZipFile(file);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('workspace', workspaceId);
+      formData.append('workspace', effectiveWorkspaceId);
       if (collectionId) formData.append('collection', collectionId);
       formData.append('authority_level', authorityLevel.toString());
       formData.append('description', description);
@@ -291,6 +319,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setOverallError('Please select at least one document to upload.');
       return;
     }
+    if (!effectiveWorkspaceId) {
+      setOverallError('Please select or create a workspace before uploading documents.');
+      return;
+    }
 
     setIsUploading(true);
     setOverallError(null);
@@ -304,7 +336,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         formData.append('files', item.file);
       });
 
-      formData.append('workspace', workspaceId);
+      formData.append('workspace', effectiveWorkspaceId);
       formData.append('description', description);
       formData.append('authority_level', authorityLevel.toString());
       if (collectionId) {
@@ -457,7 +489,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm"
       style={{ backgroundColor: 'var(--modal-overlay)' }}
     >
       <div 
@@ -561,6 +593,75 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             <span>Web Scraper & Connectors</span>
           </button>
         </div>
+
+        {/* Workspace Context Selector & Mode Pill */}
+        <div 
+          className="px-5 sm:px-6 py-2 border-b flex flex-wrap items-center justify-between gap-2 text-xs flex-shrink-0" 
+          style={{ 
+            borderColor: 'var(--border-color)', 
+            backgroundColor: 'var(--bg-surface-soft)' 
+          }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Shield className="w-3.5 h-3.5 text-[var(--brand-accent)] shrink-0" />
+            <span className="text-[var(--text-secondary)] font-medium shrink-0">Target Workspace:</span>
+            {workspaces && workspaces.length > 1 ? (
+              <select
+                value={effectiveWorkspaceId}
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  setActiveWorkspaceId(newId);
+                  const found = workspaces.find(w => w.id === newId);
+                  if (found && onSelectWorkspace) onSelectWorkspace(found);
+                }}
+                disabled={isUploading || isZipImporting}
+                className="px-2 py-0.5 rounded-lg border text-xs font-semibold focus:outline-none cursor-pointer truncate max-w-[220px]"
+                style={{
+                  backgroundColor: 'var(--bg-card)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {workspaces.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-semibold text-[var(--text-primary)] truncate">
+                {workspaces?.find(w => w.id === effectiveWorkspaceId)?.name || 'Default Workspace'}
+              </span>
+            )}
+
+            {effectiveWorkspaceId && (
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(effectiveWorkspaceId);
+                }}
+                className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] text-[#86868B] hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/10 transition-colors cursor-pointer border border-[var(--border-color)]"
+                title={`Workspace UUID: ${effectiveWorkspaceId} (Click to copy)`}
+              >
+                <span>UUID: {effectiveWorkspaceId.slice(0, 8)}...</span>
+                <Copy className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
+
+          {initialIntakeMode === 'zip' && intakeMode === 'files' && !zipJob && (
+            <span className="text-[11px] font-semibold text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 flex items-center gap-1">
+              <Archive className="w-3 h-3" />
+              <span>ZIP Archive Intake</span>
+            </span>
+          )}
+        </div>
+
+        {/* Warning if no workspace available */}
+        {!effectiveWorkspaceId && (
+          <div className="px-5 sm:px-6 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2 flex-shrink-0">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>No workspace found. Please select or create a workspace first before uploading.</span>
+          </div>
+        )}
 
         {/* Stage S3 Extraction Status Pill & Quick Override Drawer */}
         {(() => {
@@ -838,6 +939,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   disabled={!scraperUrl || isScraping}
                   onClick={async () => {
                     if (!scraperUrl) return;
+                    if (!effectiveWorkspaceId) {
+                      setOverallError('Please select or create a workspace before launching the scraper.');
+                      return;
+                    }
                     setIsScraping(true);
                     try {
                       const res = await api.submitWebScraper({
@@ -846,7 +951,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                         authority_level: scraperAuthority,
                         sovereignty_region: sovereigntyRegion,
                         access_level: accessLevel,
-                        workspace_id: workspaceId,
+                        workspace_id: effectiveWorkspaceId,
                       });
                       setScraperResult(res);
                       setScraperUrl('');

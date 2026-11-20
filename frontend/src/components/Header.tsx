@@ -131,11 +131,16 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Quiet workspace pull-down (no box) */}
         <button
           onClick={onOpenWorkspaceSwitcher}
-          className="flex items-center gap-1 text-[12px] text-[#6E6E73] hover:text-[var(--text-primary)] px-1.5 py-0.5 rounded transition-colors cursor-pointer truncate max-w-[160px] sm:max-w-[240px]"
-          title="Click to switch workspace"
+          className="flex items-center gap-1.5 text-[12px] text-[#6E6E73] hover:text-[var(--text-primary)] px-1.5 py-0.5 rounded transition-colors cursor-pointer truncate max-w-[200px] sm:max-w-[320px]"
+          title={`Active Workspace: ${currentWorkspace?.name || 'Default Workspace'}\nUUID: ${currentWorkspace?.id || 'default'}\nClick to switch`}
         >
           <span className="text-[#86868B]">·</span>
           <span className="truncate font-medium">{currentWorkspace?.name || 'Default Workspace'}</span>
+          {currentWorkspace?.id && (
+            <span className="font-mono text-[9px] text-[#86868B] bg-black/5 dark:bg-white/10 px-1 py-0.5 rounded shrink-0 hidden md:inline border border-[var(--hairline)]" title={`Workspace UUID: ${currentWorkspace.id}`}>
+              {currentWorkspace.id.slice(0, 8)}
+            </span>
+          )}
           <ChevronDown className="w-3 h-3 text-[#86868B] shrink-0" />
         </button>
       </div>
@@ -168,15 +173,17 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Split [Upload Document ▾] Button (Filled blue #007AFF) */}
         <div className="relative inline-flex items-center rounded-lg shadow-xs" ref={uploadMenuRef}>
           <button
+            type="button"
             onClick={() => onOpenUpload('files')}
             className="h-7 px-2.5 rounded-l-lg text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer active:brightness-95 transition-all"
             style={{ backgroundColor: '#007AFF' }}
             title="Upload document"
           >
             <Upload className="w-3.5 h-3.5 stroke-[2.2]" />
-            <span className="hidden sm:inline">Upload Document</span>
+            <span>Upload<span className="hidden sm:inline"> Document</span></span>
           </button>
           <button
+            type="button"
             onClick={() => setIsUploadMenuOpen(!isUploadMenuOpen)}
             className="h-7 px-1.5 rounded-r-lg text-white border-l border-white/20 flex items-center justify-center cursor-pointer active:brightness-95 transition-all"
             style={{ backgroundColor: '#007AFF' }}
