@@ -152,7 +152,7 @@ class HybridRetrievalService:
                 pass
 
         budget = context_budget_tokens or getattr(settings, 'RETRIEVAL_CONTEXT_BUDGET_TOKENS', 800)
-        candidate_budget = max(40, limit * 5, RerankerFactory.get_candidate_budget(limit=limit))
+        candidate_budget = min(24, max(16, limit * 2))
         query_clean = query.strip()
         q_tokens = [w.lower() for w in re.findall(r'\w+', query_clean) if len(w) > 1]
 
@@ -542,27 +542,45 @@ class HybridRetrievalService:
         # Substantive body text outranks TOC unless user explicitly queries TOC / index
         is_toc_query = any(w in query_clean.lower() for w in ['table of contents', 'contents', 'index', 'outline'])
         if not is_toc_query and reranked_candidates:
+            from apps.knowledge.chunking import StructureAwareChunker
             adjusted_reranked = []
             for item in reranked_candidates:
                 if isinstance(item, tuple):
                     sc, chk, meta = item
                     is_toc = False
                     if hasattr(chk, 'metadata') and isinstance(chk.metadata, dict):
-                        is_toc = chk.metadata.get('is_toc_or_frontmatter', False)
+                        is_toc = bool(chk.metadata.get('is_toc_or_frontmatter', False))
                     elif isinstance(chk, dict):
-                        is_toc = chk.get('metadata', {}).get('is_toc_or_frontmatter') or chk.get('is_toc_or_frontmatter', False)
+                        is_toc = bool(chk.get('metadata', {}).get('is_toc_or_frontmatter') or chk.get('is_toc_or_frontmatter', False))
+
+                    if not is_toc:
+                        chk_txt = getattr(chk, 'text', '') if not isinstance(chk, dict) else chk.get('text', '')
+                        chk_hdr = getattr(chk, 'heading_path', '') if not isinstance(chk, dict) else chk.get('heading_path', '')
+                        if StructureAwareChunker.is_toc_or_frontmatter_page(chk_txt) or 'table of contents' in chk_hdr.lower():
+                            is_toc = True
+
                     if is_toc:
                         sc = round(sc * 0.20, 4)
                         if isinstance(meta, dict):
                             meta['relevance_score'] = sc
+                            meta['is_toc_or_frontmatter'] = True
                     adjusted_reranked.append((sc, chk, meta))
                 elif isinstance(item, dict):
                     it = dict(item)
-                    is_toc = it.get('metadata', {}).get('is_toc_or_frontmatter') or it.get('is_toc_or_frontmatter', False)
+                    is_toc = bool(it.get('metadata', {}).get('is_toc_or_frontmatter') or it.get('is_toc_or_frontmatter', False))
+                    if not is_toc:
+                        chk_txt = it.get('text', '')
+                        chk_hdr = it.get('heading_path', '')
+                        if StructureAwareChunker.is_toc_or_frontmatter_page(chk_txt) or 'table of contents' in chk_hdr.lower():
+                            is_toc = True
+
                     if is_toc:
                         it['score'] = round(it.get('score', 0.0) * 0.20, 4)
                         if 'reranking_scores' in it and isinstance(it['reranking_scores'], dict):
                             it['reranking_scores']['relevance_score'] = it['score']
+                        if 'metadata' in it and isinstance(it['metadata'], dict):
+                            it['metadata']['is_toc_or_frontmatter'] = True
+                        it['is_toc_or_frontmatter'] = True
                     adjusted_reranked.append(it)
             if adjusted_reranked and isinstance(adjusted_reranked[0], tuple):
                 adjusted_reranked.sort(key=lambda x: x[0], reverse=True)

@@ -399,6 +399,9 @@ class GroundedGenerationService:
                 policy_context=policy_context,
                 reason="groq_failure_safe_deterministic_fallback"
             )
+            diagnostic_note = f"\n\n*[LORE System Notice: Generative LLM synthesis ({active_model}) failed or timed out. Output safely resolved via Grounded Deterministic Synthesizer with 0 hallucination.]*"
+            if diagnostic_note not in ans:
+                ans = f"{ans}{diagnostic_note}"
             return (ans, cls.last_metrics) if return_metrics else ans
 
         # Check configured general external LLM provider
@@ -492,6 +495,7 @@ class GroundedGenerationService:
         Forces temperature: 0.0 for deterministic factual fidelity and zero hallucination.
         Uses runtime master prompt from e:\LORE\system-prompt.md with structured evidence package input.
         """
+        logger.info(f"[GroqLLM] Invoking {model_name} with {len(retrieved_chunks)} chunks")
         import urllib.request
         import urllib.error
         import json

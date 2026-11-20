@@ -2207,6 +2207,8 @@ class VisualDocumentExtractor:
                 meta["visual_region_types"] = sorted({r.get("region_type", "") for r in target_regions})
                 meta["visual_extraction_kinds"] = sorted({r.get("extraction_kind", "") for r in target_regions})
                 meta["contains_visual_inference"] = any(bool(r.get("is_inference")) for r in target_regions)
+                if chunk.get("is_toc_or_frontmatter") or meta.get("is_toc_or_frontmatter"):
+                    meta["is_toc_or_frontmatter"] = True
                 chunk["metadata"] = meta
 
         return chunks

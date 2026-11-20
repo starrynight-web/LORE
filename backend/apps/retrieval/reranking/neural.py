@@ -245,11 +245,18 @@ class NeuralCrossEncoderReranker(BaseReranker):
         # 1. Ensure Model Readiness
         self._ensure_loaded()
 
+        # Cap candidates on CPU to top 16 fused candidates with max_length=256
+        scoring_candidates = candidates
+        if self._active_device == "cpu":
+            if len(scoring_candidates) > 16:
+                scoring_candidates = scoring_candidates[:16]
+            self._max_length = min(self._max_length, 256)
+
         # 2. Extract Document Texts for Scoring
         pairs = []
         doc_meta_list = []
 
-        for item in candidates:
+        for item in scoring_candidates:
             if isinstance(item, tuple):
                 chk = item[1]
                 text = (getattr(chk, 'text', '') or '')
@@ -276,7 +283,7 @@ class NeuralCrossEncoderReranker(BaseReranker):
 
         # 3. Batch Scoring with Timeout Protection
         t_infer_start = time.time()
-        scores = self._score_pairs_batched(pairs)
+        scores = self._score_pairs_batched(pairs, t_start=t_start)
         infer_duration_ms = (time.time() - t_infer_start) * 1000
 
         # Check inference timeout
@@ -342,13 +349,16 @@ class NeuralCrossEncoderReranker(BaseReranker):
 
         return reordered
 
-    def _score_pairs_batched(self, pairs: List[Tuple[str, str]]) -> List[float]:
-        """Batches candidate scoring to reduce overhead."""
+    def _score_pairs_batched(self, pairs: List[Tuple[str, str]], t_start: Optional[float] = None) -> List[float]:
+        """Batches candidate scoring to reduce overhead with runtime timeout checks."""
         if self._engine_override is not None:
             return self._engine_override.score_pairs(pairs)
 
         scores = []
         for i in range(0, len(pairs), self._batch_size):
+            if t_start is not None and (time.time() - t_start) > self._timeout_seconds:
+                logger.warning(f"[NeuralReranker] Inference exceeded timeout of {self._timeout_seconds}s before batch {i}")
+                raise RerankingTimeoutError(f"Neural inference exceeded timeout ({self._timeout_seconds}s)")
             batch = pairs[i : i + self._batch_size]
             batch_scores = self._score_batch(batch)
             scores.extend(batch_scores)

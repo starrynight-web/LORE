@@ -271,8 +271,21 @@ MASTER_SYSTEM_PROMPT_PATH = os.environ.get('MASTER_SYSTEM_PROMPT_PATH', str(BASE
 ALLOW_HASH_PROJECTION_FALLBACK = os.environ.get('ALLOW_HASH_PROJECTION_FALLBACK', 'False').lower() in ('true', '1', 'yes')
 
 # Reranking & Retrieval Optimization Configuration (Phase 4)
-# Default is 'neural' (BAAI/bge-reranker-v2-m3) with resilient heuristic fallback
-RERANKER_BACKEND = os.environ.get('RERANKER_BACKEND', 'neural').lower()
+# Default is 'neural' on GPU or 'heuristic' (<15ms) on CPU when device is auto unless RERANKER_FORCE_CPU_NEURAL=True
+RERANKER_DEVICE = os.environ.get('RERANKER_DEVICE', 'auto')
+RERANKER_FORCE_CPU_NEURAL = os.environ.get('RERANKER_FORCE_CPU_NEURAL', 'False').lower() in ('true', '1', 'yes')
+
+_default_reranker_backend = 'neural'
+if os.environ.get('RERANKER_BACKEND') is None:
+    if RERANKER_DEVICE == 'auto' and not RERANKER_FORCE_CPU_NEURAL:
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                _default_reranker_backend = 'heuristic'
+        except Exception:
+            _default_reranker_backend = 'heuristic'
+
+RERANKER_BACKEND = os.environ.get('RERANKER_BACKEND', _default_reranker_backend).lower()
 if RERANKER_BACKEND not in ('heuristic', 'neural'):
     raise ImproperlyConfigured(f"Invalid RERANKER_BACKEND '{RERANKER_BACKEND}'. Must be 'heuristic' or 'neural'.")
 
@@ -283,16 +296,15 @@ if RERANKER_FALLBACK not in ('heuristic', 'fail'):
 RERANKER_MODEL = os.environ.get('RERANKER_MODEL', 'BAAI/bge-reranker-v2-m3')
 RERANKER_MODEL_NAME = os.environ.get('RERANKER_MODEL_NAME', RERANKER_MODEL)
 RERANKER_MODEL_REVISION = os.environ.get('RERANKER_MODEL_REVISION', 'main')
-RERANKER_DEVICE = os.environ.get('RERANKER_DEVICE', 'auto')
 RERANKER_BATCH_SIZE = int(os.environ.get('RERANKER_BATCH_SIZE', '16'))
 RERANKER_MAX_LENGTH = int(os.environ.get('RERANKER_MAX_LENGTH', '512'))
-RERANKER_TIMEOUT_SECONDS = float(os.environ.get('RERANKER_TIMEOUT_SECONDS', '5.0'))
+RERANKER_TIMEOUT_SECONDS = float(os.environ.get('RERANKER_TIMEOUT_SECONDS', '2.5'))
 RERANKER_MIN_RELEVANCE = float(os.environ.get('RERANKER_MIN_RELEVANCE', '0.05'))
 
 # Candidate Retrieval Budget Configuration (Phase 5)
-RERANKER_CANDIDATE_MULTIPLIER = int(os.environ.get('RERANKER_CANDIDATE_MULTIPLIER', '3'))
-RERANKER_CANDIDATE_FLOOR = int(os.environ.get('RERANKER_CANDIDATE_FLOOR', '24'))
-RERANKER_MAX_CANDIDATES = int(os.environ.get('RERANKER_MAX_CANDIDATES', '100'))
+RERANKER_CANDIDATE_MULTIPLIER = int(os.environ.get('RERANKER_CANDIDATE_MULTIPLIER', '2'))
+RERANKER_CANDIDATE_FLOOR = int(os.environ.get('RERANKER_CANDIDATE_FLOOR', '16'))
+RERANKER_MAX_CANDIDATES = int(os.environ.get('RERANKER_MAX_CANDIDATES', '24'))
 
 # Shadow Mode Evaluation (Phase 10)
 RERANKER_SHADOW_MODE = os.environ.get('RERANKER_SHADOW_MODE', 'False').lower() in ('true', '1', 'yes')

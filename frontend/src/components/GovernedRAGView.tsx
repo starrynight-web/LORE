@@ -318,6 +318,12 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
     const clientMsgId = `client_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const docId = selectedDocId === 'all' ? undefined : selectedDocId;
 
+    // Read latest credentials and execution mode at send time (not stale React state)
+    const activeGroqKey = (typeof window !== 'undefined' ? localStorage.getItem('lore_groq_api_key') : null) || undefined;
+    const activeLlmModel = (typeof window !== 'undefined' ? localStorage.getItem('lore_llm_model') : null) || 'gpt-oss-120B';
+    const activeExecMode = (typeof window !== 'undefined' ? localStorage.getItem('lore_execution_mode') : null) || undefined;
+    const activeSynthMode = (activeGroqKey && activeExecMode !== 'local_only') ? 'generative' : undefined;
+
     try {
       if (activeConversationId) {
         // Multi-turn continuation on existing conversation
@@ -349,7 +355,11 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
         const res = await api.sendConversationMessage(activeConversationId, effectiveQuery, {
           clientMessageId: clientMsgId,
           documentId: docId,
-          file: fileToUpload || undefined
+          file: fileToUpload || undefined,
+          groqApiKey: activeGroqKey,
+          llmModel: activeLlmModel,
+          executionMode: activeExecMode,
+          synthesisMode: activeSynthMode
         });
 
         setActiveConversation(prev => {
@@ -373,8 +383,8 @@ export const GovernedRAGView: React.FC<GovernedRAGViewProps> = ({
           effectiveQuery,
           undefined,
           docId,
-          undefined,
-          undefined,
+          activeGroqKey,
+          activeLlmModel,
           undefined,
           clientMsgId,
           fileToUpload || undefined

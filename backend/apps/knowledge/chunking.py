@@ -27,7 +27,8 @@ class StructureAwareChunker:
     def is_toc_or_frontmatter_page(cls, text: str) -> bool:
         """
         Multi-signal structural detection for Table of Contents or frontmatter pages.
-        Explicitly avoids false positives on financial/pricing tables.
+        Detects both standard dot-leader pages and visual/Markdown pipe tables with chapter
+        titles paired with ascending page numbers, while avoiding false positives on financial tables.
         """
         if not text:
             return False
@@ -36,20 +37,25 @@ class StructureAwareChunker:
         if not lines:
             return False
 
-        # Signal 1: Lines 1-5 contain explicit Table of Contents, Contents, or Index heading
-        for line in lines[:5]:
-            clean_l = re.sub(r'^[#\s*_-]+', '', line).strip()
+        # Signal 1: Header/Footer or Heading contains explicit Table of Contents, Contents, or Index
+        for line in lines[:8] + (lines[-5:] if len(lines) > 8 else []):
+            clean_l = re.sub(r'^[#\s*|_-]+', '', line).strip()
             if re.match(r'^(?:table of contents|contents|index)\b', clean_l, re.IGNORECASE):
                 return True
+            if 'table of contents' in clean_l.lower():
+                return True
 
-        # Signal 2: Dot-leader lines scanning, explicitly ignoring pipe tables and currency/decimals
+        for line in lines:
+            if line.startswith('#') and re.search(r'\btable of contents\b', line, re.IGNORECASE):
+                return True
+
+        # Signal 2: Standard dot-leader lines scanning
         dot_leader_count = 0
         arabic_pages = []
-
         dot_leader_regex = re.compile(r'(?:\s*\.\s*){4,}\s*([ivxlcdm]+|\d{1,4})\s*$', re.IGNORECASE)
 
         for line in lines:
-            # Explicitly ignore Markdown pipe tables
+            # Skip Markdown pipe tables in Signal 2 (handled in Signal 3 below)
             if line.count('|') >= 2:
                 continue
             # Explicitly ignore currency/decimal rows ($ or 12.34)
@@ -65,12 +71,59 @@ class StructureAwareChunker:
 
         if dot_leader_count >= 4:
             if len(arabic_pages) >= 2:
-                # Arabic page numbers must be monotonically non-decreasing
                 is_monotonic = all(arabic_pages[i] <= arabic_pages[i + 1] for i in range(len(arabic_pages) - 1))
                 if is_monotonic:
                     return True
             elif dot_leader_count >= 4 and not arabic_pages:
-                # Frontmatter with roman numerals (e.g. iv, v, vi)
+                return True
+
+        # Signal 3: Visual-Table / Markdown Pipe Table TOC detection
+        # E.g. Page 13 visual table: | 9 . | TabularModelingDeepDive 277 . . . |
+        table_arabic_pages = []
+        table_entry_count = 0
+
+        for line in lines:
+            if line.count('|') < 2:
+                continue
+            # Ignore table separator rows
+            if re.match(r'^[|\s:-]+$', line):
+                continue
+            # Ignore currency/decimal rows ($ or 12.34 or %)
+            if re.search(r'[\$€£%]\s*\d|\b\d+\.\d{2}\b', line):
+                continue
+
+            # Check if row has dot leaders with number inside cells
+            dot_m = re.search(r'(?:(?:\s*\.\s*){2,}\s*(\d{1,4})|(\d{1,4})\s*(?:\s*\.\s*){2,})', line)
+            if dot_m:
+                p_val = int(dot_m.group(1) or dot_m.group(2))
+                table_entry_count += 1
+                table_arabic_pages.append(p_val)
+                continue
+
+            # Check if pipe table row has chapter/section title paired with a page number
+            cells = [c.strip() for c in line.split('|')[1:-1] if c.strip()]
+            if not cells:
+                continue
+
+            found_num = None
+            found_title = False
+            for c in cells:
+                num_m = re.search(r'\b(?:page\s*|pg\.?\s*)?(\d{1,4})\b', c, re.IGNORECASE)
+                if num_m and not found_num:
+                    val = int(num_m.group(1))
+                    if 1 <= val <= 3000:
+                        found_num = val
+                if re.search(r'[A-Za-z]{3,}', c):
+                    found_title = True
+
+            if found_num is not None and found_title:
+                table_entry_count += 1
+                table_arabic_pages.append(found_num)
+
+        if table_entry_count >= 4 and len(table_arabic_pages) >= 4:
+            is_monotonic = all(table_arabic_pages[i] <= table_arabic_pages[i + 1] for i in range(len(table_arabic_pages) - 1))
+            has_progression = table_arabic_pages[-1] > table_arabic_pages[0] or (table_arabic_pages[-1] >= 1 and len(set(table_arabic_pages)) >= 2)
+            if is_monotonic and has_progression:
                 return True
 
         return False

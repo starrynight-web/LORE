@@ -238,6 +238,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
         )
         execution_mode = request.data.get('execution_mode') or request.headers.get('X-Execution-Mode')
         synthesis_mode = request.data.get('synthesis_mode') or request.headers.get('X-Synthesis-Mode')
+        if groq_api_key and execution_mode != 'local_only' and not synthesis_mode:
+            synthesis_mode = 'generative'
         as_of = request.data.get('as_of')
 
         try:

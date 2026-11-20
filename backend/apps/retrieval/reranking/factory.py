@@ -131,9 +131,9 @@ class RerankerFactory:
         Computes the candidate retrieval budget before reranking.
         budget = min(RERANKER_MAX_CANDIDATES, max(RERANKER_CANDIDATE_FLOOR, limit * RERANKER_CANDIDATE_MULTIPLIER))
         """
-        multiplier = int(getattr(settings, 'RERANKER_CANDIDATE_MULTIPLIER', 3))
-        floor = int(getattr(settings, 'RERANKER_CANDIDATE_FLOOR', 24))
-        max_candidates = int(getattr(settings, 'RERANKER_MAX_CANDIDATES', 100))
+        multiplier = int(getattr(settings, 'RERANKER_CANDIDATE_MULTIPLIER', 2))
+        floor = int(getattr(settings, 'RERANKER_CANDIDATE_FLOOR', 16))
+        max_candidates = int(getattr(settings, 'RERANKER_MAX_CANDIDATES', 24))
 
         computed = max(floor, limit * multiplier)
         return min(max_candidates, computed)

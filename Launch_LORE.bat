@@ -28,6 +28,30 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: 2.5 Auto-Setup for Fresh Devices: Verify Python packages
+python -c "import django" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [SETUP] Python dependencies missing. Installing required packages from requirements.txt...
+    pip install -r "%~dp0backend\requirements.txt"
+)
+
+:: 2.6 Auto-Setup for Fresh Devices: Initialize Database & Seed Demo Data if db.sqlite3 is missing
+if not exist "%~dp0backend\db.sqlite3" (
+    echo [SETUP] Database not found. Initializing schema migrations and enterprise demo data...
+    cd /d "%~dp0backend"
+    python manage.py migrate --noinput
+    python manage.py seed_enterprise_demo
+    cd /d "%~dp0"
+)
+
+:: 2.7 Auto-Setup for Fresh Devices: Install frontend node_modules if missing
+if not exist "%~dp0frontend\node_modules" (
+    echo [SETUP] Frontend node_modules missing. Running npm install...
+    cd /d "%~dp0frontend"
+    call npm install
+    cd /d "%~dp0"
+)
+
 :: 3. Launch Backend in its own titled window if not already listening
 netstat -ano | findstr /R /C:":8000 .*LISTENING" >nul 2>&1
 if %errorlevel% equ 0 (
@@ -81,15 +105,20 @@ echo ======================================================================
 echo   LORE Enterprise is running!
 echo ----------------------------------------------------------------------
 echo   Web UI:        http://localhost:3000
+echo   Live Docs:     http://localhost:3000/docs
 echo   REST API:      http://127.0.0.1:8000/api/v1
+echo   MCP Server:    http://127.0.0.1:8001/mcp
 echo   Django Admin:  http://127.0.0.1:8000/admin
 echo.
 echo   Demo Login Credentials:
-echo     Admin:    admin@northstar.demo    / Northstar2026!
-echo     Reviewer: reviewer@northstar.demo / Northstar2026!
-echo     Viewer:   viewer@northstar.demo   / Northstar2026!
+echo     Admin:       admin@northstar.demo    / Northstar2026!
+echo     Reviewer:    reviewer@northstar.demo / Northstar2026!
+echo     Viewer:      viewer@northstar.demo   / Northstar2026!
+echo.
+echo   Judge / Evaluator Passkey for Docs:
+echo     Passkey:     LORE-JUDGE-2026
 echo ----------------------------------------------------------------------
-echo   To shut down both servers, run Stop_LORE.bat
+echo   To shut down all servers, run Stop_LORE.bat
 echo ======================================================================
 echo.
 ping -n 3 127.0.0.1 >nul
