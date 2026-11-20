@@ -12,7 +12,7 @@ const NAV = [
   { href: "/#proof", label: "MCP Proof" },
   { href: "/#workflow", label: "How It Works" },
   { href: "/#tiers", label: "Solo · Team · Enterprise" },
-  { href: "/#governance", label: "Governance" },
+  { href: "/enterprise/docs", label: "Enterprise Docs" },
 ] as const
 
 export function SiteHeader({ banner }: { banner?: React.ReactNode } = {}) {

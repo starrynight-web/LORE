@@ -7,6 +7,7 @@ const FOOTER = {
     { href: "/branches/enterprise", label: "enterprise (LORE Enterprise)" },
   ],
   documentation: [
+    { href: "/enterprise/docs", label: "Enterprise Docs & YC Pitch Deck" },
     { href: "/docs/overview", label: "Platform Overview" },
     { href: "/docs/architecture", label: "Architecture Spec" },
     { href: "/docs/ide-mcp", label: "IDE MCP Setup" },
